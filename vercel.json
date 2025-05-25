@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd hydrowave && npm run build",
+  "devCommand": "cd hydrowave && npm run dev",
+  "outputDirectory": "hydrowave/.next",
+  "installCommand": "cd hydrowave && npm install"
+} 
