@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd hydrowave && npm run build",
+  "buildCommand": "cd hydrowave && npm install -D tailwindcss postcss autoprefixer && npm run build",
   "devCommand": "cd hydrowave && npm run dev",
   "outputDirectory": "hydrowave/.next",
   "installCommand": "cd hydrowave && npm install"
