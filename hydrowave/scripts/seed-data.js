@@ -1,5 +1,5 @@
 // Script para insertar datos de prueba en Supabase
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = require('@supabase/supabase-js');
 
 // Usar las mismas variables que en el archivo supabase.ts
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mbrwdpqndasborhosewl.supabase.co';
