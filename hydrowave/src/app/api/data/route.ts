@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     // Obtener los datos ambientales más recientes
     const { data: environmentData, error: environmentError } = await supabase
-      .from('environment_measurements')
+      .from('environment_data')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(1)
