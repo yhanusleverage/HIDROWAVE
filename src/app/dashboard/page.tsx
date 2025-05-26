@@ -70,7 +70,7 @@ export default function DashboardPage() {
     datasets: [
       {
         label: 'Temperatura del Agua',
-        data: hydroHistory.map(item => item.water_temperature),
+        data: hydroHistory.map(item => item.temperature),
         borderColor: 'rgb(53, 162, 235)',
         backgroundColor: 'rgba(53, 162, 235, 0.5)',
         tension: 0.3,
@@ -204,11 +204,11 @@ export default function DashboardPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <SensorCard 
                   title="Temperatura del Agua" 
-                  value={hydroData?.water_temperature?.toFixed(1) || '--'} 
+                  value={hydroData?.temperature?.toFixed(1) || '--'} 
                   unit="°C"
                   icon={<BeakerIcon className="h-6 w-6" />}
-                  status={hydroData?.water_temperature && 
-                    (hydroData.water_temperature < 18 || hydroData.water_temperature > 26) 
+                  status={hydroData?.temperature && 
+                    (hydroData.temperature < 18 || hydroData.temperature > 26) 
                       ? 'warning' 
                       : 'normal'
                   }
@@ -279,8 +279,8 @@ export default function DashboardPage() {
                 <RelayControl 
                   title="Calentador" 
                   relayNumber={0} 
-                  active={hydroData?.water_temperature 
-                    ? hydroData.water_temperature < 20 
+                  active={hydroData?.temperature 
+                    ? hydroData.temperature < 20 
                     : false
                   }
                   icon={<Cog6ToothIcon className="h-6 w-6" />}

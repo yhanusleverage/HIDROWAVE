@@ -7,16 +7,17 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 
 export type HydroMeasurement = {
   id?: number;
+  device_id?: string;
   created_at?: string;
-  water_temperature: number;
+  temperature: number;  // Cambiado de water_temperature a temperature
   ph: number;
   tds: number;
-  ec: number;
   water_level_ok: boolean;
 };
 
 export type EnvironmentMeasurement = {
   id?: number;
+  device_id?: string;
   created_at?: string;
   temperature: number;
   humidity: number;
@@ -40,7 +41,7 @@ export async function getLatestHydroData(): Promise<HydroMeasurement | null> {
 
 export async function getLatestEnvironmentData(): Promise<EnvironmentMeasurement | null> {
   const { data, error } = await supabase
-    .from('environment_measurements')
+    .from('environment_data')  // Cambiado de environment_measurements a environment_data
     .select('*')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -71,7 +72,7 @@ export async function getHydroDataHistory(limit: number = 24): Promise<HydroMeas
 
 export async function getEnvironmentDataHistory(limit: number = 24): Promise<EnvironmentMeasurement[]> {
   const { data, error } = await supabase
-    .from('environment_measurements')
+    .from('environment_data')  // Cambiado de environment_measurements a environment_data
     .select('*')
     .order('created_at', { ascending: false })
     .limit(limit);
