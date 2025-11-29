@@ -24,6 +24,18 @@ export default function ConfiguracaoPage() {
   const [hasChanges, setHasChanges] = useState(false);
   const initialSettingsRef = useRef<Settings | null>(null);
   
+  // ✅ Detectar timezone do navegador do usuário ou usar padrão
+  const getDefaultTimezone = (): string => {
+    if (typeof window !== 'undefined' && Intl?.DateTimeFormat) {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+      } catch (e) {
+        // Fallback se não conseguir detectar
+      }
+    }
+    return 'America/Sao_Paulo'; // Fallback padrão
+  };
+
   const [settings, setSettings] = useState<Settings>({
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
@@ -33,6 +45,7 @@ export default function ConfiguracaoPage() {
     soundAlerts: true,
     language: 'pt-BR',
     theme: 'dark',
+    timezone: getDefaultTimezone(), // ✅ Timezone do navegador do usuário
   });
 
   // Carregar configurações do Supabase ao montar

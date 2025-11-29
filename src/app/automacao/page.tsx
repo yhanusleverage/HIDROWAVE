@@ -533,7 +533,7 @@ export default function AutomacaoPage() {
           `${c.sensor} ${c.operator} ${c.value}`
         ).join(' e '),
         action: rule.rule_json.actions.map(a => 
-          `${(a.relay_names || [a.relay_name || 'Relé']).join(', ')} por ${a.duration}s`
+          `${(a.relay_names && a.relay_names.length > 0 ? a.relay_names : ['Relé']).join(', ')} por ${a.duration}s`
         ).join(', '),
         enabled: rule.enabled,
         conditions: rule.rule_json.conditions,
