@@ -470,6 +470,163 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                 </div>
               </div>
 
+              {/* ✅ Debug de Memória - Seção Completa - Usando dados reais do banco de dados */}
+              {device.free_heap !== undefined && device.free_heap !== null && (
+                <div className="bg-dark-card border border-dark-border rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-dark-text mb-4 flex items-center gap-2">
+                    🔧 Debug de Memória
+                    {(() => {
+                      // ✅ free_heap vem do banco de dados (device_status.free_heap)
+                      const totalHeap = 300000; // ~300KB para ESP32 (estimativa padrão)
+                      const freeHeap = device.free_heap; // ✅ Dado real do banco
+                      const freePercent = (freeHeap / totalHeap) * 100;
+                      const isLowMemory = freePercent < 20;
+                      const isWarning = freePercent < 30;
+                      
+                      return (
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          isLowMemory ? 'bg-red-500/20 text-red-400' : 
+                          isWarning ? 'bg-yellow-500/20 text-yellow-400' : 
+                          'bg-green-500/20 text-green-400'
+                        }`}>
+                          {isLowMemory ? '⚠️ Crítico' : isWarning ? '⚠️ Atenção' : '✅ OK'}
+                        </span>
+                      );
+                    })()}
+                  </h3>
+                  
+                  {(() => {
+                    // ✅ free_heap vem do banco de dados (device_status.free_heap)
+                    const totalHeap = 300000; // ~300KB para ESP32 (estimativa padrão)
+                    const freeHeap = device.free_heap; // ✅ Dado real do banco
+                    const usedHeap = totalHeap - freeHeap;
+                    const freePercent = (freeHeap / totalHeap) * 100;
+                    const usedPercent = (usedHeap / totalHeap) * 100;
+                    const isLowMemory = freePercent < 20;
+                    const isWarning = freePercent < 30;
+                    
+                    return (
+                      <div className="space-y-4">
+                        {/* Barra de Progresso */}
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm text-dark-textSecondary">Memória Livre</span>
+                            <span className={`text-lg font-bold ${
+                              isLowMemory ? 'text-red-400' : isWarning ? 'text-yellow-400' : 'text-aqua-400'
+                            }`}>
+                              {freePercent.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-dark-border rounded-full h-4 mb-2">
+                            <div
+                              className={`h-4 rounded-full transition-all ${
+                                isLowMemory ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : 'bg-aqua-500'
+                              }`}
+                              style={{ width: `${freePercent}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-xs text-dark-textSecondary">
+                            <span>Livre: {freeHeap.toLocaleString()} bytes</span>
+                            <span>Usada: {usedHeap.toLocaleString()} bytes</span>
+                            <span>Total: {totalHeap.toLocaleString()} bytes</span>
+                          </div>
+                        </div>
+
+                        {/* Alertas e Recomendações */}
+                        {(isLowMemory || isWarning) && (
+                          <div className={`border rounded-lg p-4 ${
+                            isLowMemory ? 'bg-red-500/10 border-red-500/30' : 'bg-yellow-500/10 border-yellow-500/30'
+                          }`}>
+                            <h4 className={`font-semibold mb-2 ${
+                              isLowMemory ? 'text-red-400' : 'text-yellow-400'
+                            }`}>
+                              {isLowMemory ? '⚠️ Memória Crítica!' : '⚠️ Memória Baixa'}
+                            </h4>
+                            <ul className="space-y-2 text-sm text-dark-textSecondary">
+                              <li className="flex items-start gap-2">
+                                <span>•</span>
+                                <span>Reduza o número de regras ativas</span>
+                              </li>
+                              <li className="flex items-start gap-2">
+                                <span>•</span>
+                                <span>Aumente o intervalo de avaliação das regras</span>
+                              </li>
+                              <li className="flex items-start gap-2">
+                                <span>•</span>
+                                <span>Limpe logs antigos do sistema</span>
+                              </li>
+                              <li className="flex items-start gap-2">
+                                <span>•</span>
+                                <span>Verifique vazamentos de memória no código</span>
+                              </li>
+                              {device.total_rules !== undefined && (
+                                <li className="flex items-start gap-2">
+                                  <span>•</span>
+                                  <span>Regras ativas: <strong className="text-dark-text">{device.total_rules}</strong></span>
+                                </li>
+                              )}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Informações Adicionais */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                          {device.uptime_seconds !== undefined && (
+                            <div className="bg-dark-surface border border-dark-border rounded p-3">
+                              <p className="text-dark-textSecondary mb-1">Uptime</p>
+                              <p className="font-bold text-dark-text">
+                                {Math.floor(device.uptime_seconds / 3600)}h {Math.floor((device.uptime_seconds % 3600) / 60)}m
+                              </p>
+                            </div>
+                          )}
+                          {device.reboot_count !== undefined && device.reboot_count !== null && (
+                            <div className="bg-dark-surface border border-dark-border rounded p-3">
+                              <p className="text-dark-textSecondary mb-1">🔄 Reinícios</p>
+                              <p className={`font-bold ${
+                                device.reboot_count === 0 
+                                  ? 'text-green-400' 
+                                  : device.reboot_count < 10 
+                                    ? 'text-yellow-400' 
+                                    : 'text-red-400'
+                              }`}>
+                                {device.reboot_count.toLocaleString()}
+                              </p>
+                              <p className="text-xs text-dark-textSecondary mt-1">
+                                {device.reboot_count === 0 
+                                  ? 'Estável' 
+                                  : device.reboot_count < 10 
+                                    ? 'Atenção' 
+                                    : 'Crítico'}
+                              </p>
+                            </div>
+                          )}
+                          {device.total_rules !== undefined && (
+                            <div className="bg-dark-surface border border-dark-border rounded p-3">
+                              <p className="text-dark-textSecondary mb-1">Regras Totais</p>
+                              <p className="font-bold text-dark-text">{device.total_rules}</p>
+                            </div>
+                          )}
+                          {device.total_evaluations !== undefined && (
+                            <div className="bg-dark-surface border border-dark-border rounded p-3">
+                              <p className="text-dark-textSecondary mb-1">Avaliações</p>
+                              <p className="font-bold text-dark-text">{device.total_evaluations.toLocaleString()}</p>
+                            </div>
+                          )}
+                          {device.last_evaluation && (
+                            <div className="bg-dark-surface border border-dark-border rounded p-3">
+                              <p className="text-dark-textSecondary mb-1">Última Avaliação</p>
+                              <p className="font-bold text-dark-text text-xs">
+                                {new Date(device.last_evaluation).toLocaleTimeString('pt-BR')}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
               {/* Analytics de Dosagem */}
               <div className="mt-6 bg-dark-card border border-dark-border rounded-lg p-6">
                 <div className="flex items-center justify-between mb-4">

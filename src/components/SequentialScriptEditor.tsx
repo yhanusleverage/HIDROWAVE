@@ -317,8 +317,8 @@ export default function SequentialScriptEditor({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Fluxo Procedural - Descrição */}
         <div className="bg-aqua-500/10 border border-aqua-500/30 rounded-lg p-3 mb-4">
-          <p className="text-xs text-aqua-300 font-medium mb-1">📋 Fluxo Procedural (de cima para baixo):</p>
-          <p className="text-xs text-gray-400 leading-relaxed">
+          <p className="text-sm text-aqua-300 font-medium mb-1">📋 Fluxo Procedural (de cima para baixo):</p>
+          <p className="text-sm text-gray-400 leading-relaxed">
             <span className="text-aqua-400 font-semibold">1. Condições</span> → 
             <span className="text-purple-400 font-semibold"> 2. Ações</span> → 
             <span className="text-yellow-400 font-semibold"> 3. Eventos Encadeados</span> → 

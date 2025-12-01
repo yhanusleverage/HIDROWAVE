@@ -391,6 +391,49 @@ export default function DispositivosPage() {
                       <span className="text-dark-text">{getLastSeenText(device)}</span>
                     </div>
                     
+                    {/* ✅ Debug de Memória - Usando dados reais do banco de dados */}
+                    {device.free_heap !== undefined && device.free_heap !== null && (
+                      <>
+                        {(() => {
+                          // ✅ free_heap vem do banco de dados (device_status.free_heap)
+                          // ESP32 geralmente tem ~300KB de heap total (valor estimado)
+                          const totalHeap = 300000; // ~300KB (estimativa padrão para ESP32)
+                          const freeHeap = device.free_heap; // ✅ Dado real do banco
+                          const usedHeap = totalHeap - freeHeap;
+                          const freePercent = (freeHeap / totalHeap) * 100;
+                          const isLowMemory = freePercent < 20;
+                          const isWarning = freePercent < 30;
+                          
+                          return (
+                            <div className={`border rounded-lg p-2 ${isLowMemory ? 'bg-red-500/10 border-red-500/30' : isWarning ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-dark-surface/50 border-dark-border'}`}>
+                              <div className="flex justify-between items-center text-xs mb-1">
+                                <span className="text-dark-textSecondary">💾 Memória Livre:</span>
+                                <span className={`font-bold ${isLowMemory ? 'text-red-400' : isWarning ? 'text-yellow-400' : 'text-aqua-400'}`}>
+                                  {freePercent.toFixed(1)}%
+                                </span>
+                              </div>
+                              <div className="w-full bg-dark-border rounded-full h-1.5 mb-1">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${
+                                    isLowMemory ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : 'bg-aqua-500'
+                                  }`}
+                                  style={{ width: `${freePercent}%` }}
+                                />
+                              </div>
+                              <div className="text-xs text-dark-textSecondary">
+                                {freeHeap.toLocaleString()} / {totalHeap.toLocaleString()} bytes
+                              </div>
+                              {isLowMemory && (
+                                <div className="mt-1 text-xs text-red-400">
+                                  ⚠️ Memória baixa! Considere reduzir regras ativas
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </>
+                    )}
+                    
                     {device.ip_address && (
                       <div className="flex justify-between text-sm">
                         <span className="text-dark-textSecondary">IP:</span>
@@ -408,7 +451,7 @@ export default function DispositivosPage() {
                     {device.user_email && (
                       <div className="flex justify-between text-sm">
                         <span className="text-dark-textSecondary">Email:</span>
-                        <span className="text-dark-text font-medium text-aqua-400">{device.user_email}</span>
+                        <span className="font-medium text-aqua-400">{device.user_email}</span>
                       </div>
                     )}
                   </div>

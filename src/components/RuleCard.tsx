@@ -119,12 +119,11 @@ export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardP
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (confirm('Tem certeza que deseja excluir esta regra?')) {
-                  onDelete(rule.id);
-                }
+                // ✅ A confirmação com senha de administrador será feita em handleDeleteRule
+                onDelete(rule.id);
               }}
               className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-red-400 hover:text-red-300"
-              title="Excluir"
+              title="Excluir (requer senha de administrador)"
             >
               <TrashIcon className="w-5 h-5" />
             </button>

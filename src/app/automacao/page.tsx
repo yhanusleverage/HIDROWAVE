@@ -16,6 +16,7 @@ import {
   XMarkIcon,
   ClipboardIcon,
   ClipboardDocumentCheckIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import CreateRuleModal from '@/components/CreateRuleModal';
 import RuleCard from '@/components/RuleCard';
@@ -116,6 +117,10 @@ export default function AutomacaoPage() {
   // ✅ NOVO: Estados para timers configurados por relé (relayKey -> duration_seconds)
   const [relayTimers, setRelayTimers] = useState<Map<string, number>>(new Map());
   const [showTimerInput, setShowTimerInput] = useState<string | null>(null); // relayKey que está mostrando input
+  
+  // ✅ NOVO: Estados para ciclos programados (relayKey -> { onDuration: number, offDuration: number, enabled: boolean })
+  const [relayCycles, setRelayCycles] = useState<Map<string, { onDuration: number; offDuration: number; enabled: boolean }>>(new Map());
+  const [showCycleInput, setShowCycleInput] = useState<string | null>(null); // relayKey que está mostrando input de ciclo
   
   // ✅ NOVO: Mapeamento Command ID → Relay Key (padrão indústria)
   const commandToRelayMap = useRef<Map<number, string>>(new Map());
@@ -440,11 +445,9 @@ export default function AutomacaoPage() {
         };
       });
       
-      // ✅ Atualizar estado dos slaves com timer info (mantém compatibilidade)
-      setEspnowSlaves(updatedSlaves);
-      
-      // ✅ VITAL: Usar espnowSlaves (estado atual) para manter funcionamento correto
-      espnowSlaves.forEach(slave => {
+      // ✅ VITAL: Usar updatedSlaves (dados atualizados) em vez de espnowSlaves para evitar loop infinito
+      // Processar estados ANTES de atualizar espnowSlaves para evitar dependência circular
+      updatedSlaves.forEach(slave => {
         if (!slave.device_id) return;
         
         const slaveRelayStates = deviceRelayStatesMap.get(slave.device_id);
@@ -471,10 +474,13 @@ export default function AutomacaoPage() {
         
         return hasChanges ? newRelayStates : prev;
       });
+      
+      // ✅ Atualizar estado dos slaves com timer info DEPOIS de processar estados (evita loop)
+      setEspnowSlaves(updatedSlaves);
     } catch (error) {
       console.error('Erro ao atualizar estados dos relés:', error);
     }
-  }, [selectedDeviceId, espnowSlaves]);
+  }, [selectedDeviceId]); // ✅ CORRIGIDO: Removido espnowSlaves das dependências para evitar loop infinito
 
   // ✅ Atualizar estados dos slaves periodicamente (a cada 30 segundos)
   useEffect(() => {
@@ -946,6 +952,131 @@ export default function AutomacaoPage() {
     setIsModalOpen(true);
   };
 
+  // ✅ Função para validar contraseña de administrador
+  const validateAdminPassword = (password: string): boolean => {
+    const adminPassword = 'admin123';
+    return password === adminPassword;
+  };
+
+  // ✅ Componente de confirmación con contraseña (usando React state)
+  const DeleteConfirmationToast = ({ 
+    t, 
+    ruleName, 
+    onConfirm, 
+    onCancel 
+  }: { 
+    t: any; 
+    ruleName: string; 
+    onConfirm: (password: string) => void; 
+    onCancel: () => void;
+  }) => {
+    const [password, setPassword] = React.useState('');
+    
+    const handleConfirm = () => {
+      if (password && validateAdminPassword(password)) {
+        onConfirm(password);
+      } else {
+        toast.error('Senha incorreta!', { id: 'password-error' });
+      }
+    };
+
+    return (
+      <div
+        className={`${
+          t.visible ? 'animate-enter' : 'animate-leave'
+        } max-w-md w-full bg-dark-card border-2 border-red-500/40 shadow-lg rounded-lg pointer-events-auto flex flex-col`}
+      >
+        <div className="p-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                <TrashIcon className="w-6 h-6 text-red-400" />
+              </div>
+            </div>
+            <div className="ml-3 w-0 flex-1">
+              <h3 className="text-sm font-semibold text-red-400 mb-1">
+                ⚠️ Confirmar Exclusão
+              </h3>
+              <p className="text-sm text-dark-text mb-3">
+                Tem certeza que deseja excluir a regra <span className="font-semibold text-aqua-400">"{ruleName}"</span>?
+              </p>
+              <p className="text-xs text-yellow-400 mb-3">
+                🔒 Esta ação requer senha de administrador
+              </p>
+              
+              {/* Input de senha */}
+              <input
+                type="password"
+                autoFocus
+                placeholder="Digite a senha de administrador"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && password) {
+                    handleConfirm();
+                  } else if (e.key === 'Escape') {
+                    onCancel();
+                  }
+                }}
+                className="w-full px-3 py-2 mb-3 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              />
+              
+              {/* Botões */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleConfirm}
+                  className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors"
+                >
+                  Confirmar
+                </button>
+                <button
+                  onClick={onCancel}
+                  className="flex-1 px-3 py-2 bg-dark-surface hover:bg-dark-border text-dark-text text-sm font-medium rounded border border-dark-border transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+            <div className="ml-4 flex-shrink-0 flex">
+              <button
+                onClick={onCancel}
+                className="inline-flex text-dark-textSecondary hover:text-dark-text"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ✅ Función para mostrar toast de confirmación con contraseña
+  const showDeleteConfirmation = (id: number | string, ruleName: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const toastId = toast.custom(
+        (t) => (
+          <DeleteConfirmationToast
+            t={t}
+            ruleName={ruleName}
+            onConfirm={(password) => {
+              toast.dismiss(t.id);
+              resolve(true);
+            }}
+            onCancel={() => {
+              toast.dismiss(t.id);
+              resolve(false);
+            }}
+          />
+        ),
+        {
+          duration: Infinity, // Toast permanece até ser fechado
+          position: 'top-center',
+        }
+      );
+    });
+  };
+
   const handleDeleteRule = async (id: number | string) => {
     try {
       // Encontrar a regra e obter o ID do Supabase (UUID)
@@ -953,6 +1084,14 @@ export default function AutomacaoPage() {
       if (!rule) {
         toast.error('Regra não encontrada');
         return;
+      }
+
+      // ✅ Mostrar toast de confirmación con contraseña
+      const ruleName = rule.rule_name || rule.name || 'Regra sem nome';
+      const confirmed = await showDeleteConfirmation(id, ruleName);
+      
+      if (!confirmed) {
+        return; // Usuario cancelou ou senha incorreta
       }
 
       // ✅ Usar supabase_id (UUID) se disponível, senão tentar id
@@ -984,14 +1123,25 @@ export default function AutomacaoPage() {
 
   const activeRules = rules.filter(r => r.enabled).length;
   const inactiveRules = rules.filter(r => !r.enabled).length;
-
+  
+  // ✅ Regra vigente (maior prioridade entre as ativas)
+  const activeRulesList = rules.filter(r => r.enabled);
+  const currentActiveRule = activeRulesList.length > 0 
+    ? activeRulesList.sort((a, b) => (b.priority || 50) - (a.priority || 50))[0]
+    : null;
+  
+  // ✅ Status do motor de decisão (verificar se há regras ativas e dispositivo online)
+  const selectedMaster = availableMasters.find(m => m.device_id === selectedDeviceId);
+  const decisionEngineActive = selectedMaster?.decision_engine_enabled && activeRules > 0;
+  
   return (
     <div className="min-h-screen bg-dark-bg" data-testid="automacao-page">
       <Toaster position="top-right" />
       
       <header className="bg-dark-card border-b border-dark-border shadow-lg">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          {/* Primeira linha: Título e Seletor */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex-1 min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">⚙️ Automação</h1>
               <p className="text-sm sm:text-base text-dark-textSecondary mt-1">Configure regras automáticas para seu sistema</p>
@@ -1010,6 +1160,61 @@ export default function AutomacaoPage() {
                 ))}
               </select>
             )}
+          </div>
+          
+          {/* Segunda linha: Informações em tempo real */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-dark-border">
+            {/* Regra Vigente */}
+            <div className="bg-dark-surface/50 border border-aqua-500/20 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs text-aqua-400 font-semibold">📌 Regra Vigente</span>
+                {currentActiveRule && (
+                  <span className="px-2 py-0.5 bg-aqua-500/20 text-aqua-400 text-xs rounded-full">
+                    P{currentActiveRule.priority || 50}
+                  </span>
+                )}
+              </div>
+              {currentActiveRule ? (
+                <p className="text-sm font-medium text-dark-text truncate" title={currentActiveRule.rule_name || currentActiveRule.name}>
+                  {currentActiveRule.rule_name || currentActiveRule.name}
+                </p>
+              ) : (
+                <p className="text-xs text-dark-textSecondary italic">Nenhuma regra ativa</p>
+              )}
+            </div>
+            
+            {/* Status do Motor de Decisão */}
+            <div className="bg-dark-surface/50 border border-dark-border rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs text-dark-textSecondary font-semibold">🔧 Motor de Decisão</span>
+                <span className={`w-2 h-2 rounded-full ${decisionEngineActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></span>
+              </div>
+              <p className={`text-sm font-medium ${decisionEngineActive ? 'text-green-400' : 'text-dark-textSecondary'}`}>
+                {decisionEngineActive ? 'Ativo' : selectedMaster?.is_online ? 'Inativo' : 'Offline'}
+              </p>
+            </div>
+            
+            {/* Estatísticas Rápidas */}
+            <div className="bg-dark-surface/50 border border-dark-border rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-dark-textSecondary mb-1">📊 Estatísticas</p>
+                  <p className="text-sm font-medium text-dark-text">
+                    <span className="text-aqua-400">{activeRules}</span> ativas / <span className="text-gray-400">{inactiveRules}</span> inativas
+                  </p>
+                </div>
+                {selectedMaster?.is_online && (
+                  <div className="flex flex-col items-end">
+                    <span className="text-xs text-green-400">🟢 Online</span>
+                    {selectedMaster.last_seen && (
+                      <span className="text-xs text-dark-textSecondary">
+                        {new Date(selectedMaster.last_seen).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -1216,178 +1421,359 @@ export default function AutomacaoPage() {
                                             <span>Bloqueado</span>
                                           </div>
                                         )}
-                                        <div className="flex space-x-1 relative">
-                                          <div className="flex-1 flex items-center gap-1">
+                                        
+                                        {/* 🎨 OBRA PRIMA: Switch Compacto Integrado con Timer y Ciclo */}
+                                        <div className="relative">
+                                          <div className="flex items-center gap-2">
+                                            {/* Switch Principal ON/OFF */}
                                             <button
                                               onClick={async () => {
-                                                const timerDuration = relayTimers.get(relayKey) || 0;
-                                                setLoadingRelays(prev => new Map(prev).set(relayKey, true));
-                                                try {
-                                                  const response = await fetch('/api/esp-now/command', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({
-                                                      master_device_id: selectedDeviceId,
-                                                      slave_mac_address: slave.macAddress,
-                                                      slave_name: slave.name,
-                                                      relay_number: relay.id,
-                                                      action: 'on',
-                                                      duration_seconds: timerDuration,
-                                                      triggered_by: 'manual',
-                                                      command_type: 'manual',
-                                                    }),
-                                                  });
+                                                if (isRelayOn) {
+                                                  // OFF
+                                                  setLoadingRelays(prev => new Map(prev).set(relayKey, true));
+                                                  try {
+                                                    const response = await fetch('/api/esp-now/command', {
+                                                      method: 'POST',
+                                                      headers: { 'Content-Type': 'application/json' },
+                                                      body: JSON.stringify({
+                                                        master_device_id: selectedDeviceId,
+                                                        slave_mac_address: slave.macAddress,
+                                                        slave_name: slave.name,
+                                                        relay_number: relay.id,
+                                                        action: 'off',
+                                                        duration_seconds: 0,
+                                                        triggered_by: 'manual',
+                                                        command_type: 'manual',
+                                                      }),
+                                                    });
 
-                                                if (response.ok) {
-                                                  const result = await response.json();
-                                                  if (result.command_id) {
-                                                    commandToRelayMap.current.set(result.command_id, relayKey);
-                                                  }
-                                                  setRelayStates(prev => new Map(prev).set(relayKey, true));
-                                                  toast.success(`${relay.name || `Relé ${relay.id + 1}`} ligado`);
-                                                  setTimeout(() => {
-                                                    updateRelayStatesOnly();
-                                                  }, 2000);
-                                                } else {
-                                                  const error = await response.json();
-                                                  toast.error(`Erro: ${error.error}`);
-                                                }
-                                              } catch (error) {
-                                                toast.error('Erro ao enviar comando');
-                                              } finally {
-                                                setLoadingRelays(prev => {
-                                                  const next = new Map(prev);
-                                                  next.delete(relayKey);
-                                                  return next;
-                                                });
-                                              }
-                                            }}
-                                            disabled={isLoading || isRelayOn || isLocked}
-                                            className={`flex-1 py-1.5 px-2 text-xs font-medium rounded transition-all ${
-                                              isRelayOn || isLocked
-                                                ? 'bg-dark-border text-dark-textSecondary cursor-not-allowed'
-                                                : 'bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white'
-                                            } disabled:opacity-50`}
-                                            title={isLocked ? 'Controles bloqueados' : relayTimers.get(relayKey) ? `Ligar com timer: ${relayTimers.get(relayKey)}s` : 'Ligar relé'}
-                                          >
-                                            {isLoading ? '⏳' : 'ON'}
-                                          </button>
-                                          {/* ✅ Icono de reloj para configurar timer */}
-                                          {!isLocked && !isRelayOn && (
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setShowTimerInput(showTimerInput === relayKey ? null : relayKey);
-                                              }}
-                                              className={`p-1.5 rounded transition-colors ${
-                                                relayTimers.get(relayKey)
-                                                  ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40'
-                                                  : 'bg-dark-surface hover:bg-dark-border text-gray-400 hover:text-yellow-400 border border-dark-border'
-                                              }`}
-                                              title={relayTimers.get(relayKey) ? `Timer: ${relayTimers.get(relayKey)}s (clique para alterar)` : 'Configurar timer'}
-                                            >
-                                              <ClockIcon className="w-3.5 h-3.5" />
-                                            </button>
-                                          )}
-                                        </div>
-                                        {/* ✅ Input de timer (aparece quando clica no reloj) */}
-                                        {showTimerInput === relayKey && (
-                                          <div className="absolute z-50 mt-8 bg-dark-card border border-aqua-500/40 rounded-lg p-2 shadow-lg">
-                                            <div className="flex items-center gap-2">
-                                              <input
-                                                type="number"
-                                                min="0"
-                                                max="3600"
-                                                value={relayTimers.get(relayKey) || 0}
-                                                onChange={(e) => {
-                                                  const value = parseInt(e.target.value) || 0;
-                                                  setRelayTimers(prev => {
-                                                    const next = new Map(prev);
-                                                    if (value > 0) {
-                                                      next.set(relayKey, value);
+                                                    if (response.ok) {
+                                                      const result = await response.json();
+                                                      if (result.command_id) {
+                                                        commandToRelayMap.current.set(result.command_id, relayKey);
+                                                      }
+                                                      setRelayStates(prev => new Map(prev).set(relayKey, false));
+                                                      toast.success(`${relay.name || `Relé ${relay.id + 1}`} desligado`);
+                                                      setTimeout(() => {
+                                                        updateRelayStatesOnly();
+                                                      }, 2000);
                                                     } else {
-                                                      next.delete(relayKey);
+                                                      const error = await response.json();
+                                                      toast.error(`Erro: ${error.error}`);
                                                     }
-                                                    return next;
-                                                  });
-                                                }}
-                                                placeholder="Segundos"
-                                                className="w-20 px-2 py-1 bg-dark-surface border border-dark-border rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-aqua-500"
-                                                autoFocus
-                                                onBlur={() => setTimeout(() => setShowTimerInput(null), 200)}
-                                              />
-                                              <span className="text-xs text-gray-400">s</span>
-                                              <button
-                                                onClick={() => {
-                                                  setRelayTimers(prev => {
-                                                    const next = new Map(prev);
-                                                    next.delete(relayKey);
-                                                    return next;
-                                                  });
-                                                  setShowTimerInput(null);
-                                                }}
-                                                className="p-1 hover:bg-red-500/20 rounded text-red-400"
-                                                title="Remover timer"
-                                              >
-                                                <XMarkIcon className="w-3 h-3" />
-                                              </button>
-                                            </div>
-                                            <p className="text-xs text-gray-500 mt-1">0 = Sem timer</p>
-                                          </div>
-                                        )}
-                                          <button
-                                            onClick={async () => {
-                                              setLoadingRelays(prev => new Map(prev).set(relayKey, true));
-                                              try {
-                                                const response = await fetch('/api/esp-now/command', {
-                                                  method: 'POST',
-                                                  headers: { 'Content-Type': 'application/json' },
-                                                  body: JSON.stringify({
-                                                    master_device_id: selectedDeviceId,
-                                                    slave_mac_address: slave.macAddress,
-                                                    slave_name: slave.name,
-                                                    relay_number: relay.id,
-                                                    action: 'off',
-                                                    duration_seconds: 0,
-                                                    triggered_by: 'manual',
-                                                    command_type: 'manual',
-                                                  }),
-                                                });
-
-                                                if (response.ok) {
-                                                  const result = await response.json();
-                                                  if (result.command_id) {
-                                                    commandToRelayMap.current.set(result.command_id, relayKey);
+                                                  } catch (error) {
+                                                    toast.error('Erro ao enviar comando');
+                                                  } finally {
+                                                    setLoadingRelays(prev => {
+                                                      const next = new Map(prev);
+                                                      next.delete(relayKey);
+                                                      return next;
+                                                    });
                                                   }
-                                                  setRelayStates(prev => new Map(prev).set(relayKey, false));
-                                                  toast.success(`${relay.name || `Relé ${relay.id + 1}`} desligado`);
-                                                  setTimeout(() => {
-                                                    updateRelayStatesOnly();
-                                                  }, 2000);
                                                 } else {
-                                                  const error = await response.json();
-                                                  toast.error(`Erro: ${error.error}`);
+                                                  // ON
+                                                  const timerDuration = relayTimers.get(relayKey) || 0;
+                                                  setLoadingRelays(prev => new Map(prev).set(relayKey, true));
+                                                  try {
+                                                    const response = await fetch('/api/esp-now/command', {
+                                                      method: 'POST',
+                                                      headers: { 'Content-Type': 'application/json' },
+                                                      body: JSON.stringify({
+                                                        master_device_id: selectedDeviceId,
+                                                        slave_mac_address: slave.macAddress,
+                                                        slave_name: slave.name,
+                                                        relay_number: relay.id,
+                                                        action: 'on',
+                                                        duration_seconds: timerDuration,
+                                                        triggered_by: 'manual',
+                                                        command_type: 'manual',
+                                                      }),
+                                                    });
+
+                                                    if (response.ok) {
+                                                      const result = await response.json();
+                                                      if (result.command_id) {
+                                                        commandToRelayMap.current.set(result.command_id, relayKey);
+                                                      }
+                                                      setRelayStates(prev => new Map(prev).set(relayKey, true));
+                                                      toast.success(`${relay.name || `Relé ${relay.id + 1}`} ligado${timerDuration > 0 ? ` (${timerDuration}s)` : ''}`);
+                                                      setTimeout(() => {
+                                                        updateRelayStatesOnly();
+                                                      }, 2000);
+                                                    } else {
+                                                      const error = await response.json();
+                                                      toast.error(`Erro: ${error.error}`);
+                                                    }
+                                                  } catch (error) {
+                                                    toast.error('Erro ao enviar comando');
+                                                  } finally {
+                                                    setLoadingRelays(prev => {
+                                                      const next = new Map(prev);
+                                                      next.delete(relayKey);
+                                                      return next;
+                                                    });
+                                                  }
                                                 }
-                                              } catch (error) {
-                                                toast.error('Erro ao enviar comando');
-                                              } finally {
-                                                setLoadingRelays(prev => {
-                                                  const next = new Map(prev);
-                                                  next.delete(relayKey);
-                                                  return next;
-                                                });
-                                              }
-                                            }}
-                                            disabled={isLoading || !isRelayOn || isLocked}
-                                            className={`flex-1 py-1.5 px-2 text-xs font-medium rounded transition-all ${
-                                              !isRelayOn || isLocked
-                                                ? 'bg-dark-border text-dark-textSecondary cursor-not-allowed'
-                                                : 'bg-red-600 hover:bg-red-700 text-white'
-                                            } disabled:opacity-50`}
-                                            title={isLocked ? 'Controles bloqueados' : ''}
-                                          >
-                                            {isLoading ? '⏳' : 'OFF'}
-                                          </button>
+                                              }}
+                                              disabled={isLoading || isLocked}
+                                              className={`
+                                                relative flex-1 h-9 rounded-lg transition-all duration-300 ease-in-out
+                                                ${isLocked 
+                                                  ? 'opacity-50 cursor-not-allowed' 
+                                                  : 'cursor-pointer transform active:scale-95'
+                                                }
+                                                ${isRelayOn
+                                                  ? 'bg-gradient-to-r from-aqua-500 via-aqua-400 to-primary-500 shadow-lg shadow-aqua-500/30'
+                                                  : 'bg-gradient-to-r from-gray-700 via-gray-600 to-gray-700'
+                                                }
+                                                ${!isLocked && !isRelayOn && 'hover:from-gray-600 hover:via-gray-500 hover:to-gray-600'}
+                                                ${!isLocked && isRelayOn && 'hover:shadow-xl hover:shadow-aqua-500/40'}
+                                              `}
+                                              title={isLocked ? 'Controles bloqueados' : isRelayOn ? 'Clique para desligar' : 'Clique para ligar'}
+                                            >
+                                              {/* Indicador interno del switch */}
+                                              <div className={`                                                absolute top-1 w-7 h-7 rounded-md bg-white/90 shadow-lg
+                                                transition-all duration-300 ease-in-out
+                                                ${isRelayOn ? 'right-1' : 'left-1'}
+                                                flex items-center justify-center
+                                              `}>
+                                                {isLoading ? (
+                                                  <div className="w-3 h-3 border-2 border-aqua-500 border-t-transparent rounded-full animate-spin" />
+                                                ) : isRelayOn ? (
+                                                  <div className="w-2 h-2 rounded-full bg-aqua-500 animate-pulse" />
+                                                ) : (
+                                                  <div className="w-2 h-2 rounded-full bg-gray-400" />
+                                                )}
+                                              </div>
+                                              
+                                              {/* Texto del estado */}
+                                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                <span className={`
+                                                  text-xs font-bold transition-colors duration-300
+                                                  ${isRelayOn ? 'text-white' : 'text-gray-300'}
+                                                `}>
+                                                  {isRelayOn ? 'ON' : 'OFF'}
+                                                </span>
+                                              </div>
+                                              
+                                              {/* Indicador de timer activo */}
+                                              {relayTimers.get(relayKey) && !isRelayOn && (
+                                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center">
+                                                  <ClockIcon className="w-2.5 h-2.5 text-white" />
+                                                </div>
+                                              )}
+                                            </button>
+
+                                            {/* Botón compacto de configuración (Timer/Ciclo) */}
+                                            {!isLocked && (
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  const isTimerOpen = showTimerInput === relayKey;
+                                                  const isCycleOpen = showCycleInput === relayKey;
+                                                  if (isTimerOpen || isCycleOpen) {
+                                                    setShowTimerInput(null);
+                                                    setShowCycleInput(null);
+                                                  } else {
+                                                    setShowTimerInput(relayKey);
+                                                  }
+                                                }}
+                                                className={`
+                                                  p-2 rounded-lg transition-all duration-200
+                                                  ${showTimerInput === relayKey || showCycleInput === relayKey
+                                                    ? 'bg-aqua-500/20 text-aqua-400 border-2 border-aqua-500/40'
+                                                    : relayTimers.get(relayKey) || relayCycles.get(relayKey)?.enabled
+                                                      ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30'
+                                                      : 'bg-dark-surface hover:bg-dark-border text-gray-400 hover:text-aqua-400 border border-dark-border'
+                                                  }
+                                                  ${!isLocked && 'cursor-pointer active:scale-95'}
+                                                `}
+                                                title={
+                                                  relayCycles.get(relayKey)?.enabled
+                                                    ? `Ciclo: ON ${relayCycles.get(relayKey)!.onDuration}s / OFF ${relayCycles.get(relayKey)!.offDuration}s`
+                                                    : relayTimers.get(relayKey)
+                                                      ? `Timer: ${relayTimers.get(relayKey)}s`
+                                                      : 'Configurar Timer/Ciclo'
+                                                }
+                                              >
+                                                {relayCycles.get(relayKey)?.enabled ? (
+                                                  <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                                                ) : (
+                                                  <ClockIcon className="w-4 h-4" />
+                                                )}
+                                              </button>
+                                            )}
+                                          </div>
+
+                                          {/* Panel desplegable de configuración Timer/Ciclo */}
+                                          {(showTimerInput === relayKey || showCycleInput === relayKey) && (
+                                            <div className="absolute z-50 mt-2 w-full bg-dark-card border border-aqua-500/40 rounded-lg p-3 shadow-xl">
+                                              {/* Tabs Timer/Ciclo */}
+                                              <div className="flex gap-1 mb-3 border-b border-dark-border pb-2">
+                                                <button
+                                                  onClick={() => {
+                                                    setShowTimerInput(relayKey);
+                                                    setShowCycleInput(null);
+                                                  }}
+                                                  className={`
+                                                    flex-1 py-1.5 px-2 text-xs font-medium rounded transition-all
+                                                    ${showTimerInput === relayKey
+                                                      ? 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/40'
+                                                      : 'bg-dark-surface text-gray-400 hover:text-aqua-400 border border-transparent'
+                                                    }
+                                                  `}
+                                                >
+                                                  ⏱️ Timer
+                                                </button>
+                                                <button
+                                                  onClick={() => {
+                                                    setShowCycleInput(relayKey);
+                                                    setShowTimerInput(null);
+                                                  }}
+                                                  className={`
+                                                    flex-1 py-1.5 px-2 text-xs font-medium rounded transition-all
+                                                    ${showCycleInput === relayKey
+                                                      ? 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/40'
+                                                      : 'bg-dark-surface text-gray-400 hover:text-aqua-400 border border-transparent'
+                                                    }
+                                                  `}
+                                                >
+                                                  🔄 Ciclo
+                                                </button>
+                                              </div>
+
+                                              {/* Contenido Timer */}
+                                              {showTimerInput === relayKey && (
+                                                <div className="space-y-2">
+                                                  <div className="flex items-center gap-2">
+                                                    <input
+                                                      type="number"
+                                                      min="0"
+                                                      max="3600"
+                                                      value={relayTimers.get(relayKey) || 0}
+                                                      onChange={(e) => {
+                                                        const value = parseInt(e.target.value) || 0;
+                                                        setRelayTimers(prev => {
+                                                          const next = new Map(prev);
+                                                          if (value > 0) {
+                                                            next.set(relayKey, value);
+                                                          } else {
+                                                            next.delete(relayKey);
+                                                          }
+                                                          return next;
+                                                        });
+                                                      }}
+                                                      placeholder="Segundos"
+                                                      className="flex-1 px-2 py-1.5 bg-dark-surface border border-dark-border rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                                                      autoFocus
+                                                    />
+                                                    <span className="text-xs text-gray-400">s</span>
+                                                    <button
+                                                      onClick={() => {
+                                                        setRelayTimers(prev => {
+                                                          const next = new Map(prev);
+                                                          next.delete(relayKey);
+                                                          return next;
+                                                        });
+                                                      }}
+                                                      className="p-1.5 hover:bg-red-500/20 rounded text-red-400 transition-colors"
+                                                      title="Remover timer"
+                                                    >
+                                                      <XMarkIcon className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  </div>
+                                                  <p className="text-xs text-gray-500">Timer: desliga após X segundos</p>
+                                                </div>
+                                              )}
+
+                                              {/* Contenido Ciclo */}
+                                              {showCycleInput === relayKey && (
+                                                <div className="space-y-3">
+                                                  <div className="space-y-2">
+                                                    <label className="text-xs text-gray-400">ON (segundos)</label>
+                                                    <input
+                                                      type="number"
+                                                      min="1"
+                                                      max="3600"
+                                                      value={relayCycles.get(relayKey)?.onDuration || 10}
+                                                      onChange={(e) => {
+                                                        const value = parseInt(e.target.value) || 10;
+                                                        setRelayCycles(prev => {
+                                                          const next = new Map(prev);
+                                                          const current = next.get(relayKey) || { onDuration: 10, offDuration: 10, enabled: false };
+                                                          next.set(relayKey, { ...current, onDuration: value });
+                                                          return next;
+                                                        });
+                                                      }}
+                                                      className="w-full px-2 py-1.5 bg-dark-surface border border-dark-border rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                                                      placeholder="10"
+                                                    />
+                                                  </div>
+                                                  <div className="space-y-2">
+                                                    <label className="text-xs text-gray-400">OFF (segundos)</label>
+                                                    <input
+                                                      type="number"
+                                                      min="1"
+                                                      max="3600"
+                                                      value={relayCycles.get(relayKey)?.offDuration || 10}
+                                                      onChange={(e) => {
+                                                        const value = parseInt(e.target.value) || 10;
+                                                        setRelayCycles(prev => {
+                                                          const next = new Map(prev);
+                                                          const current = next.get(relayKey) || { onDuration: 10, offDuration: 10, enabled: false };
+                                                          next.set(relayKey, { ...current, offDuration: value });
+                                                          return next;
+                                                        });
+                                                      }}
+                                                      className="w-full px-2 py-1.5 bg-dark-surface border border-dark-border rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                                                      placeholder="10"
+                                                    />
+                                                  </div>
+                                                  <div className="flex items-center gap-2">
+                                                    <button
+                                                      onClick={() => {
+                                                        const cycle = relayCycles.get(relayKey);
+                                                        setRelayCycles(prev => {
+                                                          const next = new Map(prev);
+                                                          if (cycle) {
+                                                            next.set(relayKey, { ...cycle, enabled: !cycle.enabled });
+                                                          } else {
+                                                            next.set(relayKey, { onDuration: 10, offDuration: 10, enabled: true });
+                                                          }
+                                                          return next;
+                                                        });
+                                                        toast.success(cycle?.enabled ? 'Ciclo desativado' : 'Ciclo ativado');
+                                                      }}
+                                                      className={`
+                                                        flex-1 py-2 px-3 text-xs font-medium rounded transition-all
+                                                        ${relayCycles.get(relayKey)?.enabled
+                                                          ? 'bg-green-500/20 text-green-400 border border-green-500/40 hover:bg-green-500/30'
+                                                          : 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/40 hover:bg-aqua-500/30'
+                                                        }
+                                                      `}
+                                                    >
+                                                      {relayCycles.get(relayKey)?.enabled ? '🟢 Ativo' : '▶️ Ativar Ciclo'}
+                                                    </button>
+                                                    <button
+                                                      onClick={() => {
+                                                        setRelayCycles(prev => {
+                                                          const next = new Map(prev);
+                                                          next.delete(relayKey);
+                                                          return next;
+                                                        });
+                                                        setShowCycleInput(null);
+                                                      }}
+                                                      className="p-2 hover:bg-red-500/20 rounded text-red-400 transition-colors"
+                                                      title="Remover ciclo"
+                                                    >
+                                                      <XMarkIcon className="w-4 h-4" />
+                                                    </button>
+                                                  </div>
+                                                  <p className="text-xs text-gray-500">Ciclo: alterna ON/OFF automaticamente</p>
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                     );

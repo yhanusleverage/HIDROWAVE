@@ -60,6 +60,7 @@ export interface DeviceStatus {
   emergency_mode?: boolean;
   manual_override?: boolean;
   locked_relays?: number[];
+  reboot_count?: number; // ✅ Contador de reinicios/reboots
   total_rules?: number;
   total_evaluations?: number;
   total_actions?: number;
@@ -68,6 +69,14 @@ export interface DeviceStatus {
   engine_uptime_seconds?: number;
   registered_at?: string;
   registration_source?: string;
+  master_device_id?: string; // ✅ ID do dispositivo Master (para slaves)
+  status?: 'active' | 'replaced' | 'decommissioned' | 'inactive'; // ✅ Status do dispositivo
+  replaced_by_device_id?: string; // ✅ ID do dispositivo que substituiu este
+  decommissioned_at?: string; // ✅ Data de descomissionamento
+  previous_user_email?: string; // ✅ Email do usuário anterior
+  previous_master_device_id?: string; // ✅ ID do Master anterior
+  last_reassignment_at?: string; // ✅ Data da última reatribuição
+  user_settings?: Record<string, any>; // ✅ Configurações do usuário (JSONB)
 }
 
 export interface RelayCommand {

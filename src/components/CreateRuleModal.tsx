@@ -60,6 +60,7 @@ export default function CreateRuleModal({
   relays,
   onUpdateRelay,
   deviceId = '',
+  editingRule,
 }: CreateRuleModalProps) {
   const { userProfile } = useAuth();
   const [ruleName, setRuleName] = useState('');
@@ -216,6 +217,76 @@ export default function CreateRuleModal({
     return (hours * 3600 + minutes * 60 + seconds) * 1000;
   };
 
+  // ✅ Carregar dados da regra quando estiver editando
+  useEffect(() => {
+    if (editingRule && isOpen) {
+      // Carregar dados básicos
+      setRuleName(editingRule.rule_name || editingRule.name || '');
+      setDescription(editingRule.rule_description || editingRule.description || '');
+      setPriority(editingRule.priority || 50);
+      setEnabled(editingRule.enabled !== undefined ? editingRule.enabled : true);
+      
+      // Carregar rule_json se existir (Sequential Script)
+      if (editingRule.rule_json) {
+        const ruleJson = editingRule.rule_json;
+        
+        // Carregar instruções sequenciais
+        if (ruleJson.instructions && Array.isArray(ruleJson.instructions)) {
+          setInstructions(ruleJson.instructions);
+        }
+        
+        // Carregar configurações de loop
+        if (ruleJson.loop_interval !== undefined) {
+          setLoopInterval(ruleJson.loop_interval);
+        }
+        if (ruleJson.max_iterations !== undefined) {
+          setMaxIterations(ruleJson.max_iterations);
+        }
+        
+        // Carregar eventos encadeados sequenciais
+        if (ruleJson.chained_events && Array.isArray(ruleJson.chained_events)) {
+          setChainedEventsSequential(ruleJson.chained_events);
+        }
+      }
+      
+      // Carregar condições e ações tradicionais (se não for Sequential Script)
+      if (editingRule.conditions && Array.isArray(editingRule.conditions)) {
+        setConditions(editingRule.conditions);
+      }
+      if (editingRule.actions && Array.isArray(editingRule.actions)) {
+        setActions(editingRule.actions);
+      }
+      
+      // Carregar eventos encadeados tradicionais
+      if (editingRule.chained_events && Array.isArray(editingRule.chained_events)) {
+        setChainedEvents(editingRule.chained_events);
+      }
+      
+      // Carregar configurações avançadas
+      if (editingRule.cooldown !== undefined) {
+        setCooldown(editingRule.cooldown);
+      }
+      if (editingRule.max_executions_per_hour !== undefined) {
+        setMaxExecutionsPerHour(editingRule.max_executions_per_hour);
+      }
+    } else if (!editingRule && isOpen) {
+      // Resetar campos quando não está editando (nova regra)
+      setRuleName('');
+      setDescription('');
+      setPriority(50);
+      setEnabled(true);
+      setConditions([{ sensor: 'temperature', operator: '>', value: 25.0, logic: 'AND' }]);
+      setActions([]);
+      setChainedEvents([]);
+      setInstructions([]);
+      setLoopInterval(5000);
+      setMaxIterations(0);
+      setChainedEventsSequential([]);
+      setCooldown(60);
+      setMaxExecutionsPerHour(10);
+    }
+  }, [editingRule, isOpen]);
+
   // ✅ Funções para Instruções Sequenciais (de Nova Função)
   useEffect(() => {
     if (isOpen && deviceId && userProfile?.email) {
@@ -286,6 +357,12 @@ export default function CreateRuleModal({
     }
 
     const rule = {
+      // ✅ Incluir ID da regra se estiver editando
+      ...(editingRule && {
+        id: editingRule.id,
+        supabase_id: editingRule.supabase_id,
+        rule_id: editingRule.rule_id,
+      }),
       name: ruleName,
       description: description || ruleName,
       conditions: instructions.length > 0 ? [] : conditions, // Se tiver instruções, não precisa condições simples
@@ -307,7 +384,7 @@ export default function CreateRuleModal({
     };
 
     onSave(rule);
-    toast.success('Regra criada com sucesso!');
+    toast.success(editingRule ? 'Regra atualizada com sucesso!' : 'Regra criada com sucesso!');
     
     // Reset form
     setRuleName('');
@@ -335,7 +412,7 @@ export default function CreateRuleModal({
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-dark-border">
           <h2 className="text-2xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">
-            ➕ Nova Regra - Motor de Decisão
+            {editingRule ? '✏️ Editar Regra - Motor de Decisão' : '➕ Nova Regra - Motor de Decisão'}
           </h2>
           <button
             onClick={onClose}
@@ -349,8 +426,8 @@ export default function CreateRuleModal({
         <div className="p-6 space-y-4">
           {/* Fluxo Procedural - Descrição */}
           <div className="bg-aqua-500/10 border border-aqua-500/30 rounded-lg p-3 mb-4">
-            <p className="text-xs text-aqua-300 font-medium mb-1 text-center">📋 Fluxo Procedural (de cima para baixo):</p>
-            <p className="text-xs text-dark-textSecondary leading-relaxed text-center">
+            <p className="text-sm text-aqua-300 font-medium mb-1 text-center">📋 Fluxo Procedural (de cima para baixo):</p>
+            <p className="text-sm text-dark-textSecondary leading-relaxed text-center">
               <span className="text-aqua-400 font-semibold">1. Condições</span> → 
               <span className="text-purple-400 font-semibold"> 2. Ações</span> → 
               <span className="text-yellow-400 font-semibold"> 3. Eventos Encadeados</span> → 
