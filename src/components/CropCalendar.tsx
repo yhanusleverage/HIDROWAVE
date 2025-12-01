@@ -13,8 +13,10 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   XMarkIcon,
-  PencilIcon
+  PencilIcon,
+  BellIcon
 } from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
 
 export interface CropTask {
   id: string;
@@ -24,8 +26,6 @@ export interface CropTask {
   description?: string;
   completed: boolean;
   priority: 'low' | 'medium' | 'high';
-  nutrients?: string[];
-  duration?: number; // em minutos
 }
 
 export interface DayNote {
@@ -38,13 +38,17 @@ interface CropCalendarProps {
   onTaskAdd?: (task: CropTask) => void;
   onTaskComplete?: (taskId: string) => void;
   onTaskDelete?: (taskId: string) => void;
+  deviceId?: string;
+  userEmail?: string;
 }
 
 export default function CropCalendar({ 
   tasks = [], 
   onTaskAdd, 
   onTaskComplete, 
-  onTaskDelete 
+  onTaskDelete,
+  deviceId = '',
+  userEmail = ''
 }: CropCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'week' | 'month'>('month');
@@ -57,8 +61,14 @@ export default function CropCalendar({
   const [newTaskType, setNewTaskType] = useState<CropTask['type']>('dosagem');
   const [newTaskPriority, setNewTaskPriority] = useState<CropTask['priority']>('medium');
   const [newTaskDescription, setNewTaskDescription] = useState('');
-  const [newTaskDuration, setNewTaskDuration] = useState(30);
-  const [selectedNutrients, setSelectedNutrients] = useState<string[]>([]);
+  
+  // ✅ Estados para configuração de alarme
+  const [hasAlarm, setHasAlarm] = useState(false);
+  const [alarmDate, setAlarmDate] = useState('');
+  const [alarmTime, setAlarmTime] = useState('09:00');
+  const [alarmType, setAlarmType] = useState<'reminder' | 'alert' | 'notification'>('reminder');
+  const [daysBefore, setDaysBefore] = useState(0);
+  const [showAlarmConfig, setShowAlarmConfig] = useState(false);
 
   // Navegação de datas
   const goToPrevious = () => {
@@ -154,13 +164,7 @@ export default function CropCalendar({
     return date.getMonth() === currentDate.getMonth();
   };
 
-  // Abrir modal do dia
-  const handleDayClick = (day: Date) => {
-    setSelectedDate(day);
-    const dateKey = day.toISOString().split('T')[0];
-    setDayNote(dayNotes.get(dateKey) || '');
-    setShowAddModal(true);
-  };
+  // Abrir modal do dia (removido - agora está mais abaixo com lógica de alarme)
 
   // Salvar anotação do dia
   const handleSaveNote = () => {
@@ -173,7 +177,7 @@ export default function CropCalendar({
   };
 
   // Adicionar nova tarefa
-  const handleAddTask = () => {
+  const handleAddTask = async () => {
     if (!selectedDate || !newTaskTitle.trim()) return;
 
     const newTask: CropTask = {
@@ -184,9 +188,74 @@ export default function CropCalendar({
       description: newTaskDescription || undefined,
       completed: false,
       priority: newTaskPriority,
-      nutrients: selectedNutrients.length > 0 ? selectedNutrients : undefined,
-      duration: newTaskDuration,
     };
+
+    // ✅ Criar tarefa via API se deviceId e userEmail estiverem disponíveis
+    if (deviceId && userEmail) {
+      try {
+        const taskDate = selectedDate.toISOString().split('T')[0];
+        const taskTime = new Date(selectedDate).toTimeString().split(' ')[0].slice(0, 5);
+        
+        const taskResponse = await fetch('/api/crop/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            device_id: deviceId,
+            user_email: userEmail,
+            title: newTaskTitle,
+            description: newTaskDescription || null,
+            task_type: newTaskType,
+            priority: newTaskPriority,
+            task_date: taskDate,
+            task_time: taskTime,
+          }),
+        });
+
+        if (!taskResponse.ok) {
+          throw new Error('Erro ao criar tarefa');
+        }
+
+        const taskData = await taskResponse.json();
+        const createdTaskId = taskData.task.id;
+
+        // ✅ Criar alarme associado se configurado
+        if (hasAlarm && alarmDate && alarmTime) {
+          try {
+            const alarmResponse = await fetch('/api/crop/alarms', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                device_id: deviceId,
+                user_email: userEmail,
+                title: `Alarme: ${newTaskTitle}`,
+                description: newTaskDescription || null,
+                alarm_type: alarmType,
+                alarm_date: alarmDate,
+                alarm_time: alarmTime,
+                enabled: true,
+                days_before: daysBefore,
+                task_id: createdTaskId,
+              }),
+            });
+
+            if (alarmResponse.ok) {
+              toast.success('Tarefa e alarme criados com sucesso!');
+            } else {
+              toast.success('Tarefa criada, mas erro ao criar alarme');
+            }
+          } catch (alarmError) {
+            console.error('Erro ao criar alarme:', alarmError);
+            toast.error('Tarefa criada, mas erro ao criar alarme');
+          }
+        } else {
+          toast.success('Tarefa criada com sucesso!');
+        }
+      } catch (error) {
+        console.error('Erro ao criar tarefa:', error);
+        toast.error('Erro ao criar tarefa');
+        return;
+      }
+    }
 
     if (onTaskAdd) {
       onTaskAdd(newTask);
@@ -197,8 +266,13 @@ export default function CropCalendar({
     setNewTaskDescription('');
     setNewTaskType('dosagem');
     setNewTaskPriority('medium');
-    setNewTaskDuration(30);
-    setSelectedNutrients([]);
+    setHasAlarm(false);
+    setAlarmDate('');
+    setAlarmTime('09:00');
+    setAlarmType('reminder');
+    setDaysBefore(0);
+    setShowAlarmConfig(false);
+    setShowAddModal(false);
   };
 
   // Obter anotação do dia
@@ -207,16 +281,15 @@ export default function CropCalendar({
     return dayNotes.get(dateKey) || '';
   };
 
-  // Toggle nutriente
-  const toggleNutrient = (nutrient: string) => {
-    setSelectedNutrients(prev => 
-      prev.includes(nutrient)
-        ? prev.filter(n => n !== nutrient)
-        : [...prev, nutrient]
-    );
+  // ✅ Handler para abrir modal com data selecionada
+  const handleDayClick = (day: Date) => {
+    setSelectedDate(day);
+    const dateKey = day.toISOString().split('T')[0];
+    setDayNote(dayNotes.get(dateKey) || '');
+    // ✅ Preencher data do alarme com a data selecionada
+    setAlarmDate(dateKey);
+    setShowAddModal(true);
   };
-
-  const availableNutrients = ['Grow', 'Micro', 'Bloom', 'CalMag', 'pH-', 'pH+'];
 
   // Obter ícone do tipo de tarefa
   const getTaskIcon = (type: CropTask['type']) => {
@@ -524,27 +597,10 @@ export default function CropCalendar({
                               {task.description}
                             </div>
                           )}
-                          {task.nutrients && task.nutrients.length > 0 && (
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {task.nutrients.map((nutrient, idx) => (
-                                <span
-                                  key={idx}
-                                  className="px-1.5 py-0.5 bg-dark-bg/50 rounded text-xs"
-                                >
-                                  {nutrient}
-                                </span>
-                              ))}
-                            </div>
-                          )}
                           <div className="flex items-center justify-between mt-2">
                             <span className={`px-1.5 py-0.5 rounded text-xs border ${getPriorityColor(task.priority)}`}>
                               {task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
                             </span>
-                            {task.duration && (
-                              <span className="text-xs opacity-75">
-                                {task.duration}min
-                              </span>
-                            )}
                           </div>
                           <div className="flex gap-1 mt-2">
                             {!task.completed && onTaskComplete && (
@@ -700,18 +756,6 @@ export default function CropCalendar({
                             <span className={`px-2 py-0.5 rounded text-xs border ${getPriorityColor(task.priority)}`}>
                               {task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
                             </span>
-                            {task.duration && (
-                              <span className="text-xs opacity-75">{task.duration}min</span>
-                            )}
-                            {task.nutrients && task.nutrients.length > 0 && (
-                              <div className="flex flex-wrap gap-1">
-                                {task.nutrients.map((nutrient, idx) => (
-                                  <span key={idx} className="px-1.5 py-0.5 bg-dark-bg/50 rounded text-xs">
-                                    {nutrient}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -807,41 +851,87 @@ export default function CropCalendar({
                       />
                     </div>
 
-                    {newTaskType === 'dosagem' && (
-                      <div>
-                        <label className="block text-sm font-medium text-dark-textSecondary mb-2">
-                          Nutrientes
+                    {/* ✅ Configuração de Alarme */}
+                    <div className="border-t border-dark-border pt-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="flex items-center gap-2 text-sm font-medium text-dark-text cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={hasAlarm}
+                            onChange={(e) => {
+                              setHasAlarm(e.target.checked);
+                              setShowAlarmConfig(e.target.checked);
+                            }}
+                            className="w-4 h-4 text-aqua-500 bg-dark-surface border-dark-border rounded focus:ring-aqua-500 focus:ring-2"
+                          />
+                          <BellIcon className="h-5 w-5 text-aqua-400" />
+                          <span>Criar alarme para esta tarefa</span>
                         </label>
-                        <div className="flex flex-wrap gap-2">
-                          {availableNutrients.map((nutrient) => (
-                            <button
-                              key={nutrient}
-                              type="button"
-                              onClick={() => toggleNutrient(nutrient)}
-                              className={`px-3 py-1.5 rounded-lg border transition-all text-sm ${
-                                selectedNutrients.includes(nutrient)
-                                  ? 'bg-aqua-500/20 border-aqua-500 text-aqua-400'
-                                  : 'bg-dark-surface border-dark-border text-dark-textSecondary hover:border-aqua-500/50'
-                              }`}
-                            >
-                              {nutrient}
-                            </button>
-                          ))}
-                        </div>
                       </div>
-                    )}
 
-                    <div>
-                      <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                        Duração (minutos)
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={newTaskDuration}
-                        onChange={(e) => setNewTaskDuration(parseInt(e.target.value) || 0)}
-                        className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
-                      />
+                      {showAlarmConfig && hasAlarm && (
+                        <div className="space-y-3 pl-6 border-l-2 border-aqua-500/30 bg-dark-surface/50 p-3 rounded-lg">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-dark-textSecondary mb-1">
+                                Data do Alarme
+                              </label>
+                              <input
+                                type="date"
+                                value={alarmDate}
+                                onChange={(e) => setAlarmDate(e.target.value)}
+                                className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-dark-textSecondary mb-1">
+                                Hora do Alarme
+                              </label>
+                              <input
+                                type="time"
+                                value={alarmTime}
+                                onChange={(e) => setAlarmTime(e.target.value)}
+                                className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none text-sm"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-dark-textSecondary mb-1">
+                              Tipo de Alarme
+                            </label>
+                            <select
+                              value={alarmType}
+                              onChange={(e) => setAlarmType(e.target.value as 'reminder' | 'alert' | 'notification')}
+                              className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none text-sm"
+                            >
+                              <option value="reminder">🔔 Lembrete</option>
+                              <option value="alert">⚠️ Alerta</option>
+                              <option value="notification">ℹ️ Notificação</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-dark-textSecondary mb-1">
+                              Avisar X dias antes (opcional)
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="30"
+                              value={daysBefore}
+                              onChange={(e) => setDaysBefore(parseInt(e.target.value) || 0)}
+                              placeholder="0 = no dia do alarme"
+                              className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none text-sm"
+                            />
+                            <small className="text-xs text-gray-400 mt-1 block">
+                              {daysBefore === 0 
+                                ? 'Alarme será disparado no dia e hora especificados' 
+                                : `Alarme será disparado ${daysBefore} dia(s) antes da data especificada`}
+                            </small>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <button

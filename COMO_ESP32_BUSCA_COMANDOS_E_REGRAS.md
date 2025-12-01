@@ -156,3 +156,6 @@ Comando segue fluxo normal (RPC → ESP-NOW)
 
 **Conclusão:** Quando implementar, será **MESMA FORMA** (RPC), mas em **TABELAS DIFERENTES**! 🎯
 
+
+
+

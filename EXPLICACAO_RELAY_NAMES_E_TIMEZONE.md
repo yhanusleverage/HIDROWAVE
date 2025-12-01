@@ -210,3 +210,6 @@ timezone?: string;  // Ex: "America/Sao_Paulo"
 
 **Timezone é apenas para o frontend mostrar corretamente ao usuário!** 🎯
 
+
+
+

@@ -177,3 +177,6 @@ Supabase → POST → ESP32
 
 **É o ESP32 que "liga" para Supabase, não o contrário!** 📞
 
+
+
+

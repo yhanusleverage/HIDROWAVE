@@ -114,17 +114,68 @@ export async function getDecisionRules(deviceId?: string): Promise<DecisionRule[
 }
 
 export async function createDecisionRule(rule: DecisionRule): Promise<DecisionRule | null> {
+  // ✅ Validar campos requeridos
+  if (!rule.device_id) {
+    console.error('❌ [CREATE ERROR] device_id é obrigatório');
+    return null;
+  }
+  if (!rule.rule_id || rule.rule_id.length < 3) {
+    console.error('❌ [CREATE ERROR] rule_id deve ter pelo menos 3 caracteres:', rule.rule_id);
+    return null;
+  }
+  if (!rule.rule_name) {
+    console.error('❌ [CREATE ERROR] rule_name é obrigatório');
+    return null;
+  }
+  if (!rule.rule_json) {
+    console.error('❌ [CREATE ERROR] rule_json é obrigatório');
+    return null;
+  }
+
+  // ✅ Limpar campos undefined para evitar problemas com Supabase
+  const cleanRule: any = {
+    device_id: rule.device_id,
+    rule_id: rule.rule_id,
+    rule_name: rule.rule_name,
+    rule_description: rule.rule_description || null,
+    rule_json: rule.rule_json,
+    enabled: rule.enabled !== undefined ? rule.enabled : true,
+    priority: rule.priority !== undefined ? rule.priority : 50,
+    created_by: rule.created_by || 'system',
+  };
+
+  console.log('📤 [CREATE] Enviando para Supabase:', {
+    device_id: cleanRule.device_id,
+    rule_id: cleanRule.rule_id,
+    rule_name: cleanRule.rule_name,
+    enabled: cleanRule.enabled,
+    priority: cleanRule.priority,
+    has_rule_json: !!cleanRule.rule_json,
+  });
+
   const { data, error } = await supabase
     .from('decision_rules')
-    .insert(rule)
+    .insert(cleanRule)
     .select()
     .single();
 
   if (error) {
-    console.error('Error creating decision rule:', error);
-    return null;
+    console.error('❌ [CREATE ERROR] Erro do Supabase:', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+      fullError: error,
+    });
+    console.error('❌ [CREATE ERROR] Regra enviada:', JSON.stringify(cleanRule, null, 2));
+    console.error('❌ [CREATE ERROR] rule_json:', JSON.stringify(cleanRule.rule_json, null, 2));
+    
+    // ✅ Mostrar erro mais detalhado no toast
+    const errorMessage = error.message || error.details || error.hint || 'Erro desconhecido ao criar regra';
+    throw new Error(errorMessage);
   }
 
+  console.log('✅ [CREATE] Regra criada com sucesso:', data?.rule_id);
   return data;
 }
 

@@ -134,3 +134,6 @@ interface Settings {
 
 **✅ Timezone agora é configurado pelo usuário e usado nas DecisionRules!**
 
+
+
+

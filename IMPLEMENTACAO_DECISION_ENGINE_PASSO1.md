@@ -159,3 +159,6 @@ POST /rest/v1/rpc/get_active_decision_rules
 
 **Status:** ✅ **PASSO 1 CONCLUÍDO** - Pronto para implementação no ESP32!
 
+
+
+

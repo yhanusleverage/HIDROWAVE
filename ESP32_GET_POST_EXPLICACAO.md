@@ -200,3 +200,6 @@ ESP32: ... (não atende, não tem número público)
 
 **GET/POST são métodos HTTP que o ESP32 USA para COMUNICAR com Supabase!** 🎯
 
+
+
+

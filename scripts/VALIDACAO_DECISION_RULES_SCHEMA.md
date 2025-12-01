@@ -261,3 +261,6 @@ circadian_cycle?: {  // ✅ NOVO
 
 **✅ Schema está PRONTO! Só precisa atualizar interfaces e implementação!**
 
+
+
+

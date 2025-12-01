@@ -157,3 +157,6 @@ COMMENT ON FUNCTION get_active_decision_rules(text, integer) IS 'Retorna regras 
 -- FIM DO SCRIPT
 -- =====================================================
 
+
+
+

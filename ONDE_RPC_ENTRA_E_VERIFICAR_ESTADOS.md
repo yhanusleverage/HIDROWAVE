@@ -248,3 +248,6 @@ ESP32 recebe:
 
 **RPC entra como a "função inteligente" que faz tudo de uma vez!** 🎯
 
+
+
+

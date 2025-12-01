@@ -247,3 +247,6 @@ bool enableLocalAPI = true;     // ✅ Manter REST API
 
 **Conclusão:** As APIs locais estão **roubando recursos** (~11-18 KB RAM) sem serem usadas. **Recomendado desabilitar via Feature Flags!** 🎯
 
+
+
+

@@ -239,3 +239,6 @@ FROM public.relay_commands_slave;
 - Verifique se o cron job está ativo no Dashboard
 - Teste manualmente chamando a função
 
+
+
+

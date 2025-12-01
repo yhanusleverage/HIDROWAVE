@@ -8,6 +8,14 @@ import {
   XCircleIcon,
   ChevronUpIcon,
   ChevronDownIcon,
+  LockClosedIcon,
+  LockOpenIcon,
+  PencilIcon,
+  TrashIcon,
+  EyeIcon,
+  XMarkIcon,
+  ClipboardIcon,
+  ClipboardDocumentCheckIcon,
 } from '@heroicons/react/24/outline';
 import CreateRuleModal from '@/components/CreateRuleModal';
 import RuleCard from '@/components/RuleCard';
@@ -15,6 +23,7 @@ import { getDecisionRules, createDecisionRule, updateDecisionRule, deleteDecisio
 import { loadSettings } from '@/lib/settings';
 import { useAuth } from '@/contexts/AuthContext';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
+import { supabase } from '@/lib/supabase';
 // Removido: import { getRelayStates } from '@/lib/automation'; // ❌ Não usar mais relay_states
 import { getMasterLocalRelayNames, saveMasterLocalRelayName, getNutritionPlan, saveNutritionPlan } from '@/lib/nutrition-plan';
 
@@ -24,7 +33,7 @@ interface Relay {
 }
 
 interface AutomationRule {
-  id: number;
+  id: number | string; // ✅ Pode ser número (temporário) ou UUID string (do Supabase)
   name: string;
   description: string;
   condition: string;
@@ -32,6 +41,12 @@ interface AutomationRule {
   enabled: boolean;
   conditions?: any[];
   actions?: any[];
+  rule_json?: any; // ✅ Para scripts sequenciais
+  rule_name?: string; // ✅ Nome original do Supabase
+  rule_description?: string; // ✅ Descrição original do Supabase
+  priority?: number; // ✅ Prioridade da regra
+  supabase_id?: string; // ✅ UUID real do Supabase (para updates/deletes)
+  rule_id?: string; // ✅ rule_id text do Supabase
 }
 
 // ✅ Funções helper para converter entre formato de tempo (HH:MM:SS) e milissegundos
@@ -60,6 +75,9 @@ const validateTimeFormat = (timeStr: string): boolean => {
 export default function AutomacaoPage() {
   const { userProfile } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<any>(null); // ✅ Regra sendo editada
+  const [jsonPreviewRule, setJsonPreviewRule] = useState<any>(null); // ✅ Regra para vista previa JSON
+  const [copiedRuleId, setCopiedRuleId] = useState<string | null>(null); // ✅ rule_id copiado para feedback visual
   const [loading, setLoading] = useState(true);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default_device');
   const [availableMasters, setAvailableMasters] = useState<DeviceStatus[]>([]);
@@ -85,6 +103,7 @@ export default function AutomacaoPage() {
   const [loadingSlaves, setLoadingSlaves] = useState(false);
   const [expandedSlaveRelayManager, setExpandedSlaveRelayManager] = useState<boolean>(false);
   const [expandedSlaves, setExpandedSlaves] = useState<Set<string>>(new Set());
+  const [expandedRenameRelays, setExpandedRenameRelays] = useState<Set<string>>(new Set());
   
   // ✅ Estado para rastrear relés ligados/desligados (slave_mac-relay_id -> boolean)
   const [relayStates, setRelayStates] = useState<Map<string, boolean>>(new Map());
@@ -94,8 +113,15 @@ export default function AutomacaoPage() {
   const [tempRelayNames, setTempRelayNames] = useState<Map<string, string>>(new Map());
   const [savingRelayNames, setSavingRelayNames] = useState<Set<string>>(new Set());
   
+  // ✅ NOVO: Estados para timers configurados por relé (relayKey -> duration_seconds)
+  const [relayTimers, setRelayTimers] = useState<Map<string, number>>(new Map());
+  const [showTimerInput, setShowTimerInput] = useState<string | null>(null); // relayKey que está mostrando input
+  
   // ✅ NOVO: Mapeamento Command ID → Relay Key (padrão indústria)
   const commandToRelayMap = useRef<Map<number, string>>(new Map());
+  
+  // ✅ NOVO: Estado para rastrear si cada slave está bloqueado (MAC address -> boolean)
+  const [lockedSlaves, setLockedSlaves] = useState<Map<string, boolean>>(new Map());
   
   // Estado para Controle Nutricional Proporcional
   const [expandedNutritionalControl, setExpandedNutritionalControl] = useState<boolean>(true);
@@ -373,17 +399,51 @@ export default function AutomacaoPage() {
         relayStatesArray.push(...states);
       });
       
-      // Criar mapa device_id -> relay_number -> state
-      const deviceRelayStatesMap = new Map<string, Map<number, boolean>>();
+      // ✅ Criar mapa device_id -> relay_number -> {state, has_timer, remaining_time}
+      const deviceRelayStatesMap = new Map<string, Map<number, { state: boolean; has_timer: boolean; remaining_time: number }>>();
       relayStatesArray.forEach(rs => {
         if (!deviceRelayStatesMap.has(rs.device_id)) {
           deviceRelayStatesMap.set(rs.device_id, new Map());
         }
-        deviceRelayStatesMap.get(rs.device_id)!.set(rs.relay_number, rs.state);
+        deviceRelayStatesMap.get(rs.device_id)!.set(rs.relay_number, {
+          state: rs.state,
+          has_timer: rs.has_timer || false,
+          remaining_time: rs.remaining_time || 0,
+        });
       });
       
       // Sincronizar estados reais dos relés do Supabase com estados locais
       const newRelayStates = new Map<string, boolean>();
+      // ✅ Atualizar espnowSlaves com has_timer e remaining_time
+      const updatedSlaves = espnowSlaves.map(slave => {
+        if (!slave.device_id) return slave;
+        
+        const slaveRelayStates = deviceRelayStatesMap.get(slave.device_id);
+        
+        const updatedRelays = slave.relays.map(relay => {
+          const relayData = slaveRelayStates?.get(relay.id);
+          
+          if (relayData) {
+            return {
+              ...relay,
+              state: relayData.state,
+              has_timer: relayData.has_timer,
+              remaining_time: relayData.remaining_time,
+            };
+          }
+          return relay;
+        });
+        
+        return {
+          ...slave,
+          relays: updatedRelays,
+        };
+      });
+      
+      // ✅ Atualizar estado dos slaves com timer info (mantém compatibilidade)
+      setEspnowSlaves(updatedSlaves);
+      
+      // ✅ VITAL: Usar espnowSlaves (estado atual) para manter funcionamento correto
       espnowSlaves.forEach(slave => {
         if (!slave.device_id) return;
         
@@ -392,7 +452,7 @@ export default function AutomacaoPage() {
         slave.relays.forEach(relay => {
           const relayKey = `${slave.macAddress}-${relay.id}`;
           // Buscar estado real do Supabase
-          const realState = slaveRelayStates?.get(relay.id);
+          const realState = slaveRelayStates?.get(relay.id)?.state;
           
           if (realState !== undefined) {
             newRelayStates.set(relayKey, realState);
@@ -525,20 +585,39 @@ export default function AutomacaoPage() {
       const decisionRules = await getDecisionRules(selectedDeviceId);
       
       // Converter DecisionRule para AutomationRule
-      const convertedRules: AutomationRule[] = decisionRules.map((rule) => ({
-        id: parseInt(rule.rule_id) || Date.now(),
-        name: rule.rule_name,
-        description: rule.rule_description || '',
-        condition: rule.rule_json.conditions.map(c => 
-          `${c.sensor} ${c.operator} ${c.value}`
-        ).join(' e '),
-        action: rule.rule_json.actions.map(a => 
-          `${(a.relay_names && a.relay_names.length > 0 ? a.relay_names : ['Relé']).join(', ')} por ${a.duration}s`
-        ).join(', '),
-        enabled: rule.enabled,
-        conditions: rule.rule_json.conditions,
-        actions: rule.rule_json.actions,
-      }));
+      const convertedRules: AutomationRule[] = decisionRules.map((rule) => {
+        // ✅ Preservar rule_json completo para scripts sequenciais
+        const ruleJson = rule.rule_json as any; // Type assertion para acessar script
+        const hasScript = ruleJson?.script?.instructions;
+        const hasConditions = ruleJson?.conditions && Array.isArray(ruleJson.conditions) && ruleJson.conditions.length > 0;
+        const hasActions = ruleJson?.actions && Array.isArray(ruleJson.actions) && ruleJson.actions.length > 0;
+        
+        return {
+          id: rule.id || rule.rule_id || Date.now(), // ✅ Usar UUID se disponível, senão rule_id ou timestamp
+          name: rule.rule_name,
+          description: rule.rule_description || '',
+          condition: hasConditions 
+            ? ruleJson.conditions.map((c: any) => 
+                `${c.sensor} ${c.operator} ${c.value}`
+              ).join(' e ')
+            : hasScript ? 'Sequential Script' : '',
+          action: hasActions
+            ? ruleJson.actions.map((a: any) => 
+                `${(a.relay_names && a.relay_names.length > 0 ? a.relay_names : ['Relé']).join(', ')} por ${a.duration || 0}s`
+              ).join(', ')
+            : hasScript ? `${ruleJson.script.instructions.length} instrução(ões)` : '',
+          enabled: rule.enabled,
+          conditions: hasConditions ? ruleJson.conditions : [],
+          actions: hasActions ? ruleJson.actions : [],
+          // ✅ Preservar campos originais para scripts e UUID do Supabase
+          rule_json: ruleJson,
+          rule_name: rule.rule_name,
+          rule_description: rule.rule_description,
+          priority: rule.priority,
+          supabase_id: rule.id, // ✅ UUID real do Supabase (para updates/deletes)
+          rule_id: rule.rule_id, // ✅ rule_id text do Supabase
+        };
+      });
 
       setRules(convertedRules);
     } catch (error) {
@@ -705,7 +784,7 @@ export default function AutomacaoPage() {
     });
   };
 
-  const toggleRule = (id: number) => {
+  const toggleRule = (id: number | string) => {
     setRules(rules.map(rule => 
       rule.id === id ? { ...rule, enabled: !rule.enabled } : rule
     ));
@@ -713,42 +792,140 @@ export default function AutomacaoPage() {
 
   const handleSaveRule = async (newRule: any) => {
     try {
-      const ruleId = `RULE_${Date.now()}`;
+      // ✅ Usar rule_id existente se estiver editando, senão criar novo
+      // ✅ Garantir que rule_id tenha pelo menos 3 caracteres (requisito do Supabase)
+      const baseRuleId = editingRule?.rule_id || editingRule?.id || `RULE_${Date.now()}`;
+      const ruleId = typeof baseRuleId === 'string' && baseRuleId.length >= 3 
+        ? baseRuleId 
+        : `RULE_${Date.now()}`;
       
-      const decisionRule: DecisionRule = {
-        device_id: selectedDeviceId,
-        rule_id: ruleId,
-        rule_name: newRule.name,
-        rule_description: newRule.description,
-        rule_json: {
-          conditions: newRule.conditions,
-          actions: newRule.actions.map((a: any) => ({
-            relay_ids: a.relayIds || [a.relayId],  // ✅ Array de relés
-            relay_names: a.relayNames || [a.relayName],  // ✅ Array de nomes
-            duration: a.duration,
-            target_device_id: a.target_device_id,
-            slave_mac_address: a.slave_mac_address,
-          })),
-          circadian_cycle: newRule.circadian_cycle ? {
-            ...newRule.circadian_cycle,
-            timezone: userTimezone,  // ✅ Usar timezone do usuário
-          } : undefined,
+      // ✅ Se tiver script (instruções sequenciais), usar formato de SequentialScriptEditor
+      let ruleJson: any;
+      
+      if (newRule.script && newRule.script.instructions && newRule.script.instructions.length > 0) {
+        // ✅ Formato de Sequential Script (Nova Função)
+        ruleJson = {
+          script: {
+            instructions: newRule.script.instructions,
+            max_iterations: newRule.script.max_iterations || 0,
+            chained_events: newRule.script.chained_events || (newRule.chainedEvents && newRule.chainedEvents.length > 0 ? newRule.chainedEvents : undefined),
+            cooldown: newRule.script.cooldown || newRule.cooldown || 60,
+            max_executions_per_hour: newRule.script.max_executions_per_hour || newRule.maxExecutionsPerHour || 10,
+          },
+        };
+      } else {
+        // ✅ Formato tradicional (Nova Regra)
+        ruleJson = {
+          conditions: newRule.conditions || [],
+          actions: (newRule.actions && Array.isArray(newRule.actions) && newRule.actions.length > 0)
+            ? newRule.actions.map((a: any) => ({
+                relay_ids: a.relayIds || [a.relayId] || [],
+                relay_names: a.relayNames || [a.relayName] || [],
+                duration: a.duration || 0,
+                target_device_id: a.target_device_id || null,
+                slave_mac_address: a.slave_mac_address || null,
+              }))
+            : [],
+          ...(newRule.circadian_cycle ? {
+            circadian_cycle: {
+              ...newRule.circadian_cycle,
+              timezone: userTimezone,  // ✅ Usar timezone do usuário
+            }
+          } : {}),
           delay_before_execution: 0,
           interval_between_executions: 5,
           priority: newRule.priority || 50, // ✅ Usar priority da regra
-        },
-        enabled: newRule.enabled,
-        priority: newRule.priority || 50, // ✅ Usar priority da regra (0-100)
+        };
+      }
+      
+      // ✅ Validar que rule_json não está vazio
+      if (!ruleJson || (Object.keys(ruleJson).length === 0 && !ruleJson.script)) {
+        toast.error('Erro: rule_json não pode estar vazio. Adicione condições/ações ou instruções sequenciais.');
+        console.error('❌ [VALIDATION ERROR] rule_json vazio:', ruleJson);
+        return;
+      }
+      
+      // ✅ Validar campos obrigatórios antes de criar
+      if (!selectedDeviceId || selectedDeviceId === 'default_device') {
+        toast.error('Erro: Selecione um dispositivo antes de criar a regra.');
+        console.error('❌ [VALIDATION ERROR] device_id inválido:', selectedDeviceId);
+        return;
+      }
+      
+      if (!newRule.name || newRule.name.trim().length === 0) {
+        toast.error('Erro: Nome da regra é obrigatório.');
+        console.error('❌ [VALIDATION ERROR] rule_name vazio');
+        return;
+      }
+
+      const decisionRule: DecisionRule = {
+        device_id: selectedDeviceId,
+        rule_id: ruleId,
+        rule_name: newRule.name.trim(),
+        rule_description: newRule.description?.trim() || null,
+        rule_json: ruleJson,
+        enabled: newRule.enabled !== undefined ? newRule.enabled : true,
+        priority: Math.max(0, Math.min(100, newRule.priority || 50)), // ✅ Garantir que priority está entre 0-100
         created_by: userProfile?.email || 'system',
       };
 
-      const created = await createDecisionRule(decisionRule);
-      
-      if (created) {
-        toast.success('Regra criada e salva no banco de dados!');
-        await loadRules(); // Recarregar regras
+      // ✅ Console log para verificar empaquetado (igual que SequentialScriptEditor)
+      console.log('📦 [DECISION RULE] Empaquetando regra para Supabase:', {
+        device_id: decisionRule.device_id,
+        rule_id: decisionRule.rule_id,
+        rule_name: decisionRule.rule_name,
+        enabled: decisionRule.enabled,
+        priority: decisionRule.priority,
+        created_by: decisionRule.created_by,
+        rule_json: JSON.stringify(ruleJson, null, 2),
+      });
+
+      // ✅ Se estiver editando, usar updateDecisionRule, senão createDecisionRule
+      let result;
+      if (editingRule) {
+        // ✅ Atualizar regra existente - usar supabase_id (UUID) se disponível
+        const ruleIdToUpdate = editingRule.supabase_id || editingRule.id;
+        if (!ruleIdToUpdate || typeof ruleIdToUpdate === 'number') {
+          toast.error('Erro: ID da regra inválido para atualização. UUID não encontrado.');
+          console.error('❌ [UPDATE ERROR] editingRule:', editingRule);
+          return;
+        }
+        result = await updateDecisionRule(ruleIdToUpdate.toString(), decisionRule);
+        if (result) {
+          console.log('✅ [DECISION RULE] Regra atualizada no Supabase:', {
+            id: editingRule.id,
+            rule_id: decisionRule.rule_id,
+            rule_name: decisionRule.rule_name,
+            has_script: !!(ruleJson.script),
+          });
+          toast.success('Regra atualizada e salva no banco de dados!');
+        } else {
+          toast.error('Erro ao atualizar regra no banco de dados');
+        }
       } else {
-        toast.error('Erro ao salvar regra no banco de dados');
+        // ✅ Criar nova regra
+        try {
+          result = await createDecisionRule(decisionRule);
+          if (result) {
+            console.log('✅ [DECISION RULE] Regra criada no Supabase:', {
+              rule_id: decisionRule.rule_id,
+              rule_name: decisionRule.rule_name,
+              has_script: !!(ruleJson.script),
+            });
+            toast.success('Regra criada e salva no banco de dados!');
+          } else {
+            toast.error('Erro ao salvar regra no banco de dados. Verifique o console para mais detalhes.');
+          }
+        } catch (error: any) {
+          console.error('❌ [CREATE ERROR] Exceção capturada:', error);
+          toast.error(error?.message || 'Erro ao criar regra. Verifique o console para mais detalhes.');
+          return;
+        }
+      }
+      
+      if (result) {
+        await loadRules(); // Recarregar regras
+        setEditingRule(null); // ✅ Resetar regra de edição após salvar
       }
     } catch (error) {
       console.error('Error saving rule:', error);
@@ -764,20 +941,41 @@ export default function AutomacaoPage() {
   };
 
   const handleEditRule = (rule: AutomationRule) => {
-    // TODO: Abrir modal de edição com dados da regra
-    toast('Edição de regra em desenvolvimento', { icon: 'ℹ️' });
+    // ✅ Abrir modal de edição com dados da regra
+    setEditingRule(rule);
+    setIsModalOpen(true);
   };
 
-  const handleDeleteRule = async (id: number) => {
+  const handleDeleteRule = async (id: number | string) => {
     try {
-      // Encontrar a regra e obter o ID do Supabase
-      const rule = rules.find(r => r.id === id);
-      if (!rule) return;
+      // Encontrar a regra e obter o ID do Supabase (UUID)
+      const rule = rules.find(r => r.id === id || r.supabase_id === id);
+      if (!rule) {
+        toast.error('Regra não encontrada');
+        return;
+      }
 
-      // TODO: Implementar busca pelo rule_id no Supabase
-      // Por enquanto, apenas remove do estado local
-      setRules(rules.filter(rule => rule.id !== id));
-      toast.success('Regra excluída com sucesso!');
+      // ✅ Usar supabase_id (UUID) se disponível, senão tentar id
+      const ruleIdToDelete = rule.supabase_id || rule.id;
+      if (!ruleIdToDelete) {
+        toast.error('Erro: ID da regra não encontrado para exclusão');
+        return;
+      }
+
+      // ✅ Verificar se é UUID válido (string) ou número
+      if (typeof ruleIdToDelete === 'number') {
+        toast.error('Erro: ID da regra inválido. UUID não encontrado.');
+        console.error('❌ [DELETE ERROR] rule:', rule);
+        return;
+      }
+
+      const result = await deleteDecisionRule(ruleIdToDelete.toString());
+      if (result) {
+        await loadRules(); // Recarregar regras do Supabase
+        toast.success('Regra excluída com sucesso!');
+      } else {
+        toast.error('Erro ao excluir regra no banco de dados');
+      }
     } catch (error) {
       console.error('Error deleting rule:', error);
       toast.error('Erro ao excluir regra');
@@ -848,9 +1046,9 @@ export default function AutomacaoPage() {
           
           {/* Gerenciador de Nomes dos Relés ESP-NOW Slaves - Colapsável */}
           <div className="bg-dark-surface border border-dark-border rounded-lg overflow-hidden m-2 sm:m-4">
-            <button
+            <div
               onClick={() => setExpandedSlaveRelayManager(!expandedSlaveRelayManager)}
-              className="w-full p-3 sm:p-4 flex items-center justify-between hover:bg-dark-card transition-colors"
+              className="w-full p-3 sm:p-4 flex items-center justify-between hover:bg-dark-card transition-colors cursor-pointer"
             >
               <div className="flex items-center space-x-2 sm:space-x-3 flex-1 min-w-0">
                 {expandedSlaveRelayManager ? (
@@ -877,7 +1075,7 @@ export default function AutomacaoPage() {
                   🔄
                 </button>
               </div>
-            </button>
+            </div>
 
             {expandedSlaveRelayManager && (
               <div className="p-4 border-t border-dark-border">
@@ -911,9 +1109,9 @@ export default function AutomacaoPage() {
                           className="bg-dark-card border border-dark-border rounded-lg overflow-hidden w-full max-w-full"
                         >
                           {/* Header do Slave - Colapsável */}
-                          <button
+                          <div
                             onClick={() => toggleSlave(slave.macAddress)}
-                            className="w-full p-3 flex items-center justify-between hover:bg-dark-surface transition-colors"
+                            className="w-full p-3 flex items-center justify-between hover:bg-dark-surface transition-colors cursor-pointer"
                           >
                             <div className="flex items-center space-x-3">
                               {isExpanded ? (
@@ -926,16 +1124,42 @@ export default function AutomacaoPage() {
                                 <p className="text-xs text-dark-textSecondary">{slave.macAddress}</p>
                               </div>
                             </div>
-                            <span
-                              className={`px-2 py-1 rounded text-xs ${
-                                slave.status === 'online'
-                                  ? 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/30'
-                                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                              }`}
-                            >
-                              {slave.status === 'online' ? 'Online' : 'Offline'}
-                            </span>
-                          </button>
+                            <div className="flex items-center space-x-2">
+                              <span
+                                className={`px-2 py-1 rounded text-xs ${
+                                  slave.status === 'online'
+                                    ? 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/30'
+                                    : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                }`}
+                              >
+                                {slave.status === 'online' ? 'Online' : 'Offline'}
+                              </span>
+                              {/* ✅ Candado para bloquear/desbloquear controles */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLockedSlaves(prev => {
+                                    const next = new Map(prev);
+                                    const isLocked = next.get(slave.macAddress) ?? false;
+                                    next.set(slave.macAddress, !isLocked);
+                                    return next;
+                                  });
+                                }}
+                                className={`p-1.5 rounded transition-colors ${
+                                  lockedSlaves.get(slave.macAddress)
+                                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
+                                    : 'bg-aqua-500/20 text-aqua-400 hover:bg-aqua-500/30 border border-aqua-500/30'
+                                }`}
+                                title={lockedSlaves.get(slave.macAddress) ? 'Desbloquear controles' : 'Bloquear controles'}
+                              >
+                                {lockedSlaves.get(slave.macAddress) ? (
+                                  <LockClosedIcon className="w-4 h-4" />
+                                ) : (
+                                  <LockOpenIcon className="w-4 h-4" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
 
                           {/* Conteúdo Expandido - Relés do Slave */}
                           {isExpanded && (
@@ -951,11 +1175,17 @@ export default function AutomacaoPage() {
                                     const realState = (relay as any).state !== undefined ? (relay as any).state : false;
                                     const isRelayOn = relayStates.get(relayKey) ?? realState;
                                     const isLoading = loadingRelays.get(relayKey) || false;
+                                    const isLocked = lockedSlaves.get(slave.macAddress) ?? false;
+                                    // ✅ Verificar se tem timer ativo
+                                    const hasTimer = (relay as any).has_timer || false;
+                                    const remainingTime = (relay as any).remaining_time || 0;
                                     
                                     return (
                                       <div
                                         key={relay.id}
-                                        className="bg-dark-card border border-dark-border rounded-lg p-3"
+                                        className={`bg-dark-card border rounded-lg p-3 ${
+                                          isLocked ? 'border-red-500/30 opacity-60' : 'border-dark-border'
+                                        }`}
                                       >
                                         <div className="flex items-center justify-between mb-2">
                                           <div className="flex-1 min-w-0">
@@ -965,6 +1195,13 @@ export default function AutomacaoPage() {
                                             <p className="text-xs text-dark-textSecondary mt-0.5">
                                               {realState ? '🟢 ON' : '⚫ OFF'}
                                             </p>
+                                            {/* ✅ Mostrar timer se estiver ativo */}
+                                            {hasTimer && remainingTime > 0 && (
+                                              <p className="text-xs text-yellow-400 mt-1 flex items-center gap-1">
+                                                <ClockIcon className="w-3 h-3" />
+                                                {Math.floor(remainingTime / 60)}:{(remainingTime % 60).toString().padStart(2, '0')}
+                                              </p>
+                                            )}
                                           </div>
                                           <span
                                             className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -973,25 +1210,33 @@ export default function AutomacaoPage() {
                                             title={isRelayOn ? 'Ligado' : 'Desligado'}
                                           />
                                         </div>
-                                        <div className="flex space-x-1">
-                                          <button
-                                            onClick={async () => {
-                                              setLoadingRelays(prev => new Map(prev).set(relayKey, true));
-                                              try {
-                                                const response = await fetch('/api/esp-now/command', {
-                                                  method: 'POST',
-                                                  headers: { 'Content-Type': 'application/json' },
-                                                  body: JSON.stringify({
-                                                    master_device_id: selectedDeviceId,
-                                                    slave_mac_address: slave.macAddress,
-                                                    slave_name: slave.name,
-                                                    relay_number: relay.id,
-                                                    action: 'on',
-                                                    duration_seconds: 0,
-                                                    triggered_by: 'manual',
-                                                    command_type: 'manual',
-                                                  }),
-                                                });
+                                        {isLocked && (
+                                          <div className="mb-2 text-xs text-red-400 flex items-center space-x-1">
+                                            <LockClosedIcon className="w-3 h-3" />
+                                            <span>Bloqueado</span>
+                                          </div>
+                                        )}
+                                        <div className="flex space-x-1 relative">
+                                          <div className="flex-1 flex items-center gap-1">
+                                            <button
+                                              onClick={async () => {
+                                                const timerDuration = relayTimers.get(relayKey) || 0;
+                                                setLoadingRelays(prev => new Map(prev).set(relayKey, true));
+                                                try {
+                                                  const response = await fetch('/api/esp-now/command', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
+                                                      master_device_id: selectedDeviceId,
+                                                      slave_mac_address: slave.macAddress,
+                                                      slave_name: slave.name,
+                                                      relay_number: relay.id,
+                                                      action: 'on',
+                                                      duration_seconds: timerDuration,
+                                                      triggered_by: 'manual',
+                                                      command_type: 'manual',
+                                                    }),
+                                                  });
 
                                                 if (response.ok) {
                                                   const result = await response.json();
@@ -1017,15 +1262,79 @@ export default function AutomacaoPage() {
                                                 });
                                               }
                                             }}
-                                            disabled={isLoading || isRelayOn}
+                                            disabled={isLoading || isRelayOn || isLocked}
                                             className={`flex-1 py-1.5 px-2 text-xs font-medium rounded transition-all ${
-                                              isRelayOn
+                                              isRelayOn || isLocked
                                                 ? 'bg-dark-border text-dark-textSecondary cursor-not-allowed'
                                                 : 'bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white'
                                             } disabled:opacity-50`}
+                                            title={isLocked ? 'Controles bloqueados' : relayTimers.get(relayKey) ? `Ligar com timer: ${relayTimers.get(relayKey)}s` : 'Ligar relé'}
                                           >
                                             {isLoading ? '⏳' : 'ON'}
                                           </button>
+                                          {/* ✅ Icono de reloj para configurar timer */}
+                                          {!isLocked && !isRelayOn && (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowTimerInput(showTimerInput === relayKey ? null : relayKey);
+                                              }}
+                                              className={`p-1.5 rounded transition-colors ${
+                                                relayTimers.get(relayKey)
+                                                  ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40'
+                                                  : 'bg-dark-surface hover:bg-dark-border text-gray-400 hover:text-yellow-400 border border-dark-border'
+                                              }`}
+                                              title={relayTimers.get(relayKey) ? `Timer: ${relayTimers.get(relayKey)}s (clique para alterar)` : 'Configurar timer'}
+                                            >
+                                              <ClockIcon className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+                                        {/* ✅ Input de timer (aparece quando clica no reloj) */}
+                                        {showTimerInput === relayKey && (
+                                          <div className="absolute z-50 mt-8 bg-dark-card border border-aqua-500/40 rounded-lg p-2 shadow-lg">
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max="3600"
+                                                value={relayTimers.get(relayKey) || 0}
+                                                onChange={(e) => {
+                                                  const value = parseInt(e.target.value) || 0;
+                                                  setRelayTimers(prev => {
+                                                    const next = new Map(prev);
+                                                    if (value > 0) {
+                                                      next.set(relayKey, value);
+                                                    } else {
+                                                      next.delete(relayKey);
+                                                    }
+                                                    return next;
+                                                  });
+                                                }}
+                                                placeholder="Segundos"
+                                                className="w-20 px-2 py-1 bg-dark-surface border border-dark-border rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                                                autoFocus
+                                                onBlur={() => setTimeout(() => setShowTimerInput(null), 200)}
+                                              />
+                                              <span className="text-xs text-gray-400">s</span>
+                                              <button
+                                                onClick={() => {
+                                                  setRelayTimers(prev => {
+                                                    const next = new Map(prev);
+                                                    next.delete(relayKey);
+                                                    return next;
+                                                  });
+                                                  setShowTimerInput(null);
+                                                }}
+                                                className="p-1 hover:bg-red-500/20 rounded text-red-400"
+                                                title="Remover timer"
+                                              >
+                                                <XMarkIcon className="w-3 h-3" />
+                                              </button>
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-1">0 = Sem timer</p>
+                                          </div>
+                                        )}
                                           <button
                                             onClick={async () => {
                                               setLoadingRelays(prev => new Map(prev).set(relayKey, true));
@@ -1069,12 +1378,13 @@ export default function AutomacaoPage() {
                                                 });
                                               }
                                             }}
-                                            disabled={isLoading || !isRelayOn}
+                                            disabled={isLoading || !isRelayOn || isLocked}
                                             className={`flex-1 py-1.5 px-2 text-xs font-medium rounded transition-all ${
-                                              !isRelayOn
+                                              !isRelayOn || isLocked
                                                 ? 'bg-dark-border text-dark-textSecondary cursor-not-allowed'
                                                 : 'bg-red-600 hover:bg-red-700 text-white'
                                             } disabled:opacity-50`}
+                                            title={isLocked ? 'Controles bloqueados' : ''}
                                           >
                                             {isLoading ? '⏳' : 'OFF'}
                                           </button>
@@ -1085,15 +1395,38 @@ export default function AutomacaoPage() {
                                 </div>
                               </div>
 
-                              {/* ✅ Gerenciamento de Nomes - Melhorado igual a DeviceControlPanel */}
+                              {/* ✅ Gerenciamento de Nomes - Melhorado igual a DeviceControlPanel - COLAPSÁVEL */}
                               <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-                                <h5 className="text-sm font-semibold text-dark-text mb-2 flex items-center gap-2">
-                                  ✏️ Nomear Relés
-                                </h5>
-                                <p className="text-xs text-dark-textSecondary mb-4">
-                                  Nomeie os relés deste dispositivo. Os nomes serão usados globalmente em todas as regras de automação.
-                                </p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <button
+                                  onClick={() => {
+                                    const isExpanded = expandedRenameRelays.has(slave.macAddress);
+                                    setExpandedRenameRelays(prev => {
+                                      const next = new Set(prev);
+                                      if (isExpanded) {
+                                        next.delete(slave.macAddress);
+                                      } else {
+                                        next.add(slave.macAddress);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-full flex items-center justify-between text-left mb-2 hover:opacity-80 transition-opacity"
+                                >
+                                  <h5 className="text-sm font-semibold text-dark-text flex items-center gap-2">
+                                    ✏️ Nomear Relés
+                                  </h5>
+                                  {expandedRenameRelays.has(slave.macAddress) ? (
+                                    <ChevronUpIcon className="w-4 h-4 text-aqua-400 flex-shrink-0" />
+                                  ) : (
+                                    <ChevronDownIcon className="w-4 h-4 text-dark-textSecondary flex-shrink-0" />
+                                  )}
+                                </button>
+                                {expandedRenameRelays.has(slave.macAddress) && (
+                                  <>
+                                    <p className="text-xs text-dark-textSecondary mb-4">
+                                      Nomeie os relés deste dispositivo. Os nomes serão usados globalmente em todas as regras de automação.
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                   {slave.relays.map(relay => {
                                     const relayKey = `${slave.macAddress}-${relay.id}`;
                                     const tempName = tempRelayNames.get(relayKey) ?? relay.name;
@@ -1155,7 +1488,9 @@ export default function AutomacaoPage() {
                                       </div>
                                     );
                                   })}
-                                </div>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             </div>
                           )}
@@ -1175,14 +1510,16 @@ export default function AutomacaoPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4">
               <div className="flex-1 min-w-0">
                 <h2 className="text-lg sm:text-xl font-bold text-dark-text">🧠 Motor de Decisão</h2>
-                <p className="text-xs sm:text-sm text-dark-textSecondary mt-1">Configure regras automáticas com menus colapsáveis</p>
+                <p className="text-xs sm:text-sm text-dark-textSecondary mt-1">Configure regras automáticas com Regras script Sequenciais</p>
               </div>
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-3 px-6 sm:py-2 sm:px-4 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm sm:text-base w-full sm:w-auto"
-              >
-                ➕ Nova Regra
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-3 px-6 sm:py-2 sm:px-4 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm sm:text-base w-full sm:w-auto"
+                >
+                  ➕ Nova Regra
+                </button>
+              </div>
             </div>
 
             {/* Lista de Regras Ativas */}
@@ -1191,31 +1528,304 @@ export default function AutomacaoPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-aqua-500 mx-auto"></div>
                 <p className="text-dark-textSecondary mt-4">Carregando regras...</p>
               </div>
-            ) : rules.length === 0 ? (
-              <div className="text-center py-8 bg-dark-surface border border-dark-border rounded-lg">
-                <p className="text-dark-textSecondary mb-4">Nenhuma regra criada ainda</p>
-                <button 
-                  onClick={() => setIsModalOpen(true)}
-                  className="bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-3 px-6 sm:py-2 sm:px-4 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm sm:text-base"
-                >
-                  Criar Primeira Regra
-                </button>
-              </div>
             ) : (
               <div className="space-y-3">
-                {rules.map((rule) => (
-                  <RuleCard
-                    key={rule.id}
-                    rule={rule}
-                    onToggle={toggleRule}
-                    onEdit={handleEditRule}
-                    onDelete={handleDeleteRule}
-                  />
-                ))}
+                {rules
+                  .filter(r => !r.rule_json?.script?.instructions) // ✅ Solo mostrar regras tradicionales (sin script)
+                  .map((rule) => (
+                    <RuleCard
+                      key={rule.id}
+                      rule={rule}
+                      onToggle={toggleRule}
+                      onEdit={handleEditRule}
+                      onDelete={handleDeleteRule}
+                    />
+                  ))}
               </div>
             )}
+
+            {/* ✅ Regras de Script Sequencial - Separadas por status */}
+            {selectedDeviceId && selectedDeviceId !== 'default_device' && (
+              <div className="mt-4 pt-4 border-t border-dark-border">
+                <div className="flex justify-between items-center mb-4">
+                  <p className="text-sm text-gray-400">
+                    📋 Regras de Script Sequencial ({rules.filter(r => r.rule_json?.script?.instructions && r.enabled).length} ativas / {rules.filter(r => r.rule_json?.script?.instructions && !r.enabled).length} inativas)
+                  </p>
+                </div>
+
+                {loading ? (
+                  <div className="text-center py-8 text-gray-400">Carregando...</div>
+                ) : rules.filter(r => r.rule_json?.script?.instructions).length === 0 ? (
+                  <div className="text-center py-8 text-gray-400 bg-dark-surface border border-dark-border rounded-lg">
+                    Nenhum script sequencial ativo. Crie uma regra com instruções sequenciais.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Coluna Esquerda - Regras Ativas */}
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-semibold text-green-400 mb-2 flex items-center gap-2">
+                        <CheckCircleIcon className="w-4 h-4" />
+                        Ativas ({rules.filter(r => r.rule_json?.script?.instructions && r.enabled).length})
+                      </h3>
+                      {rules
+                        .filter(r => r.rule_json?.script?.instructions && r.enabled)
+                        .map((script) => (
+                        <div
+                          key={script.id}
+                          className="border border-dark-border rounded-lg p-4 bg-dark-surface/50 hover:bg-dark-surface transition-colors"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <h4 className="font-semibold text-white truncate">{script.name || script.rule_name}</h4>
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 ${
+                                  script.enabled
+                                    ? 'bg-aqua-500/20 text-aqua-400 border-aqua-500/30'
+                                    : 'bg-dark-surface text-dark-textSecondary border-dark-border'
+                                }`}>
+                                  {script.enabled ? (
+                                    <span className="flex items-center">
+                                      <CheckCircleIcon className="w-3 h-3 mr-1 text-green-500" />
+                                      Ativo
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center">
+                                      <XCircleIcon className="w-3 h-3 mr-1 text-red-500" />
+                                      Inativo
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                              {script.description && (
+                                <p className="text-xs text-gray-400 mt-1">{script.description || script.rule_description}</p>
+                              )}
+                              <p className="text-xs text-gray-500 mt-1">
+                                Sequential Script
+                              </p>
+
+                              {/* Preview das instruções - Linha circular do script */}
+                              {script.rule_json?.script?.instructions && (
+                                <div className="mt-2 text-xs text-gray-400 space-y-1 font-mono">
+                                  {script.rule_json.script.instructions.slice(0, 2).map((instr: any, idx: number) => (
+                                    <div key={idx} className="text-aqua-300">
+                                      {idx + 1}. {instr.type.toUpperCase()}
+                                      {instr.condition && (
+                                        <span className="ml-2 text-gray-400">
+                                          {instr.condition.sensor} {instr.condition.operator} {instr.condition.value}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {script.rule_json.script.instructions.length > 2 && (
+                                    <div className="text-gray-500 italic">
+                                      ... e mais {script.rule_json.script.instructions.length - 2} instrução(ões)
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              <div className="mt-3 flex gap-2 flex-wrap items-center">
+                                <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded border border-blue-500/30">
+                                  Prioridade: {script.priority || 50}
+                                </span>
+                                {/* ✅ rule_id - Fácil de copiar */}
+                                {script.rule_id && (
+                                  <div className="flex items-center gap-1 bg-purple-500/20 border border-purple-500/40 rounded px-2 py-1 group">
+                                    <span className="text-xs text-purple-300 font-mono">
+                                      ID: {script.rule_id}
+                                    </span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (script.rule_id) {
+                                          navigator.clipboard.writeText(script.rule_id);
+                                          setCopiedRuleId(script.rule_id);
+                                          toast.success(`rule_id copiado: ${script.rule_id}`);
+                                          setTimeout(() => setCopiedRuleId(null), 2000);
+                                        }
+                                      }}
+                                      className="p-0.5 hover:bg-purple-500/30 rounded transition-colors"
+                                      title="Copiar rule_id"
+                                    >
+                                      {copiedRuleId === script.rule_id ? (
+                                        <ClipboardDocumentCheckIcon className="w-3.5 h-3.5 text-green-400" />
+                                      ) : (
+                                        <ClipboardIcon className="w-3.5 h-3.5 text-purple-300 group-hover:text-purple-200" />
+                                      )}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0 ml-2">
+                              <button
+                                onClick={() => setJsonPreviewRule(script)}
+                                className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-purple-400 hover:text-purple-300"
+                                title="Vista Previa JSON"
+                              >
+                                <EyeIcon className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={() => handleEditRule(script)}
+                                className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-aqua-400 hover:text-aqua-300"
+                                title="Editar"
+                              >
+                                <PencilIcon className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteRule(script.id)}
+                                className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-red-400 hover:text-red-300"
+                                title="Excluir"
+                              >
+                                <TrashIcon className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {rules.filter(r => r.rule_json?.script?.instructions && r.enabled).length === 0 && (
+                        <div className="text-center py-6 text-gray-500 bg-dark-surface/30 border border-dark-border rounded-lg text-xs">
+                          Nenhuma regra ativa
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Coluna Direita - Regras Inativas */}
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-semibold text-red-400 mb-2 flex items-center gap-2">
+                        <XCircleIcon className="w-4 h-4" />
+                        Inativas ({rules.filter(r => r.rule_json?.script?.instructions && !r.enabled).length})
+                      </h3>
+                      {rules
+                        .filter(r => r.rule_json?.script?.instructions && !r.enabled)
+                        .map((script) => (
+                          <div
+                            key={script.id}
+                            className="border border-dark-border rounded-lg p-4 bg-dark-surface/50 hover:bg-dark-surface transition-colors"
+                          >
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <h4 className="font-semibold text-white truncate">{script.name || script.rule_name}</h4>
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 ${
+                                    script.enabled
+                                      ? 'bg-aqua-500/20 text-aqua-400 border-aqua-500/30'
+                                      : 'bg-dark-surface text-dark-textSecondary border-dark-border'
+                                  }`}>
+                                    {script.enabled ? (
+                                      <span className="flex items-center">
+                                        <CheckCircleIcon className="w-3 h-3 mr-1 text-green-500" />
+                                        Ativo
+                                      </span>
+                                    ) : (
+                                      <span className="flex items-center">
+                                        <XCircleIcon className="w-3 h-3 mr-1 text-red-500" />
+                                        Inativo
+                                      </span>
+                                    )}
+                                  </span>
+                                </div>
+                                {script.description && (
+                                  <p className="text-xs text-gray-400 mt-1">{script.description || script.rule_description}</p>
+                                )}
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Sequential Script
+                                </p>
+
+                                {/* Preview das instruções - Linha circular do script */}
+                                {script.rule_json?.script?.instructions && (
+                                  <div className="mt-2 text-xs text-gray-400 space-y-1 font-mono">
+                                    {script.rule_json.script.instructions.slice(0, 2).map((instr: any, idx: number) => (
+                                      <div key={idx} className="text-aqua-300">
+                                        {idx + 1}. {instr.type.toUpperCase()}
+                                        {instr.condition && (
+                                          <span className="ml-2 text-gray-400">
+                                            {instr.condition.sensor} {instr.condition.operator} {instr.condition.value}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {script.rule_json.script.instructions.length > 2 && (
+                                      <div className="text-gray-500 italic">
+                                        ... e mais {script.rule_json.script.instructions.length - 2} instrução(ões)
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                <div className="mt-3 flex gap-2 flex-wrap items-center">
+                                  <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded border border-blue-500/30">
+                                    Prioridade: {script.priority || 50}
+                                  </span>
+                                  {/* ✅ rule_id - Fácil de copiar */}
+                                  {script.rule_id && (
+                                    <div className="flex items-center gap-1 bg-purple-500/20 border border-purple-500/40 rounded px-2 py-1 group">
+                                      <span className="text-xs text-purple-300 font-mono">
+                                        ID: {script.rule_id}
+                                      </span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (script.rule_id) {
+                                            navigator.clipboard.writeText(script.rule_id);
+                                            setCopiedRuleId(script.rule_id);
+                                            toast.success(`rule_id copiado: ${script.rule_id}`);
+                                            setTimeout(() => setCopiedRuleId(null), 2000);
+                                          }
+                                        }}
+                                        className="p-0.5 hover:bg-purple-500/30 rounded transition-colors"
+                                        title="Copiar rule_id"
+                                      >
+                                        {copiedRuleId === script.rule_id ? (
+                                          <ClipboardDocumentCheckIcon className="w-3.5 h-3.5 text-green-400" />
+                                        ) : (
+                                          <ClipboardIcon className="w-3.5 h-3.5 text-purple-300 group-hover:text-purple-200" />
+                                        )}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex gap-2 flex-shrink-0 ml-2">
+                                <button
+                                  onClick={() => setJsonPreviewRule(script)}
+                                  className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-purple-400 hover:text-purple-300"
+                                  title="Vista Previa JSON"
+                                >
+                                  <EyeIcon className="w-5 h-5" />
+                                </button>
+                                <button
+                                  onClick={() => handleEditRule(script)}
+                                  className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-aqua-400 hover:text-aqua-300"
+                                  title="Editar"
+                                >
+                                  <PencilIcon className="w-5 h-5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteRule(script.id)}
+                                  className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-red-400 hover:text-red-300"
+                                  title="Excluir"
+                                >
+                                  <TrashIcon className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      {rules.filter(r => r.rule_json?.script?.instructions && !r.enabled).length === 0 && (
+                        <div className="text-center py-6 text-gray-500 bg-dark-surface/30 border border-dark-border rounded-lg text-xs">
+                          Nenhuma regra inativa
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
           </div>
         </div>
+
 
         {/* Box de Controle Nutricional Proporcional - Colapsável */}
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
@@ -1812,7 +2422,12 @@ export default function AutomacaoPage() {
 
       <CreateRuleModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        deviceId={selectedDeviceId}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingRule(null); // ✅ Resetar regra de edição ao fechar
+        }}
+        editingRule={editingRule}
         onSave={handleSaveRule}
         relays={[
           // ✅ Mapear relays Master automaticamente
@@ -1833,6 +2448,67 @@ export default function AutomacaoPage() {
         ]}
         onUpdateRelay={handleUpdateRelay}
       />
+
+      {/* Modal de Vista Previa JSON */}
+      {jsonPreviewRule && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-card border border-dark-border rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-dark-border">
+              <h2 className="text-xl font-bold text-dark-text">
+                📦 Vista Previa JSON - {jsonPreviewRule.name || jsonPreviewRule.rule_name}
+              </h2>
+              <button
+                onClick={() => setJsonPreviewRule(null)}
+                className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-dark-textSecondary hover:text-dark-text"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content - JSON formateado */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
+                <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-words overflow-x-auto">
+                  {JSON.stringify({
+                    device_id: selectedDeviceId,
+                    rule_id: jsonPreviewRule.rule_id || `RULE_${jsonPreviewRule.id}`,
+                    rule_name: jsonPreviewRule.rule_name || jsonPreviewRule.name,
+                    rule_description: jsonPreviewRule.rule_description || jsonPreviewRule.description,
+                    rule_json: jsonPreviewRule.rule_json || {
+                      conditions: jsonPreviewRule.conditions || [],
+                      actions: jsonPreviewRule.actions || [],
+                    },
+                    enabled: jsonPreviewRule.enabled,
+                    priority: jsonPreviewRule.priority || 50,
+                    created_by: userProfile?.email || 'system',
+                  }, null, 2)}
+                </pre>
+              </div>
+              
+              {/* Informação adicional */}
+              <div className="mt-4 p-4 bg-aqua-500/10 border border-aqua-500/30 rounded-lg">
+                <p className="text-xs text-aqua-300 mb-2">
+                  💡 Este é o JSON completo que será enviado/salvo no Supabase (tabela decision_rules)
+                </p>
+                <p className="text-xs text-gray-400">
+                  Este formato é o mesmo que aparece no console.log quando a regra é criada.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end p-6 border-t border-dark-border">
+              <button
+                onClick={() => setJsonPreviewRule(null)}
+                className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

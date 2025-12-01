@@ -2,16 +2,16 @@
 
 import React, { useState } from 'react';
 import {
-  ChevronDownIcon,
-  ChevronUpIcon,
   CheckCircleIcon,
   XCircleIcon,
   PencilIcon,
   TrashIcon,
+  EyeIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 interface AutomationRule {
-  id: number;
+  id: number | string; // ✅ Pode ser número (temporário) ou UUID string (do Supabase)
   name: string;
   description: string;
   condition: string;
@@ -19,38 +19,56 @@ interface AutomationRule {
   enabled: boolean;
   conditions?: any[];
   actions?: any[];
+  rule_json?: any; // ✅ Para scripts sequenciais
+  rule_name?: string; // ✅ Nome original do Supabase
+  rule_description?: string; // ✅ Descrição original do Supabase
+  priority?: number; // ✅ Prioridade da regra
+  supabase_id?: string; // ✅ UUID real do Supabase (para updates/deletes)
+  rule_id?: string; // ✅ rule_id text do Supabase
+  device_id?: string;
+  created_by?: string;
 }
 
 interface RuleCardProps {
   rule: AutomationRule;
-  onToggle: (id: number) => void;
+  onToggle: (id: number | string) => void;
   onEdit: (rule: AutomationRule) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number | string) => void;
 }
 
 export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [showJsonPreview, setShowJsonPreview] = useState(false);
+  
+  // ✅ Construir objeto completo como se envía al Supabase
+  const getFullRuleJson = () => {
+    return {
+      device_id: rule.device_id || '',
+      rule_id: rule.rule_id || `RULE_${rule.id}`,
+      rule_name: rule.rule_name || rule.name,
+      rule_description: rule.rule_description || rule.description,
+      rule_json: rule.rule_json || {
+        conditions: rule.conditions || [],
+        actions: rule.actions || [],
+      },
+      enabled: rule.enabled,
+      priority: rule.priority || 50,
+      created_by: rule.created_by || 'system',
+    };
+  };
 
   return (
     <div
-      className={`bg-dark-card border border-dark-border rounded-lg transition-all duration-300 ${
-        isExpanded ? 'shadow-lg' : 'shadow-md hover:shadow-lg'
-      } ${rule.enabled ? 'border-aqua-500/30' : 'border-dark-border'}`}
+      className={`bg-dark-card border border-dark-border rounded-lg transition-all duration-300 shadow-md hover:shadow-lg ${
+        rule.enabled ? 'border-aqua-500/30' : 'border-dark-border'
+      }`}
     >
-      {/* Header - Sempre visível (resumido) */}
+      {/* Header - Clickeable para abrir modal de edição */}
       <div
         className="p-4 cursor-pointer hover:bg-dark-surface/50 transition-colors"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => onEdit(rule)}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3 flex-1 min-w-0">
-            <div className="flex-shrink-0">
-              {isExpanded ? (
-                <ChevronUpIcon className="w-5 h-5 text-aqua-400" />
-              ) : (
-                <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
-              )}
-            </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center space-x-2 mb-1">
                 <h3 className="text-base font-semibold text-dark-text truncate">{rule.name}</h3>
@@ -63,12 +81,12 @@ export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardP
                 >
                   {rule.enabled ? (
                     <span className="flex items-center">
-                      <CheckCircleIcon className="w-3 h-3 mr-1" />
+                      <CheckCircleIcon className="w-3 h-3 mr-1 text-green-500" />
                       Ativo
                     </span>
                   ) : (
                     <span className="flex items-center">
-                      <XCircleIcon className="w-3 h-3 mr-1" />
+                      <XCircleIcon className="w-3 h-3 mr-1 text-red-500" />
                       Inativo
                     </span>
                   )}
@@ -77,114 +95,26 @@ export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardP
               <p className="text-sm text-dark-textSecondary truncate">{rule.description}</p>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Conteúdo Expandido */}
-      {isExpanded && (
-        <div className="px-4 pb-4 border-t border-dark-border pt-4 space-y-4">
-          {/* Descrição completa */}
-          <div>
-            <p className="text-sm text-dark-textSecondary">{rule.description}</p>
-          </div>
-
-          {/* Condições e Ações */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-primary-900/30 border border-primary-500/30 p-3 rounded-lg">
-              <p className="text-sm font-medium text-primary-400 mb-2">Condição:</p>
-              <p className="text-sm text-primary-300">{rule.condition}</p>
-              {rule.conditions && rule.conditions.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {rule.conditions.map((cond, idx) => (
-                    <div key={idx} className="text-xs text-primary-300/80">
-                      • {cond.sensor} {cond.operator} {cond.value}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            
-            <div className="bg-aqua-900/30 border border-aqua-500/30 p-3 rounded-lg">
-              <p className="text-sm font-medium text-aqua-400 mb-2">Ação:</p>
-              <p className="text-sm text-aqua-300">{rule.action}</p>
-              {rule.actions && rule.actions.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {rule.actions.map((act, idx) => (
-                    <div key={idx} className="text-xs text-aqua-300/80">
-                      • {act.relayName} por {act.duration}s
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Ajustes Finos */}
-          <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-            <h4 className="text-sm font-semibold text-dark-text mb-3">Ajustes Finos</h4>
-            <div className="space-y-3">
-              {/* Aqui você pode adicionar campos para ajustes finos */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-dark-textSecondary mb-1">
-                    Delay antes de executar (seg)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    defaultValue="0"
-                    className="w-full p-2 bg-dark-card border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-dark-textSecondary mb-1">
-                    Intervalo entre execuções (min)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    defaultValue="5"
-                    className="w-full p-2 bg-dark-card border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-dark-textSecondary mb-1">
-                  Prioridade
-                </label>
-                <select className="w-full p-2 bg-dark-card border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none">
-                  <option value="low">Baixa</option>
-                  <option value="medium" selected>Média</option>
-                  <option value="high">Alta</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Botões de Ação */}
-          <div className="flex items-center justify-end space-x-2 pt-2 border-t border-dark-border">
+          <div className="flex gap-2 flex-shrink-0 ml-2" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onToggle(rule.id);
+                setShowJsonPreview(true);
               }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                rule.enabled
-                  ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-lg'
-                  : 'bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white shadow-lg hover:shadow-aqua-500/50'
-              }`}
+              className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-purple-400 hover:text-purple-300"
+              title="Vista Previa JSON"
             >
-              {rule.enabled ? 'Desativar' : 'Ativar'}
+              <EyeIcon className="w-5 h-5" />
             </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onEdit(rule);
               }}
-              className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors flex items-center space-x-1"
+              className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-aqua-400 hover:text-aqua-300"
+              title="Editar"
             >
-              <PencilIcon className="w-4 h-4" />
-              <span>Editar</span>
+              <PencilIcon className="w-5 h-5" />
             </button>
             <button
               onClick={(e) => {
@@ -193,14 +123,64 @@ export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardP
                   onDelete(rule.id);
                 }
               }}
-              className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg text-sm font-medium transition-colors flex items-center space-x-1"
+              className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-red-400 hover:text-red-300"
+              title="Excluir"
             >
-              <TrashIcon className="w-4 h-4" />
-              <span>Excluir</span>
+              <TrashIcon className="w-5 h-5" />
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Modal de Vista Previa JSON */}
+      {showJsonPreview && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-card border border-dark-border rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-dark-border">
+              <h2 className="text-xl font-bold text-dark-text">
+                📦 Vista Previa JSON - {rule.name || rule.rule_name}
+              </h2>
+              <button
+                onClick={() => setShowJsonPreview(false)}
+                className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-dark-textSecondary hover:text-dark-text"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content - JSON formateado */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
+                <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-words overflow-x-auto">
+                  {JSON.stringify(getFullRuleJson(), null, 2)}
+                </pre>
+              </div>
+              
+              {/* Información adicional */}
+              <div className="mt-4 p-4 bg-aqua-500/10 border border-aqua-500/30 rounded-lg">
+                <p className="text-xs text-aqua-300 mb-2">
+                  💡 Este é o JSON completo que será enviado/salvo no Supabase (tabela decision_rules)
+                </p>
+                <p className="text-xs text-gray-400">
+                  Este formato é o mesmo que aparece no console.log quando a regra é criada.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end p-6 border-t border-dark-border">
+              <button
+                onClick={() => setShowJsonPreview(false)}
+                className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
+
     </div>
   );
 }

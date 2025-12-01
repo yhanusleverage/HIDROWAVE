@@ -178,3 +178,6 @@ CREATE TABLE public.decision_rules (
 **✅ Schema está PRONTO e VALIDADO!**
 **⚠️ Próximo passo: Implementar UI e lógica ESP32!**
 
+
+
+

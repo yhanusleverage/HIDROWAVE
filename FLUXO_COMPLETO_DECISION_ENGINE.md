@@ -552,3 +552,6 @@ $$;
 
 **Status Atual:** ⏳ **Parcialmente implementado** - Falta integração completa no ESP32
 
+
+
+

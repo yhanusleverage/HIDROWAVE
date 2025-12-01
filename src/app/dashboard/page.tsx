@@ -9,6 +9,9 @@ import CropCalendar, { CropTask } from '@/components/CropCalendar';
 import { Toaster } from 'react-hot-toast';
 import { HydroMeasurement, EnvironmentMeasurement } from '@/lib/supabase';
 import { getPollingInterval } from '@/lib/settings';
+import { useAuth } from '@/contexts/AuthContext';
+import { getUserDevices, DeviceStatus } from '@/lib/automation';
+import { useCropAlarms } from '@/hooks/useCropAlarms';
 import { 
   BeakerIcon, 
   Cog6ToothIcon, 
@@ -17,6 +20,10 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function DashboardPage() {
+  const { userProfile } = useAuth();
+  const userEmail = userProfile?.email || '';
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [devices, setDevices] = useState<DeviceStatus[]>([]);
   const [hydroData, setHydroData] = useState<HydroMeasurement | null>(null);
   const [environmentData, setEnvironmentData] = useState<EnvironmentMeasurement | null>(null);
   const [hydroHistory, setHydroHistory] = useState<HydroMeasurement[]>([]);
@@ -28,51 +35,40 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   
   // Estado para tarefas do calendário
-  const [calendarTasks, setCalendarTasks] = useState<CropTask[]>([
-    // Exemplos de tarefas
-    {
-      id: '1',
-      date: new Date(),
-      type: 'dosagem',
-      title: 'Dosagem Semanal - Grow + Micro',
-      description: 'Aplicar nutrientes base para fase vegetativa',
-      completed: false,
-      priority: 'high',
-      nutrients: ['Grow', 'Micro'],
-      duration: 30,
-    },
-    {
-      id: '2',
-      date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // 2 dias
-      type: 'monitoramento',
-      title: 'Verificação de pH e EC',
-      description: 'Monitorar níveis e ajustar se necessário',
-      completed: false,
-      priority: 'medium',
-      duration: 15,
-    },
-    {
-      id: '3',
-      date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 dias
-      type: 'manutencao',
-      title: 'Limpeza do Sistema',
-      description: 'Limpar reservatórios e trocar filtros',
-      completed: false,
-      priority: 'high',
-      duration: 60,
-    },
-    {
-      id: '4',
-      date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 dias
-      type: 'dosagem',
-      title: 'Dosagem - Bloom',
-      description: 'Iniciar fase de floração',
-      completed: false,
-      priority: 'high',
-      nutrients: ['Bloom', 'CalMag'],
-      duration: 30,
-    },
-  ]);
+  const [calendarTasks, setCalendarTasks] = useState<CropTask[]>([]);
+
+  // ✅ Hook para verificar alarmes do calendário
+  const { alarms, acknowledgeAlarm } = useCropAlarms({
+    deviceId: selectedDeviceId,
+    userEmail: userEmail || '',
+    enabled: !!selectedDeviceId && !!userEmail,
+    checkInterval: 60000, // Verificar a cada 60 segundos
+  });
+
+  // ✅ Carregar dispositivos do usuário e selecionar o primeiro
+  useEffect(() => {
+    const loadUserDevices = async () => {
+      if (!userEmail) {
+        return;
+      }
+
+      try {
+        const userDevices = await getUserDevices(userEmail);
+        setDevices(userDevices);
+        
+        // Selecionar o primeiro dispositivo disponível
+        if (userDevices.length > 0 && !selectedDeviceId) {
+          const firstDevice = userDevices[0];
+          setSelectedDeviceId(firstDevice.device_id);
+          console.log('✅ [DASHBOARD] Dispositivo selecionado:', firstDevice.device_id);
+        }
+      } catch (error) {
+        console.error('❌ [DASHBOARD] Erro ao carregar dispositivos:', error);
+      }
+    };
+
+    loadUserDevices();
+  }, [userEmail, selectedDeviceId]);
 
   // ✅ Función para validar datos hidropónicos
   const validateHydroData = (data: any): HydroMeasurement | null => {
@@ -545,6 +541,8 @@ export default function DashboardPage() {
             <section className="mb-8">
               <CropCalendar
                 tasks={calendarTasks}
+                deviceId={selectedDeviceId}
+                userEmail={userEmail || ''}
                 onTaskAdd={(task) => {
                   setCalendarTasks([...calendarTasks, task]);
                 }}
