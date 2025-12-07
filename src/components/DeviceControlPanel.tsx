@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { DeviceStatus } from '@/lib/automation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
@@ -56,6 +56,9 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
   const [analytics, setAnalytics] = useState<DosageMetrics[]>([]);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [analyticsDays, setAnalyticsDays] = useState(7);
+  
+  // ✅ Estado para reboot
+  const [rebooting, setRebooting] = useState(false);
   
 
   // Estado para Plano Nutricional (copiado do dashboard)
@@ -205,6 +208,49 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
       }
     } catch (error) {
       console.error('Erro ao controlar relé local:', error);
+    }
+  };
+
+  // ✅ Função para reiniciar dispositivo
+  const handleReboot = async () => {
+    if (!device.device_id || !userProfile?.email) {
+      toast.error('Dados do dispositivo ou usuário não disponíveis');
+      return;
+    }
+
+    // Confirmação
+    if (!confirm(`Tem certeza que deseja reiniciar o dispositivo "${device.device_name || device.device_id}"?\n\nO dispositivo será reiniciado e o contador de reinícios será incrementado.`)) {
+      return;
+    }
+
+    setRebooting(true);
+    try {
+      const response = await fetch('/api/device/reboot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_id: device.device_id,
+          user_email: userProfile.email,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao reiniciar dispositivo');
+      }
+
+      const result = await response.json();
+      toast.success(`✅ Comando de reinício enviado! (Total: ${result.reboot_count} reinícios)`);
+      
+      // Recarregar dados do dispositivo após um delay
+      setTimeout(() => {
+        window.location.reload(); // Recarregar para atualizar dados
+      }, 2000);
+    } catch (error: any) {
+      console.error('Erro ao reiniciar dispositivo:', error);
+      toast.error(error.message || 'Erro ao reiniciar dispositivo');
+    } finally {
+      setRebooting(false);
     }
   };
 
@@ -581,7 +627,17 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                           )}
                           {device.reboot_count !== undefined && device.reboot_count !== null && (
                             <div className="bg-dark-surface border border-dark-border rounded p-3">
-                              <p className="text-dark-textSecondary mb-1">🔄 Reinícios</p>
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-dark-textSecondary">🔄 Reinícios</p>
+                                <button
+                                  onClick={handleReboot}
+                                  disabled={rebooting || !device.is_online}
+                                  className="p-1.5 hover:bg-dark-border rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title="Reiniciar dispositivo"
+                                >
+                                  <ArrowPathIcon className={`w-4 h-4 text-aqua-400 ${rebooting ? 'animate-spin' : ''}`} />
+                                </button>
+                              </div>
                               <p className={`font-bold ${
                                 device.reboot_count === 0 
                                   ? 'text-green-400' 

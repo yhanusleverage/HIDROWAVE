@@ -128,6 +128,9 @@ export default function AutomacaoPage() {
   
   // ✅ NOVO: Estado para rastrear si cada slave está bloqueado (MAC address -> boolean)
   const [lockedSlaves, setLockedSlaves] = useState<Map<string, boolean>>(new Map());
+  const [ecControllerLocked, setEcControllerLocked] = useState<boolean>(false);
+  const [slaveRelayManagerLocked, setSlaveRelayManagerLocked] = useState<boolean>(false);
+  const [decisionEngineLocked, setDecisionEngineLocked] = useState<boolean>(false);
   
   // Estado para Controle Nutricional Proporcional
   const [expandedNutritionalControl, setExpandedNutritionalControl] = useState<boolean>(true);
@@ -139,29 +142,29 @@ export default function AutomacaoPage() {
   const [baseDose, setBaseDose] = useState<number>(1525.0); // EC base em µS/cm
   const [ecSetpoint, setEcSetpoint] = useState<number>(1500.0); // EC Setpoint em µS/cm
   const [intervaloAutoEC, setIntervaloAutoEC] = useState<number>(300); // Intervalo entre verificações (segundos)
-  const [tempoRecirculacao, setTempoRecirculacao] = useState<string>('00:01:00'); // Tempo de recirculação (formato HH:MM:SS)
+  const [tempoRecirculacao, setTempoRecirculacao] = useState<string>('00:01'); // Tempo de recirculação (formato HH:MM)
+  const [tempoRecirculacaoHours, setTempoRecirculacaoHours] = useState<number>(0);
+  const [tempoRecirculacaoMinutes, setTempoRecirculacaoMinutes] = useState<number>(1);
   const [autoEnabled, setAutoEnabled] = useState<boolean>(false); // Controle automático ativado
   
-  // ✅ Funções helper para converter entre formato de tempo (HH:MM:SS) e milissegundos
+  // ✅ Funções helper para converter entre formato de tempo (HH:MM) e milissegundos
   const timeToMilliseconds = (timeStr: string): number => {
     const parts = timeStr.split(':');
-    if (parts.length !== 3) return 60000; // Default: 1 minuto em ms
+    if (parts.length < 2) return 60000; // Default: 1 minuto em ms
     const hours = parseInt(parts[0], 10) || 0;
     const minutes = parseInt(parts[1], 10) || 0;
-    const seconds = parseInt(parts[2], 10) || 0;
-    return (hours * 3600 + minutes * 60 + seconds) * 1000;
+    return (hours * 3600 + minutes * 60) * 1000;
   };
   
   const millisecondsToTime = (ms: number): string => {
     const totalSeconds = Math.floor(ms / 1000);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
   };
   
   const validateTimeFormat = (timeStr: string): boolean => {
-    const regex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/;
+    const regex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
     return regex.test(timeStr);
   };
   
@@ -169,17 +172,8 @@ export default function AutomacaoPage() {
   const [ecError, setEcError] = useState<number>(0); // Erro atual (µS/cm)
   const [lastDosage, setLastDosage] = useState<number>(0); // Última dosagem (ml)
   const [ecAtual, setEcAtual] = useState<number>(0); // EC atual do sensor
-  const nutrients = [
-    { name: 'pH-', relayNumber: 0, mlPerLiter: 0.5 },
-    { name: 'pH+', relayNumber: 1, mlPerLiter: 0.5 },
-    { name: 'Grow', relayNumber: 2, mlPerLiter: 2 },
-    { name: 'Micro', relayNumber: 3, mlPerLiter: 2 },
-    { name: 'Bloom', relayNumber: 4, mlPerLiter: 2 },
-    { name: 'CalMag', relayNumber: 5, mlPerLiter: 1 },
-    { name: 'Bomba Principal', relayNumber: 6, mlPerLiter: 0 },
-    { name: 'Aerador', relayNumber: 7, mlPerLiter: 0 },
-  ];
-  const [nutrientsState, setNutrientsState] = useState(nutrients);
+  // ✅ REMOVIDO: Nutrientes hardcodeados - agora inicia vazio e carrega apenas do Supabase
+  const [nutrientsState, setNutrientsState] = useState<Array<{name: string, relayNumber: number, mlPerLiter: number}>>([]);
   const [isLoadingNutrients, setIsLoadingNutrients] = useState<Record<number, boolean>>({});
   const [isNutrientModalOpen, setIsNutrientModalOpen] = useState<boolean>(false);
   const [editingNutrientIndex, setEditingNutrientIndex] = useState<number | null>(null);
@@ -242,16 +236,35 @@ export default function AutomacaoPage() {
       }
       
       // Carregar pumpFlowRate e totalVolume
-      if (config.flow_rate) setPumpFlowRate(config.flow_rate);
-      if (config.volume) setTotalVolume(config.volume);
+      if (config.flow_rate !== undefined && !isNaN(config.flow_rate)) setPumpFlowRate(config.flow_rate);
+      if (config.volume !== undefined && !isNaN(config.volume)) setTotalVolume(config.volume);
       
       // ✅ Carregar parâmetros do EC Controller
-      if (config.base_dose !== undefined) setBaseDose(config.base_dose);
-      if (config.ec_setpoint !== undefined) setEcSetpoint(config.ec_setpoint);
-      if (config.intervalo_auto_ec !== undefined) setIntervaloAutoEC(config.intervalo_auto_ec);
-      if (config.tempo_recirculacao !== undefined) {
-        // Converter de milissegundos para formato HH:MM:SS
-        setTempoRecirculacao(millisecondsToTime(config.tempo_recirculacao));
+      if (config.base_dose !== undefined && !isNaN(config.base_dose)) setBaseDose(config.base_dose);
+      if (config.ec_setpoint !== undefined && !isNaN(config.ec_setpoint)) setEcSetpoint(config.ec_setpoint);
+      if (config.intervalo_auto_ec !== undefined && !isNaN(config.intervalo_auto_ec)) setIntervaloAutoEC(config.intervalo_auto_ec);
+      if (config.tempo_recirculacao !== undefined && config.tempo_recirculacao !== null) {
+        // ✅ ATUALIZADO: tempo_recirculacao agora é INTEGER (milisegundos) na BD
+        // Converter milisegundos para formato HH:MM para exibição no frontend
+        const ms = typeof config.tempo_recirculacao === 'number' 
+          ? config.tempo_recirculacao 
+          : parseInt(String(config.tempo_recirculacao), 10);
+        
+        if (!isNaN(ms) && ms > 0) {
+          const timeStr = millisecondsToTime(ms);
+          setTempoRecirculacao(timeStr);
+          // Atualizar também os campos separados
+          const parts = timeStr.split(':');
+          if (parts.length >= 2) {
+            setTempoRecirculacaoHours(parseInt(parts[0], 10) || 0);
+            setTempoRecirculacaoMinutes(parseInt(parts[1], 10) || 1);
+          }
+        } else {
+          console.warn('⚠️ [EC Controller] tempo_recirculacao inválido ao carregar, usando default:', config.tempo_recirculacao);
+          setTempoRecirculacao('00:01'); // Default: 1 minuto
+          setTempoRecirculacaoHours(0);
+          setTempoRecirculacaoMinutes(1);
+        }
       }
       if (config.auto_enabled !== undefined) setAutoEnabled(config.auto_enabled);
     } catch (error) {
@@ -259,8 +272,90 @@ export default function AutomacaoPage() {
     }
   }, [selectedDeviceId]);
   
-  // ✅ NOVO: Salvar configuração do EC Controller no Supabase
-  const saveECControllerConfig = useCallback(async () => {
+  // ✅ Sincronizar tempoRecirculacao com campos separados (horas e minutos)
+  useEffect(() => {
+    const formatted = `${String(tempoRecirculacaoHours).padStart(2, '0')}:${String(tempoRecirculacaoMinutes).padStart(2, '0')}`;
+    if (formatted !== tempoRecirculacao) {
+      setTempoRecirculacao(formatted);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tempoRecirculacaoHours, tempoRecirculacaoMinutes]);
+  
+  // ✅ Função para calcular distribuição proporcional de nutrientes
+  // Similar ao Hydro-Controller-main: calcula como u(t) será distribuído entre nutrientes
+  // Fórmulas:
+  // - k = baseDose / totalMlPerLiter
+  // - u(t) = (V / (k × q)) × e
+  // - proporção = mlPerLiter / totalMlPerLiter
+  // - utNutriente = totalUt × proporção
+  // - tempoDosagem = utNutriente / flowRate
+  const calculateDistribution = useCallback(() => {
+    // Calcular total_ml (soma de todos os mlPerLiter)
+    const totalMlPerLiter = nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
+    
+    // Validar que temos dados suficientes
+    if (totalMlPerLiter <= 0 || baseDose <= 0 || pumpFlowRate <= 0 || totalVolume <= 0) {
+      console.warn('⚠️ [EC Controller] Dados insuficientes para calcular distribution:', {
+        totalMlPerLiter,
+        baseDose,
+        pumpFlowRate,
+        totalVolume
+      });
+      return null;
+    }
+    
+    // Calcular k = baseDose / totalMlPerLiter
+    const k = baseDose / totalMlPerLiter;
+    
+    // Calcular u(t) = (V / (k × q)) × e
+    // Usar erro absoluto para garantir dosagem positiva
+    const error = Math.abs(ecError);
+    const totalUt = (totalVolume / (k * pumpFlowRate)) * error;
+    
+    // Se u(t) é muito pequeno ou zero, retornar null
+    if (totalUt <= 0.001) {
+      console.warn('⚠️ [EC Controller] u(t) muito pequeno ou zero:', totalUt);
+      return null;
+    }
+    
+    // Calcular distribuição proporcional para cada nutriente
+    const distribution: any[] = [];
+    
+    nutrientsState.forEach(nut => {
+      if (nut.mlPerLiter > 0 && totalMlPerLiter > 0) {
+        // Calcular proporção
+        const proporcao = nut.mlPerLiter / totalMlPerLiter;
+        
+        // Calcular u(t) para este nutriente
+        const utNutriente = totalUt * proporcao;
+        
+        // Calcular tempo de dosagem (segundos)
+        const tempoDosagem = utNutriente / pumpFlowRate;
+        
+        // Agregar à distribuição (formato compatível com Hydro-Controller)
+        // Hydro-Controller executeWebDosage() espera APENAS: name, relay, dosage, duration
+        distribution.push({
+          name: nut.name,                    // ✅ Hydro-Controller usa "name"
+          relay: nut.relayNumber,             // ✅ Número do relé (Hydro-Controller converte para índice: relay - 1)
+          dosage: parseFloat(utNutriente.toFixed(2)),  // ✅ Dosagem em ml
+          duration: parseFloat(tempoDosagem.toFixed(2)) // ✅ Duração em segundos (Hydro-Controller converte para ms: duration * 1000)
+        });
+      }
+    });
+    
+    // Retornar estrutura completa (todos os valores com 2 casas decimais)
+    return {
+      totalUt: parseFloat(totalUt.toFixed(2)),  // ✅ 2 casas decimais
+      intervalo: intervaloAutoEC || 5,
+      distribution: distribution
+    };
+  }, [nutrientsState, baseDose, pumpFlowRate, totalVolume, ecError, intervaloAutoEC]);
+  
+  // ✅ NOVA ARQUITETURA: Salvar configuração do EC Controller em ec_config_view
+  // Similar ao padrão relay_slaves/relay_commands_slave
+  // Este botão apenas salva na view table, não ativa o Auto EC
+  // Para ativar, use o botão "Ativar Auto EC" que chama RPC activate_auto_ec
+  const saveECControllerConfig = useCallback(async (silent: boolean = false, overrideAutoEnabled?: boolean) => {
     if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
     
     try {
@@ -275,35 +370,75 @@ export default function AutomacaoPage() {
       // Calcular total_ml (soma de todos os mlPerLiter)
       const totalMl = nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
       
-      // Construir payload apenas com campos que existem na tabela
+      // ✅ JSON OPTIMIZADO: Solo los 9 parámetros básicos + nutrients[] (sin distribution)
+      // Construir payload optimizado com apenas os campos essenciais
+      // ✅ CORRIGIDO: Usar overrideAutoEnabled se fornecido, senão usar autoEnabled do estado
       const payload: any = {
         device_id: selectedDeviceId,
         base_dose: baseDose,
         flow_rate: pumpFlowRate,
         volume: totalVolume,
         total_ml: totalMl,
+        kp: 1.0, // ✅ Ganho proporcional (default: 1.0)
         ec_setpoint: ecSetpoint,
-        auto_enabled: autoEnabled,
-        nutrients: nutrientsJson,
+        auto_enabled: overrideAutoEnabled !== undefined ? overrideAutoEnabled : autoEnabled,
+        nutrients: nutrientsJson, // ✅ Se necesita para que ESP32 sepa qué relé usar
       };
       
-      // Adicionar intervalo_auto_ec apenas se a coluna existir (pode não estar na tabela ainda)
-      // O Supabase vai ignorar campos que não existem se usar upsert
+      // Adicionar intervalo_auto_ec (requer coluna criada via script SQL)
       if (intervaloAutoEC !== undefined && intervaloAutoEC !== null) {
         payload.intervalo_auto_ec = intervaloAutoEC;
       }
       
-      // Adicionar tempo_recirculacao
-      if (tempoRecirculacao !== undefined && tempoRecirculacao !== null) {
-        payload.tempo_recirculacao = tempoRecirculacao;
+      // ✅ ATUALIZADO: Converter tempo_recirculacao de HH:MM para SEGUNDOS (INTEGER)
+      // ✅ IMPORTANTE: Enviar em SEGUNDOS, no milisegundos ni formato string
+      let tempoRecirculacaoSegundos = 60; // Default: 60 segundos (1 minuto)
+      
+      if (tempoRecirculacao !== undefined && tempoRecirculacao !== null && tempoRecirculacao.trim() !== '') {
+        // Validar formato HH:MM
+        if (validateTimeFormat(tempoRecirculacao)) {
+          // Converter HH:MM para SEGUNDOS (no milisegundos)
+          const ms = timeToMilliseconds(tempoRecirculacao);
+          if (ms > 0 && !isNaN(ms) && isFinite(ms)) {
+            tempoRecirculacaoSegundos = Math.floor(ms / 1000); // ✅ Convertir a SEGUNDOS
+            if (tempoRecirculacaoSegundos < 1) {
+              tempoRecirculacaoSegundos = 60; // Mínimo 1 segundo
+            }
+          } else {
+            console.warn('⚠️ [EC Controller] tempo_recirculacao resultou em valor inválido, usando default:', tempoRecirculacao, ms);
+          }
+        } else {
+          console.warn('⚠️ [EC Controller] tempo_recirculacao não passou na validação regex, usando default:', tempoRecirculacao);
+        }
       }
       
-      // 🔍 DEBUG: Log detalhado do que está sendo salvo
-      console.log('🔧 [EC Controller] Salvando configuração no Supabase:', {
+      // ✅ SEMPRE enviar tempo_recirculacao como INTEGER em SEGUNDOS (constraint requer > 0)
+      payload.tempo_recirculacao = tempoRecirculacaoSegundos;
+      
+      // ❌ ELIMINADO: distribution - Se calcula en tiempo real en el ESP32
+      // El ESP32 calcula distribution localmente con valores actuales del sensor
+      
+      // 🔍 DEBUG: Verificar tipo e valor de tempo_recirculacao
+      console.log('🔍 [EC Controller] tempo_recirculacao validado:', {
+        original: tempoRecirculacao,
+        converted_seconds: tempoRecirculacaoSegundos,
+        type: typeof tempoRecirculacaoSegundos,
+        isInteger: Number.isInteger(tempoRecirculacaoSegundos),
+        isPositive: tempoRecirculacaoSegundos > 0
+      });
+      
+      // 🔍 DEBUG: Log detalhado do que está sendo salvo (JSON optimizado)
+      console.log('🔧 [EC Controller] Salvando configuração optimizada no Supabase:', {
         device_id: selectedDeviceId,
+        base_dose: baseDose,
         flow_rate: pumpFlowRate,
         volume: totalVolume,
         total_ml: totalMl,
+        kp: 1.0,
+        ec_setpoint: ecSetpoint,
+        auto_enabled: autoEnabled,
+        intervalo_auto_ec: intervaloAutoEC,
+        tempo_recirculacao: tempoRecirculacaoSegundos,
         nutrients_count: nutrientsJson.length,
         nutrients: nutrientsJson.map(n => ({
           name: n.name,
@@ -311,7 +446,10 @@ export default function AutomacaoPage() {
           mlPerLiter: n.mlPerLiter,
           mapped_to_master_relay: `Relay ${n.relay} (${availableRelays.find(r => r.number === n.relay)?.name || 'Sem nome'})`
         })),
+        note: '✅ JSON optimizado: Sin distribution (se calcula en ESP32), tempo_recirculacao en SEGUNDOS'
       });
+      
+      console.log('📤 [EC Controller] Payload optimizado:', JSON.stringify(payload, null, 2));
       
       const response = await fetch('/api/ec-controller/config', {
         method: 'POST',
@@ -320,21 +458,48 @@ export default function AutomacaoPage() {
       });
       
       if (!response.ok) {
-        const error = await response.json();
-        console.error('❌ [EC Controller] Erro ao salvar:', error);
-        toast.error(`Erro ao salvar: ${error.error || 'Erro desconhecido'}`);
+        let errorMessage = 'Erro desconhecido';
+        let errorDetails: any = {};
+        
+        try {
+          const errorData = await response.json();
+          errorDetails = errorData;
+          errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+        } catch (e) {
+          // Se não conseguir parsear JSON, tentar texto
+          try {
+            const errorText = await response.text();
+            errorMessage = errorText || `HTTP ${response.status}: ${response.statusText}`;
+          } catch (e2) {
+            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          }
+        }
+        
+        console.error('❌ [EC Controller] Erro ao salvar:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorDetails,
+          payload: payload,
+          device_id: selectedDeviceId
+        });
+        
+        toast.error(`Erro ao salvar: ${errorMessage}`);
         return false;
       }
       
       const result = await response.json();
-      console.log('✅ [EC Controller] Configuração salva com sucesso no Supabase:', result);
-      console.log('📤 [EC Controller] Dados disponíveis para ESP32 via Supabase:', {
-        table: 'ec_controller_config',
+      console.log('✅ [EC Controller] Configuração salva com sucesso em ec_config_view:', result);
+      console.log('📤 [EC Controller] Dados salvos na view table (prontos para RPC activate_auto_ec):', {
+        table: 'ec_config_view',
         device_id: selectedDeviceId,
         nutrients_available: nutrientsJson.length,
+        next_step: 'Pressione "Ativar Auto EC" para enviar ao ESP32 via RPC'
       });
       
-      toast.success('Configuração salva com sucesso!');
+      // Só mostrar toast se não estiver em modo silencioso
+      if (!silent) {
+        toast.success('Configuração salva com sucesso!');
+      }
       return true;
     } catch (error) {
       console.error('❌ [EC Controller] Erro ao salvar config:', error);
@@ -343,7 +508,7 @@ export default function AutomacaoPage() {
     }
   }, [selectedDeviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, intervaloAutoEC, tempoRecirculacao, autoEnabled, availableRelays]);
   
-  // ✅ Função para construir JSON completo de EC Config (para vista previa)
+  // ✅ Função para construir JSON optimizado de EC Config (para vista previa)
   const getECConfigJson = useCallback(() => {
     // Converter array de nutrientes para formato JSONB
     const nutrientsJson = nutrientsState.map(nut => ({
@@ -357,13 +522,14 @@ export default function AutomacaoPage() {
     // Calcular total_ml (soma de todos os mlPerLiter)
     const totalMl = nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
     
-    // Construir JSON completo
+    // ✅ JSON OPTIMIZADO: Solo los 9 parámetros básicos + nutrients[] (sin distribution)
     const ecConfigJson: any = {
       device_id: selectedDeviceId,
       base_dose: baseDose,
       flow_rate: pumpFlowRate,
       volume: totalVolume,
       total_ml: totalMl,
+      kp: 1.0, // ✅ Ganho proporcional (default: 1.0)
       ec_setpoint: ecSetpoint,
       auto_enabled: autoEnabled,
       nutrients: nutrientsJson,
@@ -374,11 +540,20 @@ export default function AutomacaoPage() {
       ecConfigJson.intervalo_auto_ec = intervaloAutoEC;
     }
     
-    // Adicionar tempo_recirculacao
-    if (tempoRecirculacao !== undefined && tempoRecirculacao !== null) {
-      ecConfigJson.tempo_recirculacao = tempoRecirculacao;
-      ecConfigJson.tempo_recirculacao_ms = timeToMilliseconds(tempoRecirculacao);
+    // ✅ ATUALIZADO: tempo_recirculacao en SEGUNDOS (INTEGER)
+    if (tempoRecirculacao !== undefined && tempoRecirculacao !== null && tempoRecirculacao.trim() !== '') {
+      if (validateTimeFormat(tempoRecirculacao)) {
+        const ms = timeToMilliseconds(tempoRecirculacao);
+        ecConfigJson.tempo_recirculacao = Math.floor(ms / 1000); // ✅ SEGUNDOS
+      } else {
+        ecConfigJson.tempo_recirculacao = 60; // Default: 60 segundos
+      }
+    } else {
+      ecConfigJson.tempo_recirculacao = 60; // Default: 60 segundos
     }
+    
+    // ❌ ELIMINADO: distribution - Se calcula en tiempo real en el ESP32
+    // ❌ ELIMINADO: tempo_recirculacao_ms - Redundante
     
     // Informações calculadas adicionais para debug
     ecConfigJson._debug = {
@@ -389,6 +564,7 @@ export default function AutomacaoPage() {
       nutrients_count: nutrientsJson.length,
       k_factor: totalMl > 0 ? (baseDose / totalMl).toFixed(3) : '0.000',
       equation: `u(t) = (${totalVolume} / ${(baseDose / totalMl).toFixed(3)} × ${pumpFlowRate}) × e`,
+      note: '✅ JSON optimizado: Sin distribution (se calcula en ESP32), tempo_recirculacao en SEGUNDOS',
     };
     
     return ecConfigJson;
@@ -415,6 +591,57 @@ export default function AutomacaoPage() {
       await saveECControllerConfig();
     }
   }, [selectedDeviceId, nutrientsState, loadLocalRelayNames, saveECControllerConfig]);
+  
+  // ✅ NOVO: Função para obter EC atual desde Supabase (hydro_measurements)
+  const fetchCurrentEC = useCallback(async () => {
+    if (!selectedDeviceId || selectedDeviceId === 'default_device') {
+      setEcAtual(0);
+      return;
+    }
+    
+    try {
+      // Usar diretamente a tabela hydro_measurements (vista hydromensures não existe)
+      const { data, error } = await supabase
+        .from('hydro_measurements')
+        .select('tds, device_id, created_at')
+        .eq('device_id', selectedDeviceId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(); // Usar maybeSingle() em vez de single() para evitar erro se não houver dados
+      
+      if (error) {
+        console.warn('⚠️ [EC Controller] Erro ao buscar TDS:', error);
+        // Não resetar para 0 em caso de erro, manter último valor válido
+        return;
+      }
+      
+      if (data && data.tds !== null && data.tds !== undefined) {
+        // Converter TDS (ppm) para EC (µS/cm)
+        // Fator de conversão comum: TDS * 0.5 = EC (para soluções hidropônicas)
+        const ecValue = data.tds * 0.5;
+        setEcAtual(ecValue);
+        
+        // Calcular erro atual (diferença entre EC atual e setpoint)
+        if (ecSetpoint > 0) {
+          const error = ecValue - ecSetpoint;
+          setEcError(error);
+        }
+        
+        console.log('✅ [EC Controller] EC atualizado:', {
+          tds: data.tds,
+          ec: ecValue.toFixed(1),
+          setpoint: ecSetpoint,
+          error: (ecValue - ecSetpoint).toFixed(1)
+        });
+      } else {
+        console.warn('⚠️ [EC Controller] Nenhum dado TDS encontrado para device:', selectedDeviceId);
+        // Não resetar para 0, manter último valor válido
+      }
+    } catch (err) {
+      console.error('❌ [EC Controller] Erro ao buscar EC atual:', err);
+      // Não resetar para 0 em caso de erro, manter último valor válido
+    }
+  }, [selectedDeviceId, ecSetpoint]);
 
   // Carregar regras do Supabase quando selectedDeviceId mudar
   useEffect(() => {
@@ -425,6 +652,21 @@ export default function AutomacaoPage() {
       loadECControllerConfig(); // ✅ NOVO: Carregar config EC Controller
     }
   }, [selectedDeviceId, userProfile?.email, loadLocalRelayNames, loadECControllerConfig]);
+  
+  // ✅ NOVO: Atualizar EC atual periodicamente (a cada 10 segundos)
+  useEffect(() => {
+    if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
+    
+    // Carregar imediatamente
+    fetchCurrentEC();
+    
+    // Atualizar a cada 10 segundos
+    const interval = setInterval(() => {
+      fetchCurrentEC();
+    }, 10000); // 10 segundos
+    
+    return () => clearInterval(interval);
+  }, [selectedDeviceId, fetchCurrentEC]);
 
   // ✅ Auto-expandir seção e slave quando há apenas 1 slave
   useEffect(() => {
@@ -1006,9 +1248,89 @@ export default function AutomacaoPage() {
   };
 
   // ✅ Função para validar contraseña de administrador
+  // ✅ Usada para bloquear/desbloquear: EC Controller, Slave Relay Manager, Decision Engine
+  // ✅ Todos os 3 toasts de bloqueio usam a mesma senha: "admin"
   const validateAdminPassword = (password: string): boolean => {
-    const adminPassword = 'admin123';
+    const adminPassword = 'admin';  // ✅ Contraseña única para todos os bloqueios
     return password === adminPassword;
+  };
+
+  // ✅ Função helper para mostrar toast de bloqueio/desbloqueio (reutilizável)
+  const showLockUnlockToast = (
+    isLocked: boolean,
+    sectionName: string,
+    onConfirm: () => void
+  ) => {
+    let passwordInputRef: HTMLInputElement | null = null;
+    
+    toast.custom((t) => {
+      const handleConfirm = () => {
+        const password = passwordInputRef?.value || '';
+        
+        if (password && validateAdminPassword(password)) {
+          onConfirm();
+          toast.dismiss(t.id);
+          toast.success(isLocked ? `✅ ${sectionName} desbloqueado` : `🔒 ${sectionName} bloqueado`);
+        } else {
+          toast.error('Senha incorreta!', { id: 'password-error' });
+          if (passwordInputRef) {
+            passwordInputRef.value = '';
+            passwordInputRef.focus();
+          }
+        }
+      };
+      
+      return (
+        <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-dark-card border border-dark-border shadow-lg rounded-lg pointer-events-auto flex flex-col p-4`}>
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <LockClosedIcon className="h-6 w-6 text-yellow-400" />
+            </div>
+            <div className="ml-3 w-full">
+              <h3 className="text-sm font-medium text-dark-text mb-2">
+                🔒 {isLocked ? 'Desbloquear' : 'Bloquear'} {sectionName}
+              </h3>
+              <p className="text-xs text-dark-textSecondary mb-3">
+                Esta ação requer senha de administrador para proteger a configuração.
+              </p>
+              <input
+                ref={(el) => { 
+                  passwordInputRef = el;
+                  if (el) {
+                    setTimeout(() => el.focus(), 100);
+                  }
+                }}
+                type="password"
+                className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none mb-3"
+                placeholder="Digite a senha de administrador"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleConfirm();
+                  }
+                }}
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleConfirm}
+                  className="flex-1 px-3 py-2 bg-aqua-500 hover:bg-aqua-600 text-white rounded-md text-sm font-medium transition-colors"
+                >
+                  Confirmar
+                </button>
+                <button
+                  onClick={() => toast.dismiss(t.id)}
+                  className="flex-1 px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border text-dark-text rounded-md text-sm font-medium transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }, {
+      duration: Infinity,
+    });
   };
 
   // ✅ Componente de confirmación con contraseña (usando React state)
@@ -1322,6 +1644,29 @@ export default function AutomacaoPage() {
                 <span className="text-xs sm:text-sm text-dark-textSecondary hidden sm:inline">
                   {espnowSlaves.length} {espnowSlaves.length === 1 ? 'dispositivo' : 'dispositivos'}
                 </span>
+                {/* ✅ Candado para bloquear/desbloquear controles Slave Relay Manager (com senha admin) */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    showLockUnlockToast(
+                      slaveRelayManagerLocked,
+                      'Slave Relay Manager',
+                      () => setSlaveRelayManagerLocked(prev => !prev)
+                    );
+                  }}
+                  className={`p-1.5 rounded transition-colors ${
+                    slaveRelayManagerLocked
+                      ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
+                      : 'bg-aqua-500/20 text-aqua-400 hover:bg-aqua-500/30 border border-aqua-500/30'
+                  }`}
+                  title={slaveRelayManagerLocked ? 'Desbloquear controles (requer senha admin)' : 'Bloquear controles (requer senha admin)'}
+                >
+                  {slaveRelayManagerLocked ? (
+                    <LockClosedIcon className="w-4 h-4" />
+                  ) : (
+                    <LockOpenIcon className="w-4 h-4" />
+                  )}
+                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1960,23 +2305,55 @@ export default function AutomacaoPage() {
                 <p className="text-xs sm:text-sm text-dark-textSecondary mt-1">Configure regras automáticas com Regras script Sequenciais</p>
               </div>
             </div>
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsModalOpen(true);
-              }}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
+            <div className="flex items-center gap-2">
+              {/* ✅ Candado para bloquear/desbloquear controles Decision Engine (com senha admin) */}
+              <button
+                onClick={(e) => {
                   e.stopPropagation();
-                  setIsModalOpen(true);
-                }
-              }}
-              className="bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-2 px-4 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm sm:text-base flex-shrink-0 ml-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-aqua-500 focus:ring-offset-2 focus:ring-offset-dark-card"
-            >
-              ➕ Nova Regra
+                  showLockUnlockToast(
+                    decisionEngineLocked,
+                    'Decision Engine',
+                    () => setDecisionEngineLocked(prev => !prev)
+                  );
+                }}
+                className={`p-1.5 rounded transition-colors ${
+                  decisionEngineLocked
+                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
+                    : 'bg-aqua-500/20 text-aqua-400 hover:bg-aqua-500/30 border border-aqua-500/30'
+                }`}
+                title={decisionEngineLocked ? 'Desbloquear controles (requer senha admin)' : 'Bloquear controles (requer senha admin)'}
+              >
+                {decisionEngineLocked ? (
+                  <LockClosedIcon className="w-4 h-4" />
+                ) : (
+                  <LockOpenIcon className="w-4 h-4" />
+                )}
+              </button>
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!decisionEngineLocked) {
+                    setIsModalOpen(true);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!decisionEngineLocked) {
+                      setIsModalOpen(true);
+                    }
+                  }
+                }}
+                className={`bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-2 px-4 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm sm:text-base flex-shrink-0 ml-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-aqua-500 focus:ring-offset-2 focus:ring-offset-dark-card ${
+                  decisionEngineLocked ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                title={decisionEngineLocked ? 'Controles bloqueados' : 'Criar nova regra'}
+              >
+                ➕ Nova Regra
+              </div>
             </div>
           </button>
 
@@ -2305,6 +2682,101 @@ export default function AutomacaoPage() {
                 📋 Controle Nutricional Proporcional
               </h3>
             </div>
+            {/* ✅ Candado para bloquear/desbloquear controles EC (com senha admin) */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // ✅ CORRIGIDO: Usar useRef para guardar valor do input de forma confiável
+                let passwordInputRef: HTMLInputElement | null = null;
+                
+                // ✅ Mostrar toast de confirmação com senha admin
+                const action = ecControllerLocked ? 'desbloquear' : 'bloquear';
+                toast.custom((t) => {
+                  const handleConfirm = () => {
+                    // ✅ Buscar input usando ref ou selector dentro do toast
+                    const password = passwordInputRef?.value || '';
+                    
+                    if (password && validateAdminPassword(password)) {
+                      setEcControllerLocked(prev => !prev);
+                      toast.dismiss(t.id);
+                      toast.success(ecControllerLocked ? '✅ Controles desbloqueados' : '🔒 Controles bloqueados');
+                    } else {
+                      toast.error('Senha incorreta!', { id: 'password-error' });
+                      // Limpar input em caso de erro
+                      if (passwordInputRef) {
+                        passwordInputRef.value = '';
+                        passwordInputRef.focus();
+                      }
+                    }
+                  };
+                  
+                  return (
+                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-dark-card border border-dark-border shadow-lg rounded-lg pointer-events-auto flex flex-col p-4`}>
+                      <div className="flex items-start">
+                        <div className="flex-shrink-0">
+                          <LockClosedIcon className="h-6 w-6 text-yellow-400" />
+                        </div>
+                        <div className="ml-3 w-full">
+                          <h3 className="text-sm font-medium text-dark-text mb-2">
+                            🔒 {ecControllerLocked ? 'Desbloquear' : 'Bloquear'} Controles EC
+                          </h3>
+                          <p className="text-xs text-dark-textSecondary mb-3">
+                            Esta ação requer senha de administrador para proteger a configuração.
+                          </p>
+                          {/* Input de senha */}
+                          <input
+                            ref={(el) => { 
+                              passwordInputRef = el;
+                              // Auto-focus quando o ref é atribuído
+                              if (el) {
+                                setTimeout(() => el.focus(), 100);
+                              }
+                            }}
+                            type="password"
+                            className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none mb-3"
+                            placeholder="Digite a senha de administrador"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleConfirm();
+                              }
+                            }}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleConfirm}
+                              className="flex-1 px-3 py-2 bg-aqua-500 hover:bg-aqua-600 text-white rounded-md text-sm font-medium transition-colors"
+                            >
+                              Confirmar
+                            </button>
+                            <button
+                              onClick={() => toast.dismiss(t.id)}
+                              className="flex-1 px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border text-dark-text rounded-md text-sm font-medium transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }, {
+                  duration: Infinity, // Toast permanece até o usuário interagir
+                });
+              }}
+              className={`p-1.5 rounded transition-colors ${
+                ecControllerLocked
+                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
+                  : 'bg-aqua-500/20 text-aqua-400 hover:bg-aqua-500/30 border border-aqua-500/30'
+              }`}
+              title={ecControllerLocked ? 'Desbloquear controles (requer senha admin)' : 'Bloquear controles (requer senha admin)'}
+            >
+              {ecControllerLocked ? (
+                <LockClosedIcon className="w-4 h-4" />
+              ) : (
+                <LockOpenIcon className="w-4 h-4" />
+              )}
+            </button>
           </button>
 
           {/* Conteúdo Expandido - Configuração EC Controller + Tabela de Nutrição */}
@@ -2328,7 +2800,11 @@ export default function AutomacaoPage() {
                         setEditingNutrientIndex(null);
                         setIsNutrientModalOpen(true);
                       }}
-                      className="flex items-center justify-center space-x-2 px-4 py-3 sm:py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm sm:text-base w-full sm:w-auto"
+                      disabled={ecControllerLocked}
+                      className={`flex items-center justify-center space-x-2 px-4 py-3 sm:py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm sm:text-base w-full sm:w-auto ${
+                        ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                      title={ecControllerLocked ? 'Controles bloqueados' : 'Adicionar nutriente'}
                     >
                       <span className="text-base sm:text-lg">+</span>
                       <span>Nutriente</span>
@@ -2345,9 +2821,15 @@ export default function AutomacaoPage() {
                     type="number"
                     min="0.1"
                     step="0.1"
-                    value={pumpFlowRate}
-                    onChange={(e) => setPumpFlowRate(parseFloat(e.target.value))}
-                    className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none"
+                    value={isNaN(pumpFlowRate) ? '' : pumpFlowRate}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value);
+                      setPumpFlowRate(isNaN(value) ? 1.0 : value);
+                    }}
+                    disabled={ecControllerLocked}
+                    className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
+                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                   />
                 </div>
                 
@@ -2360,9 +2842,15 @@ export default function AutomacaoPage() {
                     type="number"
                     min="1"
                     step="1"
-                    value={totalVolume}
-                    onChange={(e) => setTotalVolume(parseInt(e.target.value, 10))}
-                    className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none"
+                    value={isNaN(totalVolume) ? '' : totalVolume}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value, 10);
+                      setTotalVolume(isNaN(value) ? 10 : value);
+                    }}
+                    disabled={ecControllerLocked}
+                    className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
+                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                   />
                 </div>
               </div>
@@ -2468,8 +2956,14 @@ export default function AutomacaoPage() {
                               min="0"
                               step="0.1"
                               value={nutrient.mlPerLiter}
-                              onChange={(e) => handleMlPerLiterChange(index, parseFloat(e.target.value))}
-                              className="w-full p-1.5 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none"
+                              onChange={(e) => {
+                                const value = parseFloat(e.target.value);
+                                handleMlPerLiterChange(index, isNaN(value) ? 0 : value);
+                              }}
+                              disabled={ecControllerLocked}
+                              className={`w-full p-1.5 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
+                                ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                              }`}
                             />
                           </td>
                           <td className="py-2 px-4 text-dark-text">{calculateQuantity(nutrient.mlPerLiter).toFixed(1)}</td>
@@ -2478,10 +2972,11 @@ export default function AutomacaoPage() {
                                 <div className="flex items-center space-x-2">
                             <button
                               onClick={() => handleDoseNutrient(nutrient, index)}
-                              disabled={isLoadingNutrients[nutrient.relayNumber]}
+                              disabled={isLoadingNutrients[nutrient.relayNumber] || ecControllerLocked}
                               className={`px-3 py-1.5 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded transition-all shadow-lg hover:shadow-aqua-500/50 ${
-                                isLoadingNutrients[nutrient.relayNumber] ? 'opacity-50 cursor-not-allowed' : ''
+                                isLoadingNutrients[nutrient.relayNumber] || ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
                               }`}
+                              title={ecControllerLocked ? 'Controles bloqueados' : isLoadingNutrients[nutrient.relayNumber] ? 'Dosificando...' : 'Dosificar'}
                             >
                               {isLoadingNutrients[nutrient.relayNumber] ? 'Dosificando...' : 'Dosificar'}
                             </button>
@@ -2490,8 +2985,11 @@ export default function AutomacaoPage() {
                                       setEditingNutrientIndex(index);
                                       setIsNutrientModalOpen(true);
                                     }}
-                                    className="px-3 py-1.5 bg-dark-surface hover:bg-dark-border border border-dark-border text-dark-text rounded transition-all"
-                                    title="Editar"
+                                    disabled={ecControllerLocked}
+                                    className={`px-3 py-1.5 bg-dark-surface hover:bg-dark-border border border-dark-border text-dark-text rounded transition-all ${
+                                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                                    }`}
+                                    title={ecControllerLocked ? 'Controles bloqueados' : 'Editar'}
                                   >
                                     ✏️
                                   </button>
@@ -2501,8 +2999,11 @@ export default function AutomacaoPage() {
                                       setNutrientsState(updated);
                                       saveECControllerConfig();
                                     }}
-                                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-all"
-                                    title="Remover"
+                                    disabled={ecControllerLocked}
+                                    className={`px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-all ${
+                                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                                    }`}
+                                    title={ecControllerLocked ? 'Controles bloqueados' : 'Remover'}
                                   >
                                     🗑️
                                   </button>
@@ -2513,16 +3014,6 @@ export default function AutomacaoPage() {
                     })}
                   </tbody>
                 </table>
-                  </div>
-                  
-                  {/* Botão Salvar Configuração */}
-                  <div className="mt-4 flex justify-end">
-                    <button
-                      onClick={saveECControllerConfig}
-                      className="px-6 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg transition-all shadow-lg hover:shadow-green-500/50"
-                    >
-                      💾 Salvar Configuração
-                    </button>
                   </div>
                 </div>
                 
@@ -2537,9 +3028,15 @@ export default function AutomacaoPage() {
                       type="number"
                       min="0"
                       step="1"
-                      value={baseDose}
-                      onChange={(e) => setBaseDose(parseFloat(e.target.value))}
-                      className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none"
+                      value={isNaN(baseDose) ? '' : baseDose}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value);
+                        setBaseDose(isNaN(value) ? 0 : value);
+                      }}
+                      disabled={ecControllerLocked}
+                      className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
+                        ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                       placeholder="Ex: 1525"
                     />
                     <small className="text-xs text-red-400 mt-1 block">
@@ -2574,9 +3071,15 @@ export default function AutomacaoPage() {
                       type="number"
                       min="0"
                       step="10"
-                      value={ecSetpoint}
-                      onChange={(e) => setEcSetpoint(parseFloat(e.target.value))}
-                      className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none"
+                      value={isNaN(ecSetpoint) ? '' : ecSetpoint}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value);
+                        setEcSetpoint(isNaN(value) ? 0 : value);
+                      }}
+                      disabled={ecControllerLocked}
+                      className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
+                        ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                       placeholder="Ex: 1500"
                     />
                   </div>
@@ -2591,9 +3094,15 @@ export default function AutomacaoPage() {
                       min="1"
                       max="60"
                       step="1"
-                      value={intervaloAutoEC}
-                      onChange={(e) => setIntervaloAutoEC(parseInt(e.target.value, 10))}
-                      className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none"
+                      value={isNaN(intervaloAutoEC) ? '' : intervaloAutoEC}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value, 10);
+                        setIntervaloAutoEC(isNaN(value) ? 300 : value);
+                      }}
+                      disabled={ecControllerLocked}
+                      className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
+                        ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                       placeholder="Ex: 300"
                     />
                     <small className="text-xs text-orange-400 mt-1 block">
@@ -2605,42 +3114,74 @@ export default function AutomacaoPage() {
                     <label htmlFor="tempo-recirculacao" className="block text-sm font-medium text-dark-textSecondary mb-1">
                       Tempo de recirculação:
                     </label>
-                    <input
-                      id="tempo-recirculacao"
-                      type="text"
-                      value={tempoRecirculacao}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        // Permitir apenas números e dois pontos
-                        if (value === '' || /^([0-1]?[0-9]|2[0-3]):?([0-5]?[0-9]):?([0-5]?[0-9])?$/.test(value)) {
-                          // Auto-formatação enquanto digita
-                          let formatted = value.replace(/[^\d]/g, '');
-                          if (formatted.length <= 2) {
-                            setTempoRecirculacao(formatted.padStart(2, '0') + ':00:00');
-                          } else if (formatted.length <= 4) {
-                            const h = formatted.slice(0, 2);
-                            const m = formatted.slice(2).padStart(2, '0');
-                            setTempoRecirculacao(`${h}:${m}:00`);
-                          } else {
-                            const h = formatted.slice(0, 2);
-                            const m = formatted.slice(2, 4);
-                            const s = formatted.slice(4, 6).padStart(2, '0');
-                            setTempoRecirculacao(`${h}:${m}:${s}`);
-                          }
-                        }
-                      }}
-                      onBlur={(e) => {
-                        // Validar e corrigir formato ao perder foco
-                        if (!validateTimeFormat(e.target.value)) {
-                          setTempoRecirculacao('00:01:00'); // Default: 1 minuto
-                        }
-                      }}
-                      className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none font-mono text-lg"
-                      placeholder="00:01:00"
-                      maxLength={8}
-                    />
-                    <small className="text-xs text-gray-400 mt-1 block">
-                      Formato: HH:MM:SS (ex: 00:01:00 = 1 minuto)
+                    <div className="flex items-center gap-2">
+                      {/* Input de Horas */}
+                      <div className="flex-1">
+                        <input
+                          id="tempo-recirculacao-hours"
+                          type="number"
+                          min="0"
+                          max="23"
+                          step="1"
+                          value={tempoRecirculacaoHours}
+                          disabled={ecControllerLocked}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value, 10);
+                            if (!isNaN(value) && value >= 0 && value <= 23) {
+                              setTempoRecirculacaoHours(value);
+                            } else if (e.target.value === '') {
+                              setTempoRecirculacaoHours(0);
+                            }
+                          }}
+                          onBlur={(e) => {
+                            if (e.target.value === '' || isNaN(parseInt(e.target.value, 10))) {
+                              setTempoRecirculacaoHours(0);
+                            }
+                          }}
+                          className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none text-center font-semibold ${
+                            ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                          }`}
+                          placeholder="00"
+                        />
+                        <small className="text-xs text-dark-textSecondary text-center block mt-1">Horas</small>
+                      </div>
+                      
+                      {/* Separador */}
+                      <span className="text-2xl font-bold text-dark-textSecondary pt-6">:</span>
+                      
+                      {/* Input de Minutos */}
+                      <div className="flex-1">
+                        <input
+                          id="tempo-recirculacao-minutes"
+                          type="number"
+                          min="0"
+                          max="59"
+                          step="1"
+                          value={tempoRecirculacaoMinutes}
+                          disabled={ecControllerLocked}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value, 10);
+                            if (!isNaN(value) && value >= 0 && value <= 59) {
+                              setTempoRecirculacaoMinutes(value);
+                            } else if (e.target.value === '') {
+                              setTempoRecirculacaoMinutes(0);
+                            }
+                          }}
+                          onBlur={(e) => {
+                            if (e.target.value === '' || isNaN(parseInt(e.target.value, 10))) {
+                              setTempoRecirculacaoMinutes(1);
+                            }
+                          }}
+                          className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none text-center font-semibold ${
+                            ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                          }`}
+                          placeholder="01"
+                        />
+                        <small className="text-xs text-dark-textSecondary text-center block mt-1">Minutos</small>
+                      </div>
+                    </div>
+                    <small className="text-xs text-gray-400 mt-2 block">
+                      Formato: HH:MM (ex: 00:01 = 1 minuto, 01:30 = 1 hora e 30 minutos)
                     </small>
                   </div>
                 </div>
@@ -2649,41 +3190,41 @@ export default function AutomacaoPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   {/* Status do EC Controller */}
                   <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-                    <h3 className="text-sm font-semibold text-dark-text mb-3">📊 Status do Controle</h3>
-                    <div className="space-y-2">
+                    <h3 className="text-base font-semibold text-dark-text mb-3">📊 Status do Controle</h3>
+                    <div className="space-y-2.5">
                       <div className="flex justify-between">
-                        <span className="text-sm text-dark-textSecondary">Status:</span>
-                        <span className={`text-sm font-medium ${autoEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                        <span className="text-base text-dark-textSecondary">Status:</span>
+                        <span className={`text-base font-medium ${autoEnabled ? 'text-green-400' : 'text-red-400'}`}>
                           {autoEnabled ? '✅ Ativado' : '❌ Desativado'}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-dark-textSecondary">Erro atual:</span>
-                        <span className="text-sm font-medium text-dark-text">{ecError.toFixed(1)} µS/cm</span>
+                        <span className="text-base text-dark-textSecondary">Erro atual:</span>
+                        <span className="text-base font-medium text-dark-text">{Math.abs(ecError).toFixed(1)} µS/cm</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-dark-textSecondary">Última dosagem:</span>
-                        <span className="text-sm font-medium text-dark-text">{lastDosage.toFixed(2)} ml</span>
+                        <span className="text-base text-dark-textSecondary">Última dosagem:</span>
+                        <span className="text-base font-medium text-dark-text">{lastDosage.toFixed(2)} ml</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-dark-textSecondary">EC Atual:</span>
-                        <span className="text-sm font-medium text-dark-text">{ecAtual.toFixed(1)} µS/cm</span>
+                        <span className="text-base text-dark-textSecondary">EC Atual:</span>
+                        <span className="text-base font-medium text-dark-text">{ecAtual.toFixed(1)} µS/cm</span>
                       </div>
                     </div>
                   </div>
                   
                   {/* Equação de Controle */}
                   <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-                    <h3 className="text-sm font-semibold text-dark-text mb-3">🧮 Equação de Controle Proporcional</h3>
-                    <div className="space-y-2 text-sm">
-                      <div className="font-mono text-aqua-400 mb-2">u(t) = (V / k × q) × e</div>
+                    <h3 className="text-base font-semibold text-dark-text mb-3">🧮 Equação de Controle Proporcional</h3>
+                    <div className="space-y-2.5 text-base">
+                      <div className="font-mono text-aqua-400 mb-2 text-lg">u(t) = (V / k × q) × e</div>
                       <div className="flex justify-between">
                         <span className="text-dark-textSecondary">V (Volume):</span>
-                        <span className="text-dark-text">{totalVolume} L</span>
+                        <span className="text-dark-text font-medium">{totalVolume} L</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-dark-textSecondary">k (EC base / ml por L):</span>
-                        <span className="text-dark-text">
+                        <span className="text-dark-text font-medium">
                           {nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0) > 0 
                             ? (baseDose / nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0)).toFixed(3)
                             : '0.000'}
@@ -2691,11 +3232,11 @@ export default function AutomacaoPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-dark-textSecondary">q (Taxa de vazão):</span>
-                        <span className="text-dark-text">{pumpFlowRate.toFixed(3)} ml/s</span>
+                        <span className="text-dark-text font-medium">{pumpFlowRate.toFixed(3)} ml/s</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-dark-textSecondary">e (Erro EC):</span>
-                        <span className="text-dark-text">{ecError.toFixed(1)} µS/cm</span>
+                        <span className="text-dark-text font-medium">{Math.abs(ecError).toFixed(1)} µS/cm</span>
                       </div>
                     </div>
                   </div>
@@ -2708,22 +3249,74 @@ export default function AutomacaoPage() {
                       await saveECControllerConfig();
                       toast.success('Parâmetros salvos com sucesso!');
                     }}
-                    className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg transition-all shadow-lg hover:shadow-green-500/50"
+                    disabled={ecControllerLocked}
+                    className={`px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg transition-all shadow-lg hover:shadow-green-500/50 ${
+                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    title={ecControllerLocked ? 'Controles bloqueados' : 'Salvar parâmetros'}
                   >
                     💾 Salvar Parâmetros
                   </button>
                   <button
                     onClick={async () => {
-                      const newAutoEnabled = !autoEnabled;
-                      setAutoEnabled(newAutoEnabled);
-                      await saveECControllerConfig();
-                      toast.success(`Auto EC ${newAutoEnabled ? 'ativado' : 'desativado'}`);
+                      if (autoEnabled) {
+                        // ✅ CORRIGIDO: Desativar - passar auto_enabled = false explicitamente
+                        try {
+                          // ✅ Passar auto_enabled = false explicitamente para evitar problemas de closure
+                          const saved = await saveECControllerConfig(false, false);
+                          
+                          if (saved) {
+                            // ✅ Confirmado: auto_enabled = false em Supabase
+                            setAutoEnabled(false);  // Atualizar estado local APENAS após sucesso
+                            toast.success('✅ Auto EC desativado');
+                            console.log('✅ [EC Controller] Auto EC desativado no Supabase');
+                          } else {
+                            // ❌ Erro: não atualizar estado local
+                            toast.error('❌ Erro ao desativar Auto EC no Supabase');
+                            console.error('❌ [EC Controller] Falha ao desativar Auto EC');
+                          }
+                        } catch (err) {
+                          // ❌ Erro: não atualizar estado local
+                          console.error('❌ [EC Controller] Erro ao desativar Auto EC:', err);
+                          toast.error(`Erro: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+                        }
+                      } else {
+                        // ✅ NOVA ARQUITETURA: Ativar via RPC activate_auto_ec
+                        try {
+                          const { data, error } = await supabase.rpc('activate_auto_ec', {
+                            p_device_id: selectedDeviceId
+                          });
+                          
+                          if (error) {
+                            console.error('❌ [EC Controller] Erro ao ativar Auto EC:', error);
+                            toast.error(`Erro ao ativar: ${error.message || 'Erro desconhecido'}`);
+                            return;
+                          }
+                          
+                          if (data && data.length > 0) {
+                            const config = data[0];
+                            // Atualizar estado local com a config retornada
+                            setAutoEnabled(true);
+                            toast.success('✅ Auto EC ativado! Configuração enviada ao ESP32.');
+                            console.log('✅ [EC Controller] Auto EC ativado via RPC:', config);
+                          } else {
+                            toast.error('Configuração não encontrada. Salve os parâmetros primeiro.');
+                          }
+                        } catch (err) {
+                          console.error('❌ [EC Controller] Erro ao chamar RPC activate_auto_ec:', err);
+                          toast.error(`Erro: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+                        }
+                      }
                     }}
+                    disabled={ecControllerLocked}
                     className={`px-4 py-2 rounded-lg transition-all shadow-lg ${
                       autoEnabled
                         ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'
                         : 'bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white'
+                    } ${
+                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
+                    title={ecControllerLocked ? 'Controles bloqueados' : autoEnabled ? 'Desativar Auto EC' : 'Ativar Auto EC'}
                   >
                     {autoEnabled ? '⏹️ Desativar Auto EC' : '🤖 Ativar Auto EC'}
                   </button>
@@ -2731,7 +3324,11 @@ export default function AutomacaoPage() {
                     onClick={() => {
                       setShowECConfigPreview(true);
                     }}
-                    className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-lg transition-all shadow-lg hover:shadow-purple-500/50"
+                    disabled={ecControllerLocked}
+                    className={`px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-lg transition-all shadow-lg hover:shadow-purple-500/50 ${
+                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    title={ecControllerLocked ? 'Controles bloqueados' : 'Ver preview da configuração'}
                   >
                     🔍 Debug Vista Previa
                   </button>
@@ -2740,19 +3337,47 @@ export default function AutomacaoPage() {
                       setBaseDose(0);
                       setEcSetpoint(0);
                       setIntervaloAutoEC(300);
-                      setTempoRecirculacao('00:01:00');
+                      setTempoRecirculacao('00:01');
+                      setTempoRecirculacaoHours(0);
+                      setTempoRecirculacaoMinutes(1);
                       setAutoEnabled(false);
                       toast.success('Valores limpos');
                     }}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all"
+                    disabled={ecControllerLocked}
+                    className={`px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all ${
+                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    title={ecControllerLocked ? 'Controles bloqueados' : 'Limpar valores'}
                   >
                     🗑️ Limpar Valores
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (confirm('🚨 ATENÇÃO: Isso irá parar TODOS os processos e resetar o sistema. Continuar?')) {
+                        try {
+                          // ✅ CRÍTICO: Actualizar auto_enabled = false en Supabase
                         setAutoEnabled(false);
-                        toast.error('Reset emergencial executado');
+                          
+                          // Actualizar en Supabase para que ESP32 pare inmediatamente
+                          const { error } = await supabase
+                            .from('ec_config_view')
+                            .update({ 
+                              auto_enabled: false,
+                              updated_at: new Date().toISOString()
+                            })
+                            .eq('device_id', selectedDeviceId);
+                          
+                          if (error) {
+                            console.error('❌ [EC Controller] Erro ao desativar Auto EC no Supabase:', error);
+                            toast.error(`Erro ao desativar: ${error.message}`);
+                          } else {
+                            console.log('✅ [EC Controller] Auto EC desativado no Supabase (Reset Emergencial)');
+                            toast.error('🚨 Reset emergencial executado - Auto EC desativado');
+                          }
+                        } catch (err) {
+                          console.error('❌ [EC Controller] Erro crítico no Reset Emergencial:', err);
+                          toast.error('Erro ao executar reset emergencial');
+                        }
                       }
                     }}
                     className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg transition-all font-bold"
@@ -2866,8 +3491,23 @@ export default function AutomacaoPage() {
                   setIsNutrientModalOpen(false);
                   setEditingNutrientIndex(null);
                   
-                  // Salvar automaticamente no Supabase
-                  await saveECControllerConfig();
+                  // Toast de confirmação antes de salvar
+                  if (editingNutrientIndex !== null) {
+                    toast.success(`Nutriente "${newNutrient.name}" editado! Salvando no Supabase...`);
+                  } else {
+                    toast.success(`Nutriente "${newNutrient.name}" adicionado! Salvando no Supabase...`);
+                  }
+                  
+                  // Salvar automaticamente no Supabase (modo silencioso para evitar toast duplicado)
+                  const saved = await saveECControllerConfig(true);
+                  
+                  if (saved) {
+                    if (editingNutrientIndex !== null) {
+                      toast.success(`✅ Nutriente "${newNutrient.name}" salvo no Supabase!`);
+                    } else {
+                      toast.success(`✅ Nutriente "${newNutrient.name}" salvo no Supabase!`);
+                    }
+                  }
                 }}
                 className="px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50"
               >
@@ -2970,6 +3610,79 @@ export default function AutomacaoPage() {
             <div className="flex items-center justify-end p-6 border-t border-dark-border">
               <button
                 onClick={() => setJsonPreviewRule(null)}
+                className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Vista Previa JSON - EC Config */}
+      {showECConfigPreview && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-card border border-dark-border rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-dark-border">
+              <h2 className="text-xl font-bold text-dark-text">
+                🔍 Debug Vista Previa - EC Controller Config
+              </h2>
+              <button
+                onClick={() => setShowECConfigPreview(false)}
+                className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-dark-textSecondary hover:text-dark-text"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content - JSON formateado */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
+                <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-words overflow-x-auto">
+                  {JSON.stringify(getECConfigJson(), null, 2)}
+                </pre>
+              </div>
+              
+              {/* Informação adicional */}
+              <div className="mt-4 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                <p className="text-xs text-purple-300 mb-2">
+                  💡 Este é o JSON completo que será enviado/salvo no Supabase (tabela ec_config_view)
+                </p>
+                <p className="text-xs text-gray-400 mb-2">
+                  Este formato é o mesmo que aparece no console.log quando a configuração é salva.
+                </p>
+                <div className="mt-3 space-y-1 text-xs text-gray-400">
+                  <p><strong className="text-purple-300">device_id:</strong> ID do dispositivo Master</p>
+                  <p><strong className="text-purple-300">base_dose:</strong> EC base em µS/cm</p>
+                  <p><strong className="text-purple-300">flow_rate:</strong> Taxa de vazão da bomba (ml/s)</p>
+                  <p><strong className="text-purple-300">volume:</strong> Volume total do reservatório (L)</p>
+                  <p><strong className="text-purple-300">total_ml:</strong> Soma de ml/L de todos os nutrientes</p>
+                  <p><strong className="text-purple-300">ec_setpoint:</strong> Setpoint desejado de EC (µS/cm)</p>
+                  <p><strong className="text-purple-300">auto_enabled:</strong> Controle automático ativado?</p>
+                  <p><strong className="text-purple-300">nutrients:</strong> Array de nutrientes com relés e ml/L</p>
+                  <p><strong className="text-purple-300">intervalo_auto_ec:</strong> Intervalo entre verificações (segundos)</p>
+                  <p><strong className="text-purple-300">tempo_recirculacao:</strong> Tempo de recirculação em milisegundos (ex: 60000 = 1 minuto). No JSON de debug também mostra formato HH:MM:SS</p>
+                  <p className="mt-2 text-purple-300"><strong>_debug:</strong> Informações calculadas adicionais para debug</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between p-6 border-t border-dark-border">
+              <button
+                onClick={() => {
+                  const jsonStr = JSON.stringify(getECConfigJson(), null, 2);
+                  navigator.clipboard.writeText(jsonStr);
+                  toast.success('JSON copiado para a área de transferência!');
+                }}
+                className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                <ClipboardIcon className="w-4 h-4" />
+                Copiar JSON
+              </button>
+              <button
+                onClick={() => setShowECConfigPreview(false)}
                 className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors"
               >
                 Fechar

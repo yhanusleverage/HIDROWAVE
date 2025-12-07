@@ -74,12 +74,16 @@ export async function getRelayCommandsHistory(
   relayType: 'local' | 'slave' = 'local'
 ): Promise<any[]> {
   try {
+    // ✅ CORRIGIDO: Usar tabela correta conforme o tipo
+    const tableName = relayType === 'local' ? 'relay_commands_master' : 'relay_commands_slave';
+    
     let query = supabase
-      .from('relay_commands')
+      .from(tableName)
       .select('*')
       .eq('device_id', deviceId)
-      .eq('status', 'completed') // Apenas comandos completados
-      .order('created_at', { ascending: false });
+      .in('status', ['completed', 'sent']) // ✅ Incluir 'sent' também (comandos executados)
+      .order('created_at', { ascending: false })
+      .limit(1000); // ✅ Limitar resultados para evitar timeout
 
     // Filtrar por período se fornecido
     if (startDate) {
@@ -92,13 +96,34 @@ export async function getRelayCommandsHistory(
     const { data, error } = await query;
 
     if (error) {
-      console.error('Erro ao buscar histórico de comandos:', error);
+      console.error(`❌ Erro ao buscar histórico de comandos (${tableName}):`, {
+        error,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        deviceId,
+        relayType,
+        startDate: startDate?.toISOString(),
+        endDate: endDate?.toISOString()
+      });
       return [];
     }
 
-    return data || [];
+    if (!data) {
+      console.warn(`⚠️ Nenhum dado retornado de ${tableName} para device_id: ${deviceId}`);
+      return [];
+    }
+
+    return data;
   } catch (error) {
-    console.error('Erro ao buscar histórico:', error);
+    console.error('❌ Erro ao buscar histórico de comandos (exceção):', {
+      error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      deviceId,
+      relayType
+    });
     return [];
   }
 }
@@ -210,6 +235,13 @@ export async function getDeviceAnalytics(
     // Buscar comandos locais (HydroControl)
     const localCommands = await getRelayCommandsHistory(deviceId, startDate, endDate, 'local');
     
+    // ✅ Log para debug
+    if (localCommands.length === 0) {
+      console.log(`ℹ️ Nenhum comando encontrado para device_id: ${deviceId} no período de ${daysBack} dias`);
+    } else {
+      console.log(`✅ Encontrados ${localCommands.length} comandos para analytics`);
+    }
+    
     // Configurações padrão de bombas (pode ser carregado do banco depois)
     const defaultPumpConfigs: PumpConfig[] = [
       { relay_id: 0, flow_rate_ml_per_second: 1.0 }, // pH+
@@ -237,8 +269,27 @@ export async function getDeviceAnalytics(
       period_end: endDate.toISOString(),
     };
   } catch (error) {
-    console.error('Erro ao buscar analytics:', error);
-    throw error;
+    console.error('❌ Erro ao buscar analytics:', {
+      error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      deviceId,
+      daysBack
+    });
+    
+    // ✅ Retornar estrutura vazia ao invés de lançar erro
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - daysBack);
+    
+    return {
+      device_id: deviceId,
+      relay_type: 'local',
+      metrics: [],
+      total_ml_all_relays: 0,
+      period_start: startDate.toISOString(),
+      period_end: endDate.toISOString(),
+    };
   }
 }
 

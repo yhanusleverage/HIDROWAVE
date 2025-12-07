@@ -45,25 +45,7 @@ CREATE TABLE IF NOT EXISTS public.ec_controller_config (
   --   },
   --   ...
   -- ]
-  
-  -- ✅ DISTRIBUIÇÃO DE DOSAGEM (JSONB - opcional, para dosagem proporcional)
-  distribution JSONB DEFAULT NULL,
-  -- Estrutura esperada:
-  -- {
-  --   "totalUt": 15.5,
-  --   "intervalo": 5,
-  --   "distribution": [
-  --     {
-  --       "nutriente": "Grow",
-  --       "relay": 0,
-  --       "mlPorLitro": 2.5,
-  --       "proporcao": 0.4,
-  --       "utNutriente": 6.2,
-  --       "tempoDosagem": 6.37
-  --     },
-  --     ...
-  --   ]
-  -- }
+  -- ✅ NOTA: Distribution foi removido - ESP32 calcula localmente usando nutrients
   
   -- ✅ Metadados
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -101,8 +83,7 @@ CREATE INDEX IF NOT EXISTS idx_ec_controller_config_updated_at
 CREATE INDEX IF NOT EXISTS idx_ec_controller_config_nutrients_gin 
   ON public.ec_controller_config USING GIN (nutrients);
 
-CREATE INDEX IF NOT EXISTS idx_ec_controller_config_distribution_gin 
-  ON public.ec_controller_config USING GIN (distribution);
+-- ✅ REMOVIDO: Índice de distribution (coluna removida)
 
 -- =====================================================
 -- ETAPA 3: CRIAR TRIGGER PARA updated_at AUTOMÁTICO
@@ -159,10 +140,7 @@ COMMENT ON COLUMN public.ec_controller_config.intervalo_auto_ec IS
   'Intervalo em segundos entre verificações automáticas de EC';
 
 COMMENT ON COLUMN public.ec_controller_config.nutrients IS 
-  'Array JSON de nutrientes: [{"name": "...", "relay": 0, "mlPerLiter": 2.5, "proportion": 0.4, "active": true}, ...]';
-
-COMMENT ON COLUMN public.ec_controller_config.distribution IS 
-  'Distribuição de dosagem proporcional: {"totalUt": 15.5, "intervalo": 5, "distribution": [...]}';
+  'Array JSON de nutrientes: [{"name": "...", "relay": 0, "mlPerLiter": 2.5, "proportion": 0.4, "active": true}, ...]. ESP32 calcula distribution localmente usando estes dados.';
 
 -- =====================================================
 -- ETAPA 5: CONFIGURAR PERMISSÕES (RLS)
@@ -245,7 +223,6 @@ INSERT INTO public.ec_controller_config (
   auto_enabled,
   intervalo_auto_ec,
   nutrients,
-  distribution
 ) VALUES (
   'ESP32_HIDRO_F44738',
   1525.0,
@@ -300,7 +277,6 @@ SELECT
   base_dose,
   flow_rate,
   nutrients,
-  distribution
 FROM public.ec_controller_config
 WHERE device_id = 'ESP32_HIDRO_F44738';
 */

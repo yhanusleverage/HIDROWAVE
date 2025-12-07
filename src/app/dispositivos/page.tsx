@@ -448,10 +448,19 @@ export default function DispositivosPage() {
                       </div>
                     )}
                     
-                    {device.user_email && (
+                    {/* ✅ Reboot Count - Device Info */}
+                    {device.reboot_count !== undefined && device.reboot_count !== null && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-dark-textSecondary">Email:</span>
-                        <span className="font-medium text-aqua-400">{device.user_email}</span>
+                        <span className="text-dark-textSecondary">🔄 Reinícios:</span>
+                        <span className={`font-bold ${
+                          device.reboot_count === 0 
+                            ? 'text-green-400' 
+                            : device.reboot_count < 10 
+                              ? 'text-yellow-400' 
+                              : 'text-red-400'
+                        }`}>
+                          {device.reboot_count.toLocaleString()}
+                        </span>
                       </div>
                     )}
                   </div>

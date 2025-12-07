@@ -4,11 +4,14 @@ import { supabase } from '@/lib/supabase';
 /**
  * API para gerenciar configuração do EC Controller
  * 
- * ✅ CORRIGIDO: Agora usa APENAS Supabase (sem fetch direto a IP privada)
- * Isso permite que o sistema funcione em produção (Vercel) de qualquer lugar do mundo
+ * ✅ NOVA ARQUITETURA: Usa ec_config_view (similar a relay_slaves)
  * 
- * GET: Busca configuração do EC Controller do Supabase
- * POST: Salva configuração do EC Controller no Supabase
+ * GET: Busca configuração do EC Controller de ec_config_view
+ * POST: Salva configuração do EC Controller em ec_config_view (view table)
+ * 
+ * FLUXO:
+ * 1. "Salvar Parâmetros" → POST salva em ec_config_view
+ * 2. "Ativar Auto EC" → Chama RPC activate_auto_ec que lê ec_config_view
  */
 export async function GET(request: Request) {
   try {
@@ -22,8 +25,9 @@ export async function GET(request: Request) {
       );
     }
     
+    // ✅ NOVA ARQUITETURA: Usar ec_config_view (view table)
     const { data, error } = await supabase
-      .from('ec_controller_config')
+      .from('ec_config_view')
       .select('*')
       .eq('device_id', deviceId)
       .single();
@@ -72,8 +76,9 @@ export async function POST(request: Request) {
       );
     }
     
+    // ✅ NOVA ARQUITETURA: Salvar em ec_config_view (view table)
     const { data, error } = await supabase
-      .from('ec_controller_config')
+      .from('ec_config_view')
       .upsert({
         device_id,
         ...config,
@@ -85,9 +90,20 @@ export async function POST(request: Request) {
       .single();
     
     if (error) {
-      console.error('Erro ao salvar config EC Controller:', error);
+      console.error('Erro ao salvar config EC Controller:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        body: body
+      });
       return NextResponse.json(
-        { error: error.message },
+        { 
+          error: error.message || 'Erro desconhecido',
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        },
         { status: 500 }
       );
     }
@@ -96,7 +112,11 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Erro em POST /api/ec-controller/config:', error);
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: 'Internal server error', 
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     );
   }
