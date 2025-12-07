@@ -78,6 +78,7 @@ export default function AutomacaoPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<any>(null); // ✅ Regra sendo editada
   const [jsonPreviewRule, setJsonPreviewRule] = useState<any>(null); // ✅ Regra para vista previa JSON
+  const [showECConfigPreview, setShowECConfigPreview] = useState<boolean>(false); // ✅ Vista previa de EC Config
   const [copiedRuleId, setCopiedRuleId] = useState<string | null>(null); // ✅ rule_id copiado para feedback visual
   const [loading, setLoading] = useState(true);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default_device');
@@ -130,6 +131,7 @@ export default function AutomacaoPage() {
   
   // Estado para Controle Nutricional Proporcional
   const [expandedNutritionalControl, setExpandedNutritionalControl] = useState<boolean>(true);
+  const [expandedDecisionEngine, setExpandedDecisionEngine] = useState<boolean>(true);
   const [pumpFlowRate, setPumpFlowRate] = useState<number>(1.0);
   const [totalVolume, setTotalVolume] = useState<number>(10);
   
@@ -339,6 +341,57 @@ export default function AutomacaoPage() {
       toast.error(`Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`);
       return false;
     }
+  }, [selectedDeviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, intervaloAutoEC, tempoRecirculacao, autoEnabled, availableRelays]);
+  
+  // ✅ Função para construir JSON completo de EC Config (para vista previa)
+  const getECConfigJson = useCallback(() => {
+    // Converter array de nutrientes para formato JSONB
+    const nutrientsJson = nutrientsState.map(nut => ({
+      name: nut.name,
+      relay: nut.relayNumber,
+      mlPerLiter: nut.mlPerLiter,
+      active: true,
+      relayName: availableRelays.find(r => r.number === nut.relayNumber)?.name || `Relay ${nut.relayNumber}`,
+    }));
+    
+    // Calcular total_ml (soma de todos os mlPerLiter)
+    const totalMl = nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
+    
+    // Construir JSON completo
+    const ecConfigJson: any = {
+      device_id: selectedDeviceId,
+      base_dose: baseDose,
+      flow_rate: pumpFlowRate,
+      volume: totalVolume,
+      total_ml: totalMl,
+      ec_setpoint: ecSetpoint,
+      auto_enabled: autoEnabled,
+      nutrients: nutrientsJson,
+    };
+    
+    // Adicionar intervalo_auto_ec
+    if (intervaloAutoEC !== undefined && intervaloAutoEC !== null) {
+      ecConfigJson.intervalo_auto_ec = intervaloAutoEC;
+    }
+    
+    // Adicionar tempo_recirculacao
+    if (tempoRecirculacao !== undefined && tempoRecirculacao !== null) {
+      ecConfigJson.tempo_recirculacao = tempoRecirculacao;
+      ecConfigJson.tempo_recirculacao_ms = timeToMilliseconds(tempoRecirculacao);
+    }
+    
+    // Informações calculadas adicionais para debug
+    ecConfigJson._debug = {
+      total_volume_liters: totalVolume,
+      pump_flow_rate_ml_per_sec: pumpFlowRate,
+      base_dose_us_per_cm: baseDose,
+      total_ml_per_liter: totalMl,
+      nutrients_count: nutrientsJson.length,
+      k_factor: totalMl > 0 ? (baseDose / totalMl).toFixed(3) : '0.000',
+      equation: `u(t) = (${totalVolume} / ${(baseDose / totalMl).toFixed(3)} × ${pumpFlowRate}) × e`,
+    };
+    
+    return ecConfigJson;
   }, [selectedDeviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, intervaloAutoEC, tempoRecirculacao, autoEnabled, availableRelays]);
   
   // ✅ NOVO: Salvar mapeamento nutriente → relé
@@ -1890,23 +1943,45 @@ export default function AutomacaoPage() {
           </div>
         </div>
 
-        {/* 🧠 MOTOR DE DECISÃO - SIMPLIFICADO */}
+        {/* 🧠 MOTOR DE DECISÃO - Menu Colapsável */}
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
-          <div className="p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4">
+          <button
+            onClick={() => setExpandedDecisionEngine(!expandedDecisionEngine)}
+            className="w-full p-4 sm:p-6 flex items-center justify-between hover:bg-dark-surface/50 transition-colors"
+          >
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              {expandedDecisionEngine ? (
+                <ChevronUpIcon className="w-5 h-5 text-aqua-400 flex-shrink-0" />
+              ) : (
+                <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary flex-shrink-0" />
+              )}
               <div className="flex-1 min-w-0">
                 <h2 className="text-lg sm:text-xl font-bold text-dark-text">🧠 Motor de Decisão</h2>
                 <p className="text-xs sm:text-sm text-dark-textSecondary mt-1">Configure regras automáticas com Regras script Sequenciais</p>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setIsModalOpen(true)}
-                  className="bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-3 px-6 sm:py-2 sm:px-4 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm sm:text-base w-full sm:w-auto"
-                >
-                  ➕ Nova Regra
-                </button>
-              </div>
             </div>
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsModalOpen(true);
+              }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsModalOpen(true);
+                }
+              }}
+              className="bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-2 px-4 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm sm:text-base flex-shrink-0 ml-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-aqua-500 focus:ring-offset-2 focus:ring-offset-dark-card"
+            >
+              ➕ Nova Regra
+            </div>
+          </button>
+
+          {expandedDecisionEngine && (
+            <div className="p-4 sm:p-6 border-t border-dark-border">
 
             {/* Lista de Regras Ativas */}
             {loading ? (
@@ -2208,8 +2283,8 @@ export default function AutomacaoPage() {
                 )}
               </div>
             )}
-
-          </div>
+            </div>
+          )}
         </div>
 
 
@@ -2651,6 +2726,14 @@ export default function AutomacaoPage() {
                     }`}
                   >
                     {autoEnabled ? '⏹️ Desativar Auto EC' : '🤖 Ativar Auto EC'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowECConfigPreview(true);
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-lg transition-all shadow-lg hover:shadow-purple-500/50"
+                  >
+                    🔍 Debug Vista Previa
                   </button>
                   <button
                     onClick={() => {
