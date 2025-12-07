@@ -10,6 +10,12 @@ export interface NutrientConfig {
   mlPerLiter: number;
 }
 
+interface NutrientFromSupabase {
+  name: string;
+  relay_number?: number;
+  ml_per_liter?: number;
+}
+
 /**
  * Busca nomes de relés LOCAIS do Master de relay_names
  */
@@ -107,8 +113,8 @@ export async function getNutritionPlan(
     }
     
     // Converter JSON nutrients para array
-    const nutrients = data.nutrients as any[];
-    return nutrients.map((nut: any) => ({
+    const nutrients = (data.nutrients as NutrientFromSupabase[]) || [];
+    return nutrients.map((nut: NutrientFromSupabase) => ({
       name: nut.name,
       relayNumber: nut.relay_number || 0,
       mlPerLiter: nut.ml_per_liter || 0,

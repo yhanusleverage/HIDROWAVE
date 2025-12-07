@@ -17,6 +17,13 @@ export interface SlaveRelayState {
   remaining_time: number;
 }
 
+interface SlaveFromSupabase {
+  device_id: string;
+  relay_states?: boolean[];
+  relay_has_timers?: boolean[];
+  relay_remaining_times?: number[];
+}
+
 /**
  * Busca estados dos relés de slaves usando relay_slaves
  * 
@@ -54,7 +61,7 @@ export async function getSlaveRelayStates(
     }
     
     // Converter arrays em objetos individuais por relé
-    data.forEach((slave: any) => {
+    data.forEach((slave: SlaveFromSupabase) => {
       const relayStates: SlaveRelayState[] = [];
       
       // Arrays: relay_states[], relay_has_timers[], relay_remaining_times[]

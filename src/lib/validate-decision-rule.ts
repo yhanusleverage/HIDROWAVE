@@ -5,6 +5,33 @@ export interface ValidationResult {
   errors: string[];
 }
 
+interface RuleJson {
+  script?: unknown;
+  conditions?: Condition[];
+  actions?: Action[];
+  circadian_cycle?: {
+    on_duration_ms: number;
+    off_duration_ms: number;
+    total_cycle_ms: number;
+  };
+  priority?: number;
+  [key: string]: unknown;
+}
+
+interface Condition {
+  sensor: string;
+  operator: string;
+  value: unknown;
+  logic?: string;
+}
+
+interface Action {
+  relay_ids: number[];
+  relay_names: string[];
+  duration: number;
+  [key: string]: unknown;
+}
+
 /**
  * Valida una regra de decisão (decision rule) antes de salvar
  * 
@@ -31,7 +58,7 @@ export function validateDecisionRule(rule: Partial<DecisionRule>): ValidationRes
   if (!rule.rule_json) {
     errors.push('rule_json é obrigatório');
   } else {
-    const ruleJson = rule.rule_json as any; // Usar any para permitir campos adicionais como 'script'
+    const ruleJson = rule.rule_json as RuleJson;
 
     // Verificar se tem script (formato sequencial) ou conditions/actions (formato tradicional)
     const hasScript = ruleJson.script !== undefined;
@@ -50,7 +77,7 @@ export function validateDecisionRule(rule: Partial<DecisionRule>): ValidationRes
       } else if (ruleJson.conditions.length === 0) {
         errors.push('rule_json.conditions não pode estar vazio');
       } else {
-        ruleJson.conditions.forEach((condition: any, index: number) => {
+        ruleJson.conditions.forEach((condition: Condition, index: number) => {
           if (!condition.sensor || condition.sensor.trim() === '') {
             errors.push(`condition[${index}].sensor é obrigatório`);
           }
@@ -71,7 +98,7 @@ export function validateDecisionRule(rule: Partial<DecisionRule>): ValidationRes
       } else if (ruleJson.actions.length === 0) {
         errors.push('rule_json.actions não pode estar vazio');
       } else {
-        ruleJson.actions.forEach((action: any, index: number) => {
+        ruleJson.actions.forEach((action: Action, index: number) => {
           if (!action.relay_ids || !Array.isArray(action.relay_ids) || action.relay_ids.length === 0) {
             errors.push(`action[${index}].relay_ids deve ser um array não vazio`);
           }
