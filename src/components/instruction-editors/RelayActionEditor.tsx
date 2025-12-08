@@ -15,7 +15,7 @@ export default function RelayActionEditor({
   onChange,
   espnowSlaves,
 }: RelayActionEditorProps) {
-  const updateField = (field: string, value: any) => {
+  const updateField = (field: string, value: string | number | boolean | string[] | number[]) => {
     onChange({
       ...instruction,
       [field]: value,
@@ -53,8 +53,15 @@ export default function RelayActionEditor({
       updateField('relay_number', parseInt(relayNum));
     } else {
       updateField('target', 'master');
-      updateField('slave_mac', undefined);
       updateField('relay_number', parseInt(parts[0]));
+      // Remover slave_mac si existe usando spread operator (conversión segura a través de unknown)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { slave_mac, ...restInstruction } = instruction as unknown as Record<string, unknown>;
+      onChange({
+        ...restInstruction,
+        target: 'master',
+        relay_number: parseInt(parts[0]),
+      } as Instruction);
     }
   };
 
@@ -100,7 +107,7 @@ export default function RelayActionEditor({
           min="0"
           value={instruction.duration_seconds || ''}
           onChange={(e) =>
-            updateField('duration_seconds', e.target.value ? parseInt(e.target.value) : undefined)
+            updateField('duration_seconds', e.target.value ? parseInt(e.target.value) : 0)
           }
           placeholder="Ex: 59"
           className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-aqua-500"

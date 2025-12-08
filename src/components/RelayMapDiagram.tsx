@@ -92,7 +92,7 @@ export default function RelayMapDiagram({
                 name: relay.name || `Relé ${relay.id + 1}`,
                 device: 'slave',
                 slaveMac: slave.macAddress,
-                state: (relay as any).state ? 'on' : 'off',
+                state: relay.state ? 'on' : 'off',
               };
               
               return (

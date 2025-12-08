@@ -127,7 +127,7 @@ export default function LoginPage() {
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-dark-textSecondary mb-1">
-              Senha <span className="text-xs text-dark-textSecondary">(deixe vazio ou use "admin123")</span>
+              Senha <span className="text-xs text-dark-textSecondary">(deixe vazio ou use &quot;admin123&quot;)</span>
             </label>
             <input
               id="password"
@@ -139,10 +139,10 @@ export default function LoginPage() {
               placeholder="admin123 (ou deixe vazio)"
             />
             <p className="text-xs text-dark-textSecondary mt-1">
-              💡 Modo desenvolvimento: Deixe vazio ou use "admin123"
+              💡 Modo desenvolvimento: Deixe vazio ou use &quot;admin123&quot;
             </p>
             <p className="text-xs text-yellow-400 mt-1">
-              ⚠️ Se aparecer "Email not confirmed", desative confirmação de email em Supabase Dashboard
+              ⚠️ Se aparecer &quot;Email not confirmed&quot;, desative confirmação de email em Supabase Dashboard
             </p>
           </div>
 

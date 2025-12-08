@@ -17,11 +17,29 @@ interface Script {
   rule_description?: string;
   rule_json?: {
     script?: {
-      instructions?: any[];
+      instructions?: Array<{
+        type: string;
+        condition?: {
+          sensor: string;
+          operator: string;
+          value: number;
+        };
+        [key: string]: unknown;
+      }>;
     };
   };
   priority: number;
   enabled: boolean;
+}
+
+interface ScriptInstruction {
+  type: string;
+  condition?: {
+    sensor: string;
+    operator: string;
+    value: number;
+  };
+  [key: string]: unknown;
 }
 
 export default function DecisionEngineCard({ deviceId }: DecisionEngineCardProps) {
@@ -81,7 +99,7 @@ export default function DecisionEngineCard({ deviceId }: DecisionEngineCardProps
       });
       
       setScripts(data || []);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erro ao carregar scripts:', error);
       toast.error('Erro ao carregar funções');
     } finally {
@@ -109,7 +127,7 @@ export default function DecisionEngineCard({ deviceId }: DecisionEngineCardProps
       if (error) throw error;
       toast.success('Função excluída com sucesso');
       loadScripts();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erro ao excluir script:', error);
       toast.error('Erro ao excluir função');
     }
@@ -168,7 +186,7 @@ export default function DecisionEngineCard({ deviceId }: DecisionEngineCardProps
             <div className="text-center py-8 text-gray-400">Carregando...</div>
           ) : scripts.length === 0 ? (
             <div className="text-center py-8 text-gray-400">
-              Nenhuma função ativa. Clique em "Nova Função" para criar uma.
+              Nenhuma função ativa. Clique em &quot;Nova Função&quot; para criar uma.
             </div>
           ) : (
             <div className="space-y-3">
@@ -211,7 +229,7 @@ export default function DecisionEngineCard({ deviceId }: DecisionEngineCardProps
                   {/* Preview das instruções */}
                   {script.rule_json?.script?.instructions && (
                     <div className="mt-2 text-xs text-gray-400 space-y-1 font-mono">
-                      {script.rule_json.script.instructions.slice(0, 2).map((instr: any, idx: number) => (
+                      {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
                         <div key={idx} className="text-aqua-300">
                           {idx + 1}. {instr.type.toUpperCase()}
                           {instr.condition && (

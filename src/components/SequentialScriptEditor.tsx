@@ -161,7 +161,7 @@ export default function SequentialScriptEditor({
           setMaxExecutionsPerHour(data.rule_json.script.max_executions_per_hour || 10);
         }
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erro ao carregar script:', error);
       toast.error('Erro ao carregar função');
     } finally {
@@ -290,9 +290,9 @@ export default function SequentialScriptEditor({
       }
 
       onClose();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erro ao salvar script:', error);
-      toast.error(error.message || 'Erro ao salvar função');
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar função');
     } finally {
       setLoading(false);
     }

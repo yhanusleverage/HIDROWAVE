@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { createSlaveCommandDirect } from '@/lib/automation';
 
 /**
@@ -162,10 +161,10 @@ export async function POST(request: Request) {
       message: 'Comando criado com sucesso',
       command: result.command,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('❌ Erro inesperado ao criar comando slave:', error);
     return NextResponse.json(
-      { error: error.message || 'Erro ao criar comando' },
+      { error: error instanceof Error ? error.message : 'Erro ao criar comando' },
       { status: 500 }
     );
   }

@@ -8,7 +8,7 @@
  * 4. Permite marcar alarmes como acknowledged
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { CropAlarm } from '@/lib/crop-calendar';
 
@@ -37,8 +37,8 @@ export function useCropAlarms({
   const [isLoading, setIsLoading] = useState(false);
   const lastCheckedRef = useRef<Set<string>>(new Set()); // IDs de alarmes já exibidos
 
-  // Função para buscar alarmes pendentes
-  const fetchAlarms = async () => {
+  // Función para buscar alarmes pendentes (memorizada con useCallback)
+  const fetchAlarms = useCallback(async () => {
     if (!deviceId || !userEmail || !enabled) {
       return;
     }
@@ -113,7 +113,7 @@ export function useCropAlarms({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [deviceId, userEmail, enabled]); // ✅ Dependencias del useCallback
 
   // Função para marcar alarme como acknowledged
   const acknowledgeAlarm = async (alarmId: string) => {
@@ -159,7 +159,7 @@ export function useCropAlarms({
     return () => {
       clearInterval(interval);
     };
-  }, [deviceId, userEmail, enabled, checkInterval]);
+  }, [deviceId, userEmail, enabled, checkInterval, fetchAlarms]); // ✅ Incluir fetchAlarms
 
   return {
     alarms,

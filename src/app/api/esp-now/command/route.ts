@@ -118,7 +118,26 @@ export async function POST(request: Request) {
     // ✅ Criar comando no Supabase com target_device_id para slaves
     // device_id = master_device_id (sempre)
     // target_device_id = slave_name (nome do slave) se for comando para slave
-    const commandData: any = {
+    interface RelayCommandData {
+      device_id: string;
+      relay_number: number;
+      action: 'on' | 'off';
+      duration_seconds?: number;
+      status?: 'pending' | 'sent' | 'completed' | 'failed';
+      created_by: string;
+      triggered_by: 'manual' | 'automation' | 'peristaltic';
+      command_type: 'manual' | 'rule' | 'peristaltic';
+      priority: number;
+      rule_id?: string;
+      rule_name?: string;
+      slave_mac_address?: string;
+      target_device_id?: string;
+      master_mac_address?: string;
+      user_email?: string;
+      slave_device_id?: string;
+    }
+    
+    const commandData: RelayCommandData = {
       device_id: master_device_id, // Sempre usar master_device_id como device_id
       relay_number: relay_number,
       action: action as 'on' | 'off',

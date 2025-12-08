@@ -59,6 +59,17 @@ export function calculateMlDosed(
 }
 
 /**
+ * Interface para comando de relé retornado pelo histórico
+ */
+interface RelayCommandHistory {
+  relay_number: number;
+  rule_name?: string;
+  duration_seconds: number;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+/**
  * Busca histórico de comandos de relés para analytics
  * 
  * @param deviceId ID do dispositivo (master ou slave MAC)
@@ -72,7 +83,7 @@ export async function getRelayCommandsHistory(
   startDate?: Date,
   endDate?: Date,
   relayType: 'local' | 'slave' = 'local'
-): Promise<any[]> {
+): Promise<RelayCommandHistory[]> {
   try {
     // ✅ CORRIGIDO: Usar tabela correta conforme o tipo
     const tableName = relayType === 'local' ? 'relay_commands_master' : 'relay_commands_slave';
@@ -160,7 +171,7 @@ export async function calculateDosageMetrics(
     const relayMap = new Map<number, {
       relay_id: number;
       relay_name: string;
-      activations: any[];
+      activations: RelayCommandHistory[];
       total_duration: number;
     }>();
 

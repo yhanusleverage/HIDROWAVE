@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { createRelayCommand } from '@/lib/automation';
 
 /**
  * API LEGACY - Mantida para compatibilidade

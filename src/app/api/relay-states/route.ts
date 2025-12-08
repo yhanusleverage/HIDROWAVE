@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     // ✅ CORRIGIDO: Usar relay_slaves para slaves, relay_master para locais
     if (relayType === 'slave') {
       // Buscar de relay_slaves (arrays)
-      let query = supabase
+      let queryBuilder = supabase
         .from('relay_slaves')
         .select('device_id, relay_states, relay_has_timers, relay_remaining_times')
         .eq('master_device_id', masterDeviceId);
@@ -40,11 +40,11 @@ export async function GET(request: Request) {
       if (deviceIdsParam) {
         const deviceIds = deviceIdsParam.split(',').filter(id => id.trim().length > 0);
         if (deviceIds.length > 0) {
-          query = query.in('device_id', deviceIds);
+          queryBuilder = queryBuilder.in('device_id', deviceIds);
         }
       }
       
-      const { data, error } = await query;
+      const { data, error } = await queryBuilder;
       
       if (error) {
         console.error('Erro ao buscar estados de relés de slaves:', error);
@@ -54,10 +54,25 @@ export async function GET(request: Request) {
         );
       }
       
+      interface SlaveRelayData {
+        device_id: string;
+        relay_states?: boolean[];
+        relay_has_timers?: boolean[];
+        relay_remaining_times?: number[];
+      }
+      
+      interface RelayState {
+        device_id: string;
+        relay_number: number;
+        state: boolean;
+        has_timer: boolean;
+        remaining_time: number;
+      }
+      
       // Converter arrays em objetos individuais por relé
-      const relayStates: any[] = [];
+      const relayStates: RelayState[] = [];
       if (data) {
-        data.forEach((slave: any) => {
+        data.forEach((slave: SlaveRelayData) => {
           const states = slave.relay_states || Array(8).fill(false);
           const hasTimers = slave.relay_has_timers || Array(8).fill(false);
           const remainingTimes = slave.relay_remaining_times || Array(8).fill(0);
@@ -77,7 +92,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ relay_states: relayStates });
     } else {
       // Para relés locais, usar relay_master
-      let query = supabase
+      const query = supabase
         .from('relay_master')
         .select('device_id, doser_relay_states, level_relay_states, reserved_relay_states')
         .eq('device_id', masterDeviceId);
@@ -92,8 +107,16 @@ export async function GET(request: Request) {
         );
       }
       
+      interface RelayState {
+        device_id: string;
+        relay_number: number;
+        state: boolean;
+        has_timer: boolean;
+        remaining_time: number;
+      }
+      
       // Converter arrays em objetos individuais por relé
-      const relayStates: any[] = [];
+      const relayStates: RelayState[] = [];
       if (data && data.length > 0) {
         const master = data[0];
         const doserStates = master.doser_relay_states || Array(8).fill(false);

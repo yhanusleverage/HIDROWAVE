@@ -246,9 +246,9 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
       setTimeout(() => {
         window.location.reload(); // Recarregar para atualizar dados
       }, 2000);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erro ao reiniciar dispositivo:', error);
-      toast.error(error.message || 'Erro ao reiniciar dispositivo');
+      toast.error(error instanceof Error ? error.message : 'Erro ao reiniciar dispositivo');
     } finally {
       setRebooting(false);
     }

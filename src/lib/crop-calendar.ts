@@ -397,8 +397,8 @@ export async function getCropAlarms(
 
     const data = await response.json();
     return data.alarms;
-  } catch (error) {
-    console.error('Erro ao buscar alarmes:', error);
+  } catch {
+    console.error('Erro ao buscar alarmes');
     return [];
   }
 }
@@ -425,8 +425,8 @@ export async function createCropAlarm(
 
     const data = await response.json();
     return data.alarm;
-  } catch (error) {
-    console.error('Erro ao criar alarme:', error);
+  } catch {
+    console.error('Erro ao criar alarme');
     return null;
   }
 }

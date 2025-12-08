@@ -71,24 +71,26 @@ export default function DashboardPage() {
   }, [userEmail, selectedDeviceId]);
 
   // ✅ Función para validar datos hidropónicos
-  const validateHydroData = (data: any): HydroMeasurement | null => {
+  const validateHydroData = (data: unknown): HydroMeasurement | null => {
     if (data && typeof data === 'object') {
-      const hasValidData = data.temperature !== undefined || 
-                          data.ph !== undefined || 
-                          data.tds !== undefined;
+      const obj = data as Record<string, unknown>;
+      const hasValidData = obj.temperature !== undefined || 
+                          obj.ph !== undefined || 
+                          obj.tds !== undefined;
       if (hasValidData) {
-        return data;
+        return data as HydroMeasurement;
       }
     }
     return null;
   };
 
   // ✅ Función para validar datos ambientales
-  const validateEnvData = (data: any): EnvironmentMeasurement | null => {
+  const validateEnvData = (data: unknown): EnvironmentMeasurement | null => {
     if (data && typeof data === 'object') {
-      const hasValidData = data.temperature !== undefined || data.humidity !== undefined;
+      const obj = data as Record<string, unknown>;
+      const hasValidData = obj.temperature !== undefined || obj.humidity !== undefined;
       if (hasValidData) {
-        return data;
+        return data as EnvironmentMeasurement;
       }
     }
     return null;

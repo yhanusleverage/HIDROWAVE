@@ -120,7 +120,7 @@ export default function ConfiguracaoPage() {
     }
   };
 
-  const handleChange = (key: keyof Settings, value: any) => {
+  const handleChange = (key: keyof Settings, value: string | number | boolean) => {
     setSettings({ ...settings, [key]: value });
   };
 

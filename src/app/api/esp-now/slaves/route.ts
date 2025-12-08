@@ -63,9 +63,29 @@ export async function GET(request: Request) {
       );
     }
 
+    interface DeviceFromSupabase {
+      device_id: string;
+      device_name?: string;
+      user_email?: string;
+      mac_address?: string;
+      device_type?: string;
+      is_online?: boolean;
+      last_seen?: string;
+      [key: string]: unknown;
+    }
+    
+    interface RelayState {
+      device_id: string;
+      relay_number: number;
+      state: boolean;
+      has_timer: boolean;
+      remaining_time: number;
+      relay_name?: string;
+    }
+    
     console.log(`✅ [API Proxy] ${devices?.length || 0} slave(s) encontrado(s) no Supabase`);
     if (devices && devices.length > 0) {
-      console.log('   Slaves:', devices.map((d: any) => ({
+      console.log('   Slaves:', devices.map((d: DeviceFromSupabase) => ({
         device_id: d.device_id,
         device_name: d.device_name,
         user_email: d.user_email,
@@ -74,8 +94,8 @@ export async function GET(request: Request) {
     }
 
     // ✅ Buscar estados dos relés usando relay_slaves (não relay_states)
-    const deviceIds = (devices || []).map((d: any) => d.device_id);
-    let relayStatesMap = new Map<string, any[]>();
+    const deviceIds = (devices || []).map((d: DeviceFromSupabase) => d.device_id);
+    const relayStatesMap = new Map<string, RelayState[]>();
     
     if (deviceIds.length > 0) {
       // ✅ CORRETO: Usar relay_slaves (arrays)
@@ -85,14 +105,21 @@ export async function GET(request: Request) {
         .eq('master_device_id', masterDeviceId)
         .in('device_id', deviceIds);
 
+      interface SlaveRelayData {
+        device_id: string;
+        relay_states?: boolean[];
+        relay_has_timers?: boolean[];
+        relay_remaining_times?: number[];
+      }
+      
       if (!relayError && slaveRelays) {
         // Converter arrays em objetos individuais por relé
-        slaveRelays.forEach((slave: any) => {
+        slaveRelays.forEach((slave: SlaveRelayData) => {
           const states = slave.relay_states || Array(8).fill(false);
           const hasTimers = slave.relay_has_timers || Array(8).fill(false);
           const remainingTimes = slave.relay_remaining_times || Array(8).fill(0);
           
-          const relayStates: any[] = [];
+          const relayStates: RelayState[] = [];
           for (let i = 0; i < 8; i++) {
             relayStates.push({
               device_id: slave.device_id,
@@ -111,12 +138,12 @@ export async function GET(request: Request) {
     }
 
     // Converter para formato ESP32Slave com estados reais dos relés
-    const slaves = (devices || []).map((device: any) => {
+    const slaves = (devices || []).map((device: DeviceFromSupabase) => {
       const deviceRelayStates = relayStatesMap.get(device.device_id) || [];
       
       // Criar array de relés com estados reais do Supabase
       const relays = Array.from({ length: 8 }, (_, i) => {
-        const relayState = deviceRelayStates.find((rs: any) => rs.relay_number === i);
+        const relayState = deviceRelayStates.find((rs: RelayState) => rs.relay_number === i);
         return {
           relay_number: i,
           name: relayState?.relay_name || `Relé ${i}`,

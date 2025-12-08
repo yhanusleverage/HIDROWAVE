@@ -45,7 +45,13 @@ export async function GET(request: Request) {
     }
 
     // ✅ Parsear automated_actions (JSONB) se necessário
-    const events = (data || []).map((event: any) => {
+    interface CropEventFromRPC {
+      id: string;
+      automated_actions?: string | unknown[];
+      [key: string]: unknown;
+    }
+    
+    const events = (data || []).map((event: CropEventFromRPC) => {
       if (event.automated_actions && typeof event.automated_actions === 'string') {
         try {
           event.automated_actions = JSON.parse(event.automated_actions);
@@ -121,7 +127,17 @@ export async function PATCH(request: Request) {
     }
 
     // ✅ Preparar atualização
-    const updates: any = {
+    interface EventUpdates {
+      sync_status: string;
+      updated_at: string;
+      last_synced_at: string;
+      completed?: boolean;
+      completed_at?: string;
+      error_message?: string;
+      execution_details?: string;
+    }
+    
+    const updates: EventUpdates = {
       sync_status,
       updated_at: new Date().toISOString(),
       last_synced_at: new Date().toISOString(),

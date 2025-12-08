@@ -10,24 +10,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 
-interface AutomationRule {
-  id: number | string; // ✅ Pode ser número (temporário) ou UUID string (do Supabase)
-  name: string;
-  description: string;
-  condition: string;
-  action: string;
-  enabled: boolean;
-  conditions?: any[];
-  actions?: any[];
-  rule_json?: any; // ✅ Para scripts sequenciais
-  rule_name?: string; // ✅ Nome original do Supabase
-  rule_description?: string; // ✅ Descrição original do Supabase
-  priority?: number; // ✅ Prioridade da regra
-  supabase_id?: string; // ✅ UUID real do Supabase (para updates/deletes)
-  rule_id?: string; // ✅ rule_id text do Supabase
-  device_id?: string;
-  created_by?: string;
-}
+import type { AutomationRule } from '@/app/automacao/page';
 
 interface RuleCardProps {
   rule: AutomationRule;

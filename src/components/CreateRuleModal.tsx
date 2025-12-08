@@ -9,8 +9,6 @@ import RelayActionEditor from './instruction-editors/RelayActionEditor';
 import { Instruction } from './SequentialScriptEditor';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
-
 interface Relay {
   id: number;
   name: string;
@@ -43,14 +41,89 @@ interface ChainedEventSequential {
   delay_ms: number;
 }
 
+interface RuleCondition {
+  sensor: string;
+  operator: string;
+  value: number; // ✅ Solo number para compatibilidad con NewRuleData
+  logic?: 'AND' | 'OR';
+}
+
+interface RuleData {
+  name: string;
+  description?: string;
+  conditions?: RuleCondition[]; // ✅ Usar RuleCondition en lugar de Condition
+  actions?: Action[];
+  enabled?: boolean;
+  priority?: number;
+  script?: {
+    instructions: Instruction[];
+    max_iterations?: number;
+    chained_events?: ChainedEventSequential[];
+    cooldown?: number;
+    max_executions_per_hour?: number;
+  };
+  chainedEvents?: ChainedEvent[] | ChainedEventSequential[];
+  [key: string]: unknown;
+}
+
+interface AutomationRule {
+  id: number | string;
+  name: string;
+  description: string;
+  condition: string;
+  action: string;
+  enabled: boolean;
+  conditions?: Array<{
+    sensor: string;
+    operator: string;
+    value: number | string;
+    logic?: 'AND' | 'OR';
+  }>;
+  actions?: Array<{
+    relayId?: number;
+    relayName?: string;
+    relay_ids?: number[];
+    relay_names?: string[];
+    action?: 'on' | 'off';
+    duration?: number;
+    [key: string]: unknown;
+  }>;
+  rule_json?: {
+    conditions?: Array<{
+      sensor: string;
+      operator: string;
+      value: number;
+      logic?: 'AND' | 'OR';
+    }>;
+    actions?: Array<{
+      relay_ids?: number[];
+      relay_names?: string[];
+      duration?: number;
+      [key: string]: unknown;
+    }>;
+    script?: {
+      instructions: Array<{
+        type: string;
+        [key: string]: unknown;
+      }>;
+      max_iterations?: number;
+      chained_events?: unknown;
+      cooldown?: number;
+      max_executions_per_hour?: number;
+    };
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 interface CreateRuleModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (rule: any) => void;
+  onSave: (rule: RuleData) => void;
   relays: Relay[];
   onUpdateRelay: (id: number, name: string) => void;
   deviceId?: string;
-  editingRule?: any; // ✅ Regra existente para edição (opcional)
+  editingRule: AutomationRule | null; // ✅ Regra existente para edição (puede ser null)
 }
 
 export default function CreateRuleModal({
@@ -137,7 +210,7 @@ export default function CreateRuleModal({
     setConditions(conditions.filter((_, i) => i !== index));
   };
 
-  const updateCondition = (index: number, field: keyof Condition, value: any) => {
+  const updateCondition = (index: number, field: keyof Condition, value: string | number) => {
     const updated = [...conditions];
     updated[index] = { ...updated[index], [field]: value };
     setConditions(updated);
@@ -174,11 +247,12 @@ export default function CreateRuleModal({
     setActions(actions.filter((_, i) => i !== index));
   };
 
-  const updateAction = (index: number, field: keyof Action, value: any) => {
+  const updateAction = (index: number, field: keyof Action, value: string | number) => {
     const updated = [...actions];
     if (field === 'relayId') {
-      const relay = relays.find(r => r.id === value);
-      updated[index] = { ...updated[index], relayId: value, relayName: relay?.name || '' };
+      const relayId = typeof value === 'number' ? value : parseInt(String(value), 10) || 0;
+      const relay = relays.find(r => r.id === relayId);
+      updated[index] = { ...updated[index], relayId, relayName: relay?.name || '' };
     } else {
       updated[index] = { ...updated[index], [field]: value };
     }
@@ -197,7 +271,7 @@ export default function CreateRuleModal({
     setChainedEvents(chainedEvents.filter((_, i) => i !== index));
   };
 
-  const updateChainedEvent = (index: number, field: keyof ChainedEvent, value: any) => {
+  const updateChainedEvent = (index: number, field: keyof ChainedEvent, value: string | number) => {
     const updated = [...chainedEvents];
     updated[index] = { ...updated[index], [field]: value };
     setChainedEvents(updated);
@@ -221,9 +295,9 @@ export default function CreateRuleModal({
   useEffect(() => {
     if (editingRule && isOpen) {
       // Carregar dados básicos
-      setRuleName(editingRule.rule_name || editingRule.name || '');
-      setDescription(editingRule.rule_description || editingRule.description || '');
-      setPriority(editingRule.priority || 50);
+      setRuleName(String(editingRule.rule_name || editingRule.name || ''));
+      setDescription(String(editingRule.rule_description || editingRule.description || ''));
+      setPriority(typeof editingRule.priority === 'number' ? editingRule.priority : 50);
       setEnabled(editingRule.enabled !== undefined ? editingRule.enabled : true);
       
       // Carregar rule_json se existir (Sequential Script)
@@ -231,42 +305,43 @@ export default function CreateRuleModal({
         const ruleJson = editingRule.rule_json;
         
         // Carregar instruções sequenciais
-        if (ruleJson.instructions && Array.isArray(ruleJson.instructions)) {
-          setInstructions(ruleJson.instructions);
+        if (ruleJson.script?.instructions && Array.isArray(ruleJson.script.instructions)) {
+          setInstructions(ruleJson.script.instructions as Instruction[]);
         }
         
         // Carregar configurações de loop
-        if (ruleJson.loop_interval !== undefined) {
-          setLoopInterval(ruleJson.loop_interval);
-        }
-        if (ruleJson.max_iterations !== undefined) {
-          setMaxIterations(ruleJson.max_iterations);
-        }
-        
-        // Carregar eventos encadeados sequenciais
-        if (ruleJson.chained_events && Array.isArray(ruleJson.chained_events)) {
-          setChainedEventsSequential(ruleJson.chained_events);
+        if (typeof ruleJson.script?.max_iterations === 'number') {
+          setMaxIterations(ruleJson.script.max_iterations);
         }
       }
       
       // Carregar condições e ações tradicionais (se não for Sequential Script)
       if (editingRule.conditions && Array.isArray(editingRule.conditions)) {
-        setConditions(editingRule.conditions);
+        setConditions(editingRule.conditions.map(c => ({
+          sensor: String(c.sensor || ''),
+          operator: String(c.operator || ''),
+          value: typeof c.value === 'number' ? c.value : (typeof c.value === 'string' ? parseFloat(c.value) || 0 : 0),
+          logic: c.logic,
+        })));
       }
       if (editingRule.actions && Array.isArray(editingRule.actions)) {
-        setActions(editingRule.actions);
+        setActions(editingRule.actions.map(a => ({
+          relayId: typeof a.relayId === 'number' ? a.relayId : (typeof a.relay_ids?.[0] === 'number' ? a.relay_ids[0] : 0),
+          relayName: String(a.relayName || a.relay_names?.[0] || ''),
+          action: (a.action || 'on') as 'on' | 'off',
+        })));
       }
       
       // Carregar eventos encadeados tradicionais
       if (editingRule.chained_events && Array.isArray(editingRule.chained_events)) {
-        setChainedEvents(editingRule.chained_events);
+        setChainedEvents(editingRule.chained_events as ChainedEvent[]);
       }
       
       // Carregar configurações avançadas
-      if (editingRule.cooldown !== undefined) {
+      if (typeof editingRule.cooldown === 'number') {
         setCooldown(editingRule.cooldown);
       }
-      if (editingRule.max_executions_per_hour !== undefined) {
+      if (typeof editingRule.max_executions_per_hour === 'number') {
         setMaxExecutionsPerHour(editingRule.max_executions_per_hour);
       }
     } else if (!editingRule && isOpen) {
@@ -365,8 +440,20 @@ export default function CreateRuleModal({
       }),
       name: ruleName,
       description: description || ruleName,
-      conditions: instructions.length > 0 ? [] : conditions, // Se tiver instruções, não precisa condições simples
-      actions: instructions.length > 0 ? [] : actions, // Se tiver instruções, não precisa ações simples
+      // ✅ Converter conditions para RuleCondition[] (value debe ser number)
+      conditions: instructions.length > 0 ? [] : conditions.map(c => ({
+        sensor: c.sensor,
+        operator: c.operator,
+        value: typeof c.value === 'string' ? parseFloat(c.value) || 0 : c.value,
+        logic: c.logic,
+      })),
+      // ✅ Converter actions para el formato esperado
+      actions: instructions.length > 0 ? [] : actions.map(a => ({
+        relayId: a.relayId,
+        relayName: a.relayName,
+        action: a.action,
+        duration: a.action === 'on' ? 60 : 0, // Default duration
+      })),
       chainedEvents: chainedEventsSequential.length > 0 ? chainedEventsSequential : chainedEvents, // Usar formato sequencial se houver
       enabled,
       priority,

@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     }
 
     // Usar função RPC do Supabase (register_device_with_email)
-    const { data, error } = await supabase.rpc('register_device_with_email', {
+    const { error } = await supabase.rpc('register_device_with_email', {
       p_device_id: device_id,
       p_mac_address: mac_address,
       p_user_email: user_email,

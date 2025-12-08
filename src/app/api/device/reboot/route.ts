@@ -61,10 +61,10 @@ export async function POST(request: Request) {
       reboot_count: data.reboot_count,
       previous_count: data.previous_count,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro na API de reboot:', error);
     return NextResponse.json(
-      { error: error.message || 'Erro interno do servidor' },
+      { error: error instanceof Error ? error.message : 'Erro interno do servidor' },
       { status: 500 }
     );
   }

@@ -494,6 +494,18 @@ export async function discoverAvailableDevices(userEmail: string): Promise<Devic
   return availableDevices;
 }
 
+/**
+ * Interface para resposta da função de registro de dispositivo
+ */
+interface RegisterDeviceResponse {
+  success: boolean;
+  device_id: string;
+  mac_address: string;
+  user_email: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
 export async function registerDeviceWithEmail(
   deviceId: string,
   macAddress: string,
@@ -501,7 +513,7 @@ export async function registerDeviceWithEmail(
   deviceName?: string,
   location?: string,
   ipAddress?: string
-): Promise<any> {
+): Promise<RegisterDeviceResponse | null> {
   // ✅ VALIDAR: Verificar se email existe na tabela users e está ativo
   const normalizedEmail = userEmail?.trim().toLowerCase() || '';
   

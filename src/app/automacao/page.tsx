@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Toaster, toast } from 'react-hot-toast';
+import { Toaster, toast, type Toast } from 'react-hot-toast';
 import {
   ClockIcon,
   CheckCircleIcon,
@@ -21,36 +21,92 @@ import {
 import CreateRuleModal from '@/components/CreateRuleModal';
 import RuleCard from '@/components/RuleCard';
 import { getDecisionRules, createDecisionRule, updateDecisionRule, deleteDecisionRule, DecisionRule, getUserDevices, DeviceStatus } from '@/lib/automation';
-import { loadSettings } from '@/lib/settings';
 import { useAuth } from '@/contexts/AuthContext';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { supabase } from '@/lib/supabase';
 // Removido: import { getRelayStates } from '@/lib/automation'; // ❌ Não usar mais relay_states
-import { getMasterLocalRelayNames, saveMasterLocalRelayName, getNutritionPlan, saveNutritionPlan } from '@/lib/nutrition-plan';
+import { getMasterLocalRelayNames, saveMasterLocalRelayName } from '@/lib/nutrition-plan';
 
 interface Relay {
   id: number;
   name: string;
 }
 
-interface AutomationRule {
+interface RuleCondition {
+  sensor: string;
+  operator: string;
+  value: number;
+  logic?: 'AND' | 'OR';
+}
+
+interface RuleAction {
+  relay_ids?: number[];
+  relay_names?: string[];
+  relay_id?: number;
+  relay_name?: string;
+  duration?: number;
+  target_device_id?: string;
+  slave_mac_address?: string;
+  [key: string]: unknown;
+}
+
+interface ScriptInstruction {
+  type: string;
+  condition?: {
+    sensor: string;
+    operator: string;
+    value: number;
+  };
+  [key: string]: unknown;
+}
+
+interface RuleJson {
+  conditions?: RuleCondition[];
+  actions?: RuleAction[];
+  script?: {
+    instructions: ScriptInstruction[];
+    max_iterations?: number;
+    chained_events?: unknown;
+    cooldown?: number;
+    max_executions_per_hour?: number;
+  };
+  circadian_cycle?: {
+    enabled: boolean;
+    on_duration_ms: number;
+    off_duration_ms: number;
+    total_cycle_ms: number;
+    start_time?: string;
+    timezone?: string;
+  };
+  delay_before_execution?: number;
+  interval_between_executions?: number;
+  priority?: number;
+  [key: string]: unknown;
+}
+
+export interface AutomationRule {
   id: number | string; // ✅ Pode ser número (temporário) ou UUID string (do Supabase)
   name: string;
   description: string;
   condition: string;
   action: string;
   enabled: boolean;
-  conditions?: any[];
-  actions?: any[];
-  rule_json?: any; // ✅ Para scripts sequenciais
+  conditions?: RuleCondition[];
+  actions?: RuleAction[];
+  rule_json?: RuleJson; // ✅ Para scripts sequenciais
   rule_name?: string; // ✅ Nome original do Supabase
   rule_description?: string; // ✅ Descrição original do Supabase
   priority?: number; // ✅ Prioridade da regra
   supabase_id?: string; // ✅ UUID real do Supabase (para updates/deletes)
   rule_id?: string; // ✅ rule_id text do Supabase
+  device_id?: string;
+  created_by?: string;
+  [key: string]: unknown; // ✅ Index signature para compatibilidad
 }
 
 // ✅ Funções helper para converter entre formato de tempo (HH:MM:SS) e milissegundos
+// Nota: Estas funciones están definidas pero no se usan actualmente
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const timeToMilliseconds = (timeStr: string): number => {
   const parts = timeStr.split(':');
   if (parts.length !== 3) return 60000; // Default: 1 minuto em ms
@@ -60,6 +116,7 @@ const timeToMilliseconds = (timeStr: string): number => {
   return (hours * 3600 + minutes * 60 + seconds) * 1000;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const millisecondsToTime = (ms: number): string => {
   const totalSeconds = Math.floor(ms / 1000);
   const hours = Math.floor(totalSeconds / 3600);
@@ -68,6 +125,7 @@ const millisecondsToTime = (ms: number): string => {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const validateTimeFormat = (timeStr: string): boolean => {
   const regex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/;
   return regex.test(timeStr);
@@ -76,8 +134,8 @@ const validateTimeFormat = (timeStr: string): boolean => {
 export default function AutomacaoPage() {
   const { userProfile } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingRule, setEditingRule] = useState<any>(null); // ✅ Regra sendo editada
-  const [jsonPreviewRule, setJsonPreviewRule] = useState<any>(null); // ✅ Regra para vista previa JSON
+  const [editingRule, setEditingRule] = useState<AutomationRule | null>(null); // ✅ Regra sendo editada
+  const [jsonPreviewRule, setJsonPreviewRule] = useState<AutomationRule | null>(null); // ✅ Regra para vista previa JSON
   const [showECConfigPreview, setShowECConfigPreview] = useState<boolean>(false); // ✅ Vista previa de EC Config
   const [copiedRuleId, setCopiedRuleId] = useState<string | null>(null); // ✅ rule_id copiado para feedback visual
   const [loading, setLoading] = useState(true);
@@ -124,7 +182,7 @@ export default function AutomacaoPage() {
   const [showCycleInput, setShowCycleInput] = useState<string | null>(null); // relayKey que está mostrando input de ciclo
   
   // ✅ NOVO: Mapeamento Command ID → Relay Key (padrão indústria)
-  const commandToRelayMap = useRef<Map<number, string>>(new Map());
+  const commandToRelayMap = useRef<Map<string | number, string>>(new Map());
   
   // ✅ NOVO: Estado para rastrear si cada slave está bloqueado (MAC address -> boolean)
   const [lockedSlaves, setLockedSlaves] = useState<Map<string, boolean>>(new Map());
@@ -222,9 +280,16 @@ export default function AutomacaoPage() {
       
       const config = await response.json();
       
+      interface NutrientFromConfig {
+        name?: string;
+        relay?: number;
+        relayNumber?: number;
+        mlPerLiter?: number;
+      }
+      
       // Carregar nutrientes do array JSONB
       if (config.nutrients && Array.isArray(config.nutrients) && config.nutrients.length > 0) {
-        const nutrients = config.nutrients.map((nut: any) => ({
+        const nutrients = config.nutrients.map((nut: NutrientFromConfig) => ({
           name: nut.name || '',
           relayNumber: nut.relay || nut.relayNumber || 0,
           mlPerLiter: nut.mlPerLiter || 0,
@@ -318,8 +383,20 @@ export default function AutomacaoPage() {
       return null;
     }
     
+    interface NutrientDistribution {
+      name: string;
+      relayNumber: number;
+      mlPerLiter: number;
+      proporcao: number;
+      utNutriente: number;
+      tempoDosagem: number;
+      relay?: number; // Para compatibilidad
+      dosage?: number; // Dosagem em ml
+      duration?: number; // Duração em segundos
+    }
+    
     // Calcular distribuição proporcional para cada nutriente
-    const distribution: any[] = [];
+    const distribution: NutrientDistribution[] = [];
     
     nutrientsState.forEach(nut => {
       if (nut.mlPerLiter > 0 && totalMlPerLiter > 0) {
@@ -335,7 +412,12 @@ export default function AutomacaoPage() {
         // Agregar à distribuição (formato compatível com Hydro-Controller)
         // Hydro-Controller executeWebDosage() espera APENAS: name, relay, dosage, duration
         distribution.push({
-          name: nut.name,                    // ✅ Hydro-Controller usa "name"
+          name: nut.name,
+          relayNumber: nut.relayNumber,
+          mlPerLiter: nut.mlPerLiter,
+          proporcao,
+          utNutriente,
+          tempoDosagem,
           relay: nut.relayNumber,             // ✅ Número do relé (Hydro-Controller converte para índice: relay - 1)
           dosage: parseFloat(utNutriente.toFixed(2)),  // ✅ Dosagem em ml
           duration: parseFloat(tempoDosagem.toFixed(2)) // ✅ Duração em segundos (Hydro-Controller converte para ms: duration * 1000)
@@ -370,10 +452,25 @@ export default function AutomacaoPage() {
       // Calcular total_ml (soma de todos os mlPerLiter)
       const totalMl = nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
       
+      interface ECConfigPayload {
+        device_id: string;
+        base_dose: number;
+        flow_rate: number;
+        volume: number;
+        total_ml: number;
+        kp: number;
+        ec_setpoint: number;
+        auto_enabled: boolean;
+        nutrients: Array<{ name: string; relay: number; mlPerLiter: number }>;
+        intervalo_auto_ec?: number;
+        tempo_recirculacao?: number;
+        [key: string]: unknown;
+      }
+      
       // ✅ JSON OPTIMIZADO: Solo los 9 parámetros básicos + nutrients[] (sin distribution)
       // Construir payload optimizado com apenas os campos essenciais
       // ✅ CORRIGIDO: Usar overrideAutoEnabled se fornecido, senão usar autoEnabled do estado
-      const payload: any = {
+      const payload: ECConfigPayload = {
         device_id: selectedDeviceId,
         base_dose: baseDose,
         flow_rate: pumpFlowRate,
@@ -459,7 +556,7 @@ export default function AutomacaoPage() {
       
       if (!response.ok) {
         let errorMessage = 'Erro desconhecido';
-        let errorDetails: any = {};
+        let errorDetails: Record<string, unknown> = {};
         
         try {
           const errorData = await response.json();
@@ -522,8 +619,24 @@ export default function AutomacaoPage() {
     // Calcular total_ml (soma de todos os mlPerLiter)
     const totalMl = nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
     
+    interface ECConfigJSON {
+      device_id: string;
+      base_dose: number;
+      flow_rate: number;
+      volume: number;
+      total_ml: number;
+      kp: number;
+      ec_setpoint: number;
+      auto_enabled: boolean;
+      nutrients: Array<{ name: string; relay: number; mlPerLiter: number }>;
+      intervalo_auto_ec?: number;
+      tempo_recirculacao?: number;
+      _debug?: unknown;
+      [key: string]: unknown;
+    }
+    
     // ✅ JSON OPTIMIZADO: Solo los 9 parámetros básicos + nutrients[] (sin distribution)
-    const ecConfigJson: any = {
+    const ecConfigJson: ECConfigJSON = {
       device_id: selectedDeviceId,
       base_dose: baseDose,
       flow_rate: pumpFlowRate,
@@ -621,12 +734,6 @@ export default function AutomacaoPage() {
         const ecValue = data.tds * 0.5;
         setEcAtual(ecValue);
         
-        // Calcular erro atual (diferença entre EC atual e setpoint)
-        if (ecSetpoint > 0) {
-          const error = ecValue - ecSetpoint;
-          setEcError(error);
-        }
-        
         console.log('✅ [EC Controller] EC atualizado:', {
           tds: data.tds,
           ec: ecValue.toFixed(1),
@@ -637,11 +744,24 @@ export default function AutomacaoPage() {
         console.warn('⚠️ [EC Controller] Nenhum dado TDS encontrado para device:', selectedDeviceId);
         // Não resetar para 0, manter último valor válido
       }
+      // ✅ O erro será recalculado automaticamente pelo useEffect quando ecAtual mudar
     } catch (err) {
       console.error('❌ [EC Controller] Erro ao buscar EC atual:', err);
       // Não resetar para 0 em caso de erro, manter último valor válido
     }
   }, [selectedDeviceId, ecSetpoint]);
+  
+  // ✅ SEMPRE recalcular o erro quando ecAtual ou ecSetpoint mudarem
+  // Isso garante que o erro seja atualizado mesmo quando não há novos dados do sensor
+  useEffect(() => {
+    const error = ecAtual - ecSetpoint;
+    setEcError(error);
+    console.log('📊 [EC Controller] Erro recalculado:', {
+      ecAtual: ecAtual.toFixed(1),
+      ecSetpoint: ecSetpoint.toFixed(1),
+      error: error.toFixed(1)
+    });
+  }, [ecAtual, ecSetpoint]);
 
   // Carregar regras do Supabase quando selectedDeviceId mudar
   useEffect(() => {
@@ -693,8 +813,16 @@ export default function AutomacaoPage() {
       const { getSlaveRelayStates } = await import('@/lib/relay-slaves-api');
       const relayStatesMap = await getSlaveRelayStates(selectedDeviceId, deviceIds);
       
+      interface RelayState {
+        device_id: string;
+        relay_number: number;
+        state: boolean;
+        has_timer: boolean;
+        remaining_time: number;
+      }
+      
       // Converter Map para array
-      const relayStatesArray: any[] = [];
+      const relayStatesArray: RelayState[] = [];
       relayStatesMap.forEach((states) => {
         relayStatesArray.push(...states);
       });
@@ -804,9 +932,17 @@ export default function AutomacaoPage() {
           const result = await response.json();
           const acks = result.acks || [];
           
+          interface CommandAck {
+            command_id: number | string;
+            status: string;
+            action: 'on' | 'off';
+            relay_number?: number;
+          }
+          
           // Atualizar estados baseado em ACKs
-          acks.forEach((ack: any) => {
-            const relayKey = commandToRelayMap.current.get(ack.command_id);
+          acks.forEach((ack: CommandAck) => {
+            const commandIdKey = ack.command_id;
+            const relayKey = commandToRelayMap.current.get(commandIdKey);
             if (relayKey && ack.status === 'completed') {
               // Comando foi completado, atualizar estado
               setRelayStates(prev => {
@@ -816,11 +952,12 @@ export default function AutomacaoPage() {
               });
               
               // Remover do mapa após processar
-              commandToRelayMap.current.delete(ack.command_id);
+              commandToRelayMap.current.delete(commandIdKey);
             } else if (relayKey && ack.status === 'failed') {
               // Comando falhou, manter estado anterior ou desligar
-              toast.error(`Comando falhou para relé ${ack.relay_number}`);
-              commandToRelayMap.current.delete(ack.command_id);
+              const relayNum = ack.relay_number !== undefined ? String(ack.relay_number) : 'desconhecido';
+              toast.error(`Comando falhou para relé ${relayNum}`);
+              commandToRelayMap.current.delete(commandIdKey);
             }
           });
         }
@@ -888,7 +1025,7 @@ export default function AutomacaoPage() {
       // Converter DecisionRule para AutomationRule
       const convertedRules: AutomationRule[] = decisionRules.map((rule) => {
         // ✅ Preservar rule_json completo para scripts sequenciais
-        const ruleJson = rule.rule_json as any; // Type assertion para acessar script
+        const ruleJson = rule.rule_json as RuleJson; // Type assertion para acessar script
         const hasScript = ruleJson?.script?.instructions;
         const hasConditions = ruleJson?.conditions && Array.isArray(ruleJson.conditions) && ruleJson.conditions.length > 0;
         const hasActions = ruleJson?.actions && Array.isArray(ruleJson.actions) && ruleJson.actions.length > 0;
@@ -898,15 +1035,15 @@ export default function AutomacaoPage() {
           name: rule.rule_name,
           description: rule.rule_description || '',
           condition: hasConditions 
-            ? ruleJson.conditions.map((c: any) => 
+            ? (ruleJson.conditions || []).map((c: RuleCondition) => 
                 `${c.sensor} ${c.operator} ${c.value}`
               ).join(' e ')
             : hasScript ? 'Sequential Script' : '',
           action: hasActions
-            ? ruleJson.actions.map((a: any) => 
+            ? (ruleJson.actions || []).map((a: RuleAction) => 
                 `${(a.relay_names && a.relay_names.length > 0 ? a.relay_names : ['Relé']).join(', ')} por ${a.duration || 0}s`
               ).join(', ')
-            : hasScript ? `${ruleJson.script.instructions.length} instrução(ões)` : '',
+            : hasScript ? `${(ruleJson.script?.instructions || []).length} instrução(ões)` : '',
           enabled: rule.enabled,
           conditions: hasConditions ? ruleJson.conditions : [],
           actions: hasActions ? ruleJson.actions : [],
@@ -967,7 +1104,7 @@ export default function AutomacaoPage() {
         slave.relays.forEach(relay => {
           const relayKey = `${slave.macAddress}-${relay.id}`;
           // Usar estado real do Master se disponível
-          const realState = (relay as any).state;
+          const realState = relay.state;
           if (realState !== undefined) {
             newRelayStates.set(relayKey, realState);
           }
@@ -1091,7 +1228,43 @@ export default function AutomacaoPage() {
     ));
   };
 
-  const handleSaveRule = async (newRule: any) => {
+  interface NewRuleData {
+    name?: string;
+    description?: string;
+    enabled?: boolean;
+    priority?: number;
+    conditions?: RuleCondition[];
+    actions?: Array<{
+      relayIds?: number[];
+      relayId?: number;
+      relayNames?: string[];
+      relayName?: string;
+      duration?: number;
+      target_device_id?: string;
+      slave_mac_address?: string;
+    }>;
+    script?: {
+      instructions: ScriptInstruction[] | unknown[];
+      max_iterations?: number;
+      chained_events?: unknown;
+      cooldown?: number;
+      max_executions_per_hour?: number;
+    };
+    chainedEvents?: unknown[];
+    cooldown?: number;
+    maxExecutionsPerHour?: number;
+    circadian_cycle?: {
+      enabled: boolean;
+      on_duration_ms: number;
+      off_duration_ms: number;
+      total_cycle_ms: number;
+      start_time?: string;
+      timezone?: string;
+    };
+    [key: string]: unknown;
+  }
+  
+  const handleSaveRule = async (newRule: NewRuleData) => {
     try {
       // ✅ Usar rule_id existente se estiver editando, senão criar novo
       // ✅ Garantir que rule_id tenha pelo menos 3 caracteres (requisito do Supabase)
@@ -1101,13 +1274,13 @@ export default function AutomacaoPage() {
         : `RULE_${Date.now()}`;
       
       // ✅ Se tiver script (instruções sequenciais), usar formato de SequentialScriptEditor
-      let ruleJson: any;
+      let ruleJson: RuleJson;
       
       if (newRule.script && newRule.script.instructions && newRule.script.instructions.length > 0) {
         // ✅ Formato de Sequential Script (Nova Função)
         ruleJson = {
           script: {
-            instructions: newRule.script.instructions,
+            instructions: newRule.script.instructions as ScriptInstruction[],
             max_iterations: newRule.script.max_iterations || 0,
             chained_events: newRule.script.chained_events || (newRule.chainedEvents && newRule.chainedEvents.length > 0 ? newRule.chainedEvents : undefined),
             cooldown: newRule.script.cooldown || newRule.cooldown || 60,
@@ -1119,12 +1292,12 @@ export default function AutomacaoPage() {
         ruleJson = {
           conditions: newRule.conditions || [],
           actions: (newRule.actions && Array.isArray(newRule.actions) && newRule.actions.length > 0)
-            ? newRule.actions.map((a: any) => ({
-                relay_ids: a.relayIds || [a.relayId] || [],
-                relay_names: a.relayNames || [a.relayName] || [],
+            ? newRule.actions.map((a) => ({
+                relay_ids: (a.relayIds || (a.relayId !== undefined ? [a.relayId] : [])).filter((id): id is number => id !== undefined && typeof id === 'number'),
+                relay_names: (a.relayNames || (a.relayName ? [a.relayName] : [])).filter((name): name is string => name !== undefined && typeof name === 'string'),
                 duration: a.duration || 0,
-                target_device_id: a.target_device_id || null,
-                slave_mac_address: a.slave_mac_address || null,
+                target_device_id: a.target_device_id || undefined,
+                slave_mac_address: a.slave_mac_address || undefined,
               }))
             : [],
           ...(newRule.circadian_cycle ? {
@@ -1135,7 +1308,7 @@ export default function AutomacaoPage() {
           } : {}),
           delay_before_execution: 0,
           interval_between_executions: 5,
-          priority: newRule.priority || 50, // ✅ Usar priority da regra
+          priority: (typeof newRule.priority === 'number' ? newRule.priority : 50), // ✅ Usar priority da regra
         };
       }
       
@@ -1153,20 +1326,46 @@ export default function AutomacaoPage() {
         return;
       }
       
-      if (!newRule.name || newRule.name.trim().length === 0) {
+      const ruleName = typeof newRule.name === 'string' ? newRule.name.trim() : '';
+      if (!ruleName || ruleName.length === 0) {
         toast.error('Erro: Nome da regra é obrigatório.');
         console.error('❌ [VALIDATION ERROR] rule_name vazio');
         return;
       }
 
+      const ruleDescription = typeof newRule.description === 'string' ? newRule.description.trim() : '';
+      const rulePriority = typeof newRule.priority === 'number' ? Math.max(0, Math.min(100, newRule.priority)) : 50;
+      const ruleEnabled = typeof newRule.enabled === 'boolean' ? newRule.enabled : true;
+      
+      // ✅ Asegurar que ruleJson tenga la estructura correcta para DecisionRule
+      const validatedRuleJson: DecisionRule['rule_json'] = {
+        conditions: ruleJson.conditions || [],
+        actions: (ruleJson.actions || []).map(action => {
+          const relayIds = action.relay_ids ?? [];
+          const relayNames = action.relay_names ?? [];
+          return {
+            relay_ids: Array.isArray(relayIds) ? relayIds : [],
+            relay_names: Array.isArray(relayNames) ? relayNames : [],
+            duration: action.duration ?? 0,
+            target_device_id: action.target_device_id,
+            slave_mac_address: action.slave_mac_address,
+          };
+        }),
+        ...(ruleJson.script ? { script: ruleJson.script } : {}),
+        ...(ruleJson.circadian_cycle ? { circadian_cycle: ruleJson.circadian_cycle } : {}),
+        delay_before_execution: ruleJson.delay_before_execution,
+        interval_between_executions: ruleJson.interval_between_executions,
+        priority: ruleJson.priority,
+      };
+
       const decisionRule: DecisionRule = {
         device_id: selectedDeviceId,
         rule_id: ruleId,
-        rule_name: newRule.name.trim(),
-        rule_description: newRule.description?.trim() || null,
-        rule_json: ruleJson,
-        enabled: newRule.enabled !== undefined ? newRule.enabled : true,
-        priority: Math.max(0, Math.min(100, newRule.priority || 50)), // ✅ Garantir que priority está entre 0-100
+        rule_name: ruleName,
+        rule_description: ruleDescription || undefined,
+        rule_json: validatedRuleJson,
+        enabled: ruleEnabled,
+        priority: rulePriority,
         created_by: userProfile?.email || 'system',
       };
 
@@ -1217,9 +1416,9 @@ export default function AutomacaoPage() {
           } else {
             toast.error('Erro ao salvar regra no banco de dados. Verifique o console para mais detalhes.');
           }
-        } catch (error: any) {
+        } catch (error) {
           console.error('❌ [CREATE ERROR] Exceção capturada:', error);
-          toast.error(error?.message || 'Erro ao criar regra. Verifique o console para mais detalhes.');
+          toast.error(error instanceof Error ? error.message : 'Erro ao criar regra. Verifique o console para mais detalhes.');
           return;
         }
       }
@@ -1340,7 +1539,7 @@ export default function AutomacaoPage() {
     onConfirm, 
     onCancel 
   }: { 
-    t: any; 
+    t: Toast; 
     ruleName: string; 
     onConfirm: (password: string) => void; 
     onCancel: () => void;
@@ -1373,7 +1572,7 @@ export default function AutomacaoPage() {
                 ⚠️ Confirmar Exclusão
               </h3>
               <p className="text-sm text-dark-text mb-3">
-                Tem certeza que deseja excluir a regra <span className="font-semibold text-aqua-400">"{ruleName}"</span>?
+                Tem certeza que deseja excluir a regra <span className="font-semibold text-aqua-400">&quot;{ruleName}&quot;</span>?
               </p>
               <p className="text-xs text-yellow-400 mb-3">
                 🔒 Esta ação requer senha de administrador
@@ -1775,13 +1974,13 @@ export default function AutomacaoPage() {
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                   {slave.relays.map(relay => {
                                     const relayKey = `${slave.macAddress}-${relay.id}`;
-                                    const realState = (relay as any).state !== undefined ? (relay as any).state : false;
+                                    const realState = relay.state !== undefined ? relay.state : false;
                                     const isRelayOn = relayStates.get(relayKey) ?? realState;
                                     const isLoading = loadingRelays.get(relayKey) || false;
                                     const isLocked = lockedSlaves.get(slave.macAddress) ?? false;
                                     // ✅ Verificar se tem timer ativo
-                                    const hasTimer = (relay as any).has_timer || false;
-                                    const remainingTime = (relay as any).remaining_time || 0;
+                                    const hasTimer = relay.has_timer || false;
+                                    const remainingTime = relay.remaining_time || 0;
                                     
                                     return (
                                       <div
@@ -2452,7 +2651,7 @@ export default function AutomacaoPage() {
                               {/* Preview das instruções - Linha circular do script */}
                               {script.rule_json?.script?.instructions && (
                                 <div className="mt-2 text-xs text-gray-400 space-y-1 font-mono">
-                                  {script.rule_json.script.instructions.slice(0, 2).map((instr: any, idx: number) => (
+                                  {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
                                     <div key={idx} className="text-aqua-300">
                                       {idx + 1}. {instr.type.toUpperCase()}
                                       {instr.condition && (
@@ -2581,7 +2780,7 @@ export default function AutomacaoPage() {
                                 {/* Preview das instruções - Linha circular do script */}
                                 {script.rule_json?.script?.instructions && (
                                   <div className="mt-2 text-xs text-gray-400 space-y-1 font-mono">
-                                    {script.rule_json.script.instructions.slice(0, 2).map((instr: any, idx: number) => (
+                                  {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
                                       <div key={idx} className="text-aqua-300">
                                         {idx + 1}. {instr.type.toUpperCase()}
                                         {instr.condition && (
