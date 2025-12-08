@@ -1,9 +1,8 @@
 import { supabase } from './supabase';
-import { getDecisionRules, DecisionRule } from './automation';
+import { getDecisionRules } from './automation';
 import { 
   getSlavesFromMaster, 
   getRelayNamesFromSupabase,
-  ESP32Slave 
 } from './esp32-api';
 
 interface RuleAction {
@@ -79,6 +78,7 @@ export interface ESPNowSlave {
  */
 export async function getESPNOWSlaves(
   masterDeviceId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   userEmail: string
 ): Promise<ESPNowSlave[]> {
   try {

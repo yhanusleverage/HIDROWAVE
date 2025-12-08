@@ -76,7 +76,7 @@ export interface DeviceStatus {
   previous_user_email?: string; // ✅ Email do usuário anterior
   previous_master_device_id?: string; // ✅ ID do Master anterior
   last_reassignment_at?: string; // ✅ Data da última reatribuição
-  user_settings?: Record<string, any>; // ✅ Configurações do usuário (JSONB)
+  user_settings?: Record<string, unknown>; // ✅ Configurações do usuário (JSONB)
 }
 
 export interface RelayCommand {
@@ -915,16 +915,16 @@ export async function createRelayCommand(command: Omit<RelayCommand, 'id' | 'cre
     console.log(`   Tipo: ${isSlave ? 'SLAVE' : 'MASTER'}`);
     
     // ✅ Preparar dados (optimizado - sin conversiones innecesarias)
-    const relay_numbers = Array.isArray((command as any).relay_numbers) 
-      ? (command as any).relay_numbers 
+    const relay_numbers: number[] = Array.isArray((command as RelayCommand & { relay_numbers?: number[] }).relay_numbers) 
+      ? (command as RelayCommand & { relay_numbers?: number[] }).relay_numbers!
       : [command.relay_number];
     
-    const actions = Array.isArray((command as any).actions) 
-      ? (command as any).actions 
+    const actions: ('on' | 'off')[] = Array.isArray((command as RelayCommand & { actions?: ('on' | 'off')[] }).actions) 
+      ? (command as RelayCommand & { actions?: ('on' | 'off')[] }).actions!
       : [command.action];
     
-    const duration_seconds = Array.isArray((command as any).duration_seconds)
-      ? (command as any).duration_seconds
+    const duration_seconds: number[] = Array.isArray((command as RelayCommand & { duration_seconds?: number[] }).duration_seconds)
+      ? (command as RelayCommand & { duration_seconds?: number[] }).duration_seconds!
       : [command.duration_seconds || 0];
     
     // ✅ Tipo para resposta da API (pode ter campos adicionais)
@@ -962,8 +962,8 @@ export async function createRelayCommand(command: Omit<RelayCommand, 'id' | 'cre
     
     const payload: CommandPayload = {
       master_device_id: command.device_id,
-      user_email: (command as any).user_email || null,
-      master_mac_address: (command as any).master_mac_address || null,
+      user_email: (command as RelayCommand & { user_email?: string }).user_email || null,
+      master_mac_address: (command as RelayCommand & { master_mac_address?: string }).master_mac_address || null,
       relay_numbers,
       actions,
       duration_seconds,
@@ -1247,7 +1247,7 @@ export async function checkSlaveExists(
       .single();
 
     return !error && data !== null;
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -1275,7 +1275,7 @@ export async function getRelayCommands(deviceId?: string, status?: string): Prom
 
 // ===== RULE EXECUTIONS =====
 
-export async function getRuleExecutions(deviceId?: string, limit: number = 50): Promise<any[]> {
+export async function getRuleExecutions(deviceId?: string, limit: number = 50): Promise<Record<string, unknown>[]> {
   let query = supabase
     .from('rule_executions')
     .select('*')
@@ -1298,7 +1298,7 @@ export async function getRuleExecutions(deviceId?: string, limit: number = 50): 
 
 // ===== SYSTEM ALERTS =====
 
-export async function getSystemAlerts(deviceId?: string, limit: number = 50): Promise<any[]> {
+export async function getSystemAlerts(deviceId?: string, limit: number = 50): Promise<Record<string, unknown>[]> {
   let query = supabase
     .from('system_alerts')
     .select('*')

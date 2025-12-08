@@ -210,7 +210,7 @@ export async function updateCropTask(
   updates: Partial<CropTask>
 ): Promise<CropTask | null> {
   try {
-    const body: any = { id: taskId };
+    const body: Record<string, unknown> = { id: taskId };
     
     if (updates.title !== undefined) body.title = updates.title;
     if (updates.description !== undefined) body.description = updates.description;
