@@ -166,8 +166,9 @@ export async function executeDecisionRule(
         } else {
           errors.push(`Erro ao criar comando para slave ${slaveMac}: ${result?.error || 'Erro desconhecido'}`);
         }
-      } catch (error: any) {
-        errors.push(`Erro ao criar comando para slave ${slaveMac}: ${error.message}`);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+        errors.push(`Erro ao criar comando para slave ${slaveMac}: ${errorMessage}`);
       }
     }
 
@@ -180,12 +181,13 @@ export async function executeDecisionRule(
     }
 
     return { success: true, commandsCreated };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     console.error('❌ [DECISION RULE] Erro ao executar regra:', error);
     return {
       success: false,
       commandsCreated: 0,
-      error: error.message || 'Erro desconhecido',
+      error: errorMessage,
     };
   }
 }

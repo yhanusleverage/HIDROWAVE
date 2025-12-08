@@ -42,12 +42,79 @@ export interface CropEvent {
   recurrence_pattern?: string;
   recurrence_interval: number;
   recurrence_end_date?: string;
-  automated_actions?: any[];
+  automated_actions?: unknown[];
   enabled: boolean;
   completed: boolean;
   completed_at?: string;
   last_synced_at?: string;
   sync_status: 'pending' | 'synced' | 'failed';
+  created_at: string;
+  updated_at: string;
+}
+
+// ✅ Tipos válidos para tareas
+export type TaskType = 'dosagem' | 'manutencao' | 'monitoramento' | 'colheita' | 'plantio';
+export type TaskPriority = 'low' | 'medium' | 'high';
+
+// ✅ Función para validar el tipo de tarea
+function validateTaskType(value: string): TaskType {
+  const validTypes: readonly TaskType[] = ['dosagem', 'manutencao', 'monitoramento', 'colheita', 'plantio'];
+  if (validTypes.includes(value as TaskType)) {
+    return value as TaskType;
+  }
+  // Si no es válido, usar 'monitoramento' como valor por defecto seguro
+  return 'monitoramento';
+}
+
+// ✅ Función para convertir número de prioridad a string
+function validateTaskPriority(value: number | undefined): TaskPriority {
+  // Si no hay valor, usar 'medium' por defecto
+  if (value === undefined || value === null) {
+    return 'medium';
+  }
+  // Convertir número a prioridad: 1-3 = low, 4-7 = medium, 8-10 = high
+  if (value <= 3) return 'low';
+  if (value <= 7) return 'medium';
+  return 'high';
+}
+
+interface TaskFromAPI {
+  id: string;
+  task_date: string;
+  task_type: string; // Viene de la API como string genérico
+  title: string;
+  description?: string;
+  completed: boolean;
+  priority?: number; // Viene de la API como número
+}
+
+interface NoteFromAPI {
+  note_date: string;
+  notes?: string;
+}
+
+// ✅ EventFromAPI: todos los campos de CropEvent que vienen de la API
+interface EventFromAPI {
+  id: string;
+  device_id: string;
+  user_email: string;
+  title: string;
+  description?: string;
+  event_type: string; // Viene como string genérico
+  start_date: string;
+  start_time?: string;
+  end_date?: string;
+  end_time?: string;
+  is_recurring: boolean;
+  recurrence_pattern?: string;
+  recurrence_interval: number;
+  recurrence_end_date?: string;
+  automated_actions?: string | unknown[]; // Puede venir como string JSON o array
+  enabled: boolean;
+  completed: boolean;
+  completed_at?: string;
+  last_synced_at?: string;
+  sync_status: string; // Viene como string genérico
   created_at: string;
   updated_at: string;
 }
@@ -81,14 +148,14 @@ export async function getCropTasks(
     }
 
     const data = await response.json();
-    return data.tasks.map((task: any) => ({
+    return (data.tasks as TaskFromAPI[]).map((task: TaskFromAPI) => ({
       id: task.id,
       date: new Date(task.task_date),
-      type: task.task_type,
+      type: validateTaskType(task.task_type), // ✅ Validar que sea un tipo válido
       title: task.title,
       description: task.description,
       completed: task.completed,
-      priority: task.priority,
+      priority: validateTaskPriority(task.priority), // ✅ Convertir número a 'low'|'medium'|'high'
     }));
   } catch (error) {
     console.error('Erro ao buscar tarefas:', error);
@@ -231,7 +298,7 @@ export async function getCropDayNotes(
     }
 
     const data = await response.json();
-    return data.notes.map((note: any) => ({
+    return (data.notes as NoteFromAPI[]).map((note: NoteFromAPI) => ({
       date: new Date(note.note_date),
       notes: note.notes || '',
     }));
@@ -417,11 +484,31 @@ export async function getCropEvents(
     }
 
     const data = await response.json();
-    return data.events.map((event: any) => ({
-      ...event,
+    return (data.events as EventFromAPI[]).map((event: EventFromAPI): CropEvent => ({
+      id: event.id,
+      device_id: event.device_id,
+      user_email: event.user_email,
+      title: event.title,
+      description: event.description,
+      event_type: event.event_type as CropEvent['event_type'], // Type assertion segura
+      start_date: event.start_date,
+      start_time: event.start_time,
+      end_date: event.end_date,
+      end_time: event.end_time,
+      is_recurring: event.is_recurring,
+      recurrence_pattern: event.recurrence_pattern,
+      recurrence_interval: event.recurrence_interval,
+      recurrence_end_date: event.recurrence_end_date,
       automated_actions: typeof event.automated_actions === 'string' 
         ? JSON.parse(event.automated_actions) 
         : event.automated_actions || [],
+      enabled: event.enabled,
+      completed: event.completed,
+      completed_at: event.completed_at,
+      last_synced_at: event.last_synced_at,
+      sync_status: event.sync_status as CropEvent['sync_status'], // Type assertion segura
+      created_at: event.created_at,
+      updated_at: event.updated_at,
     }));
   } catch (error) {
     console.error('Erro ao buscar eventos:', error);

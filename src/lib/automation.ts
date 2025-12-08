@@ -103,6 +103,36 @@ export interface RelayCommand {
   priority?: number; // ✅ Prioridade numérica (0-100). Maior = mais importante. Default: 50
 }
 
+// ✅ Tipos para valores válidos de triggered_by y command_type
+export type TriggeredByType = 'manual' | 'automation' | 'rule' | 'peristaltic';
+export type CommandType = 'manual' | 'rule' | 'peristaltic';
+
+// ✅ Función helper para validar triggered_by de forma type-safe
+function validateTriggeredBy(value: string | undefined): TriggeredByType {
+  const validValues: readonly TriggeredByType[] = ['manual', 'automation', 'rule', 'peristaltic'];
+  
+  // Type guard: verificar si el valor es uno de los válidos
+  if (value && validValues.includes(value as TriggeredByType)) {
+    return value as TriggeredByType;
+  }
+  
+  // Valor por defecto seguro
+  return 'manual';
+}
+
+// ✅ Función helper para validar command_type de forma type-safe
+function validateCommandType(value: string | undefined): CommandType {
+  const validValues: readonly CommandType[] = ['manual', 'rule', 'peristaltic'];
+  
+  // Type guard: verificar si el valor es uno de los válidos
+  if (value && validValues.includes(value as CommandType)) {
+    return value as CommandType;
+  }
+  
+  // Valor por defecto seguro
+  return 'manual';
+}
+
 // ===== DECISION RULES =====
 
 export async function getDecisionRules(deviceId?: string): Promise<DecisionRule[]> {
@@ -142,11 +172,11 @@ export async function createDecisionRule(rule: DecisionRule): Promise<DecisionRu
   }
 
   // ✅ Limpar campos undefined para evitar problemas com Supabase
-  const cleanRule: any = {
+  const cleanRule: Partial<DecisionRule> = {
     device_id: rule.device_id,
     rule_id: rule.rule_id,
     rule_name: rule.rule_name,
-    rule_description: rule.rule_description || null,
+    rule_description: rule.rule_description || undefined,
     rule_json: rule.rule_json,
     enabled: rule.enabled !== undefined ? rule.enabled : true,
     priority: rule.priority !== undefined ? rule.priority : 50,
@@ -610,7 +640,7 @@ export async function createMasterCommandDirect(payload: {
   triggered_by?: 'manual' | 'automation' | 'rule' | 'peristaltic';
   rule_id?: string | null;
   rule_name?: string | null;
-}): Promise<{ success: boolean; command?: any; error?: string } | null> {
+}): Promise<{ success: boolean; command?: RelayCommand; error?: string } | null> {
   const startTime = Date.now();
   const env = process.env.NODE_ENV || 'development';
   const isVercel = !!process.env.VERCEL;
@@ -739,7 +769,7 @@ export async function createSlaveCommandDirect(payload: {
   triggered_by?: 'manual' | 'automation' | 'rule' | 'peristaltic';
   rule_id?: string | null;
   rule_name?: string | null;
-}): Promise<{ success: boolean; command?: any; error?: string } | null> {
+}): Promise<{ success: boolean; command?: RelayCommand; error?: string } | null> {
   const startTime = Date.now();
   const env = process.env.NODE_ENV || 'development';
   const isVercel = !!process.env.VERCEL;
@@ -897,31 +927,63 @@ export async function createRelayCommand(command: Omit<RelayCommand, 'id' | 'cre
       ? (command as any).duration_seconds
       : [command.duration_seconds || 0];
     
+    // ✅ Tipo para resposta da API (pode ter campos adicionais)
+    interface CommandFromAPI extends Partial<RelayCommand> {
+      master_device_id?: string;
+      slave_device_id?: string;
+      user_email?: string;
+      master_mac_address?: string;
+      expires_at?: string | null;
+      [key: string]: unknown;
+    }
+
+    // ✅ Tipo para payload enviado à API
+    interface CommandPayload {
+      master_device_id: string;
+      user_email: string | null;
+      master_mac_address: string | null;
+      relay_numbers: number[];
+      actions: ('on' | 'off')[];
+      duration_seconds: number[];
+      command_type: 'manual' | 'rule' | 'peristaltic';
+      priority: number;
+      expires_at: string | null;
+      triggered_by: 'manual' | 'automation' | 'rule' | 'peristaltic';
+      rule_id: string | null;
+      rule_name: string | null;
+      slave_device_id?: string;
+      slave_mac_address?: string | null;
+    }
+
     // ✅ Preparar payload base
-    const payload: any = {
+    // ✅ Validar y convertir tipos de forma segura usando funciones helper
+    const triggeredByValue = validateTriggeredBy(command.triggered_by);
+    const commandTypeValue = validateCommandType(command.command_type);
+    
+    const payload: CommandPayload = {
       master_device_id: command.device_id,
       user_email: (command as any).user_email || null,
       master_mac_address: (command as any).master_mac_address || null,
       relay_numbers,
       actions,
       duration_seconds,
-      command_type: command.command_type || 'manual',
+      command_type: commandTypeValue,
       priority: command.priority || 50,
-      expires_at: (command as any).expires_at || null,
-      triggered_by: command.triggered_by || 'manual',
+      expires_at: (command as RelayCommand & { expires_at?: string | null }).expires_at || null,
+      triggered_by: triggeredByValue,
       rule_id: command.rule_id || null,
       rule_name: command.rule_name || null,
     };
     
     // ✅ Adicionar campos específicos de Slave
     if (isSlave) {
-      payload.slave_device_id = (command as any).slave_device_id || `ESP32_SLAVE_${command.slave_mac_address?.replace(/:/g, '_')}`;
+      payload.slave_device_id = (command as RelayCommand & { slave_device_id?: string }).slave_device_id || `ESP32_SLAVE_${command.slave_mac_address?.replace(/:/g, '_')}`;
       payload.slave_mac_address = command.slave_mac_address;
     }
     
     console.log(`   Payload resumido: device_id=${payload.master_device_id}, relays=[${relay_numbers.join(',')}], actions=[${actions.join(',')}]`);
     
-    let result: { success: boolean; command?: any; error?: string } | null = null;
+    let result: { success: boolean; command?: CommandFromAPI; error?: string } | null = null;
     
     // ⚡ OPTIMIZACIÓN CRÍTICA: Si estamos en el servidor, usar funciones directas (0ms latencia)
     // Si estamos en el cliente, usar fetch HTTP (necesario desde navegador)
@@ -930,10 +992,54 @@ export async function createRelayCommand(command: Omit<RelayCommand, 'id' | 'cre
       console.log(`🚀 [DEBUG-CREATE-RELAY] Usando função DIRETA (servidor)`);
       const directStartTime = Date.now();
       
+      let directResult: { success: boolean; command?: RelayCommand; error?: string } | null = null;
       if (isSlave) {
-        result = await createSlaveCommandDirect(payload);
+        // ✅ Converter payload para formato esperado pela função (user_email não pode ser null)
+        const slavePayload = {
+          master_device_id: payload.master_device_id,
+          user_email: payload.user_email || '',
+          master_mac_address: payload.master_mac_address || '',
+          slave_device_id: payload.slave_device_id || '',
+          slave_mac_address: payload.slave_mac_address || '',
+          relay_numbers: payload.relay_numbers,
+          actions: payload.actions,
+          duration_seconds: payload.duration_seconds,
+          command_type: payload.command_type,
+          priority: payload.priority,
+          expires_at: payload.expires_at,
+          triggered_by: payload.triggered_by,
+          rule_id: payload.rule_id,
+          rule_name: payload.rule_name,
+        };
+        directResult = await createSlaveCommandDirect(slavePayload);
       } else {
-        result = await createMasterCommandDirect(payload);
+        // ✅ Converter payload para formato esperado pela função (user_email não pode ser null)
+        const masterPayload = {
+          master_device_id: payload.master_device_id,
+          user_email: payload.user_email || '',
+          master_mac_address: payload.master_mac_address || '',
+          relay_numbers: payload.relay_numbers,
+          actions: payload.actions,
+          duration_seconds: payload.duration_seconds,
+          command_type: payload.command_type,
+          priority: payload.priority,
+          expires_at: payload.expires_at,
+          triggered_by: payload.triggered_by,
+          rule_id: payload.rule_id,
+          rule_name: payload.rule_name,
+        };
+        directResult = await createMasterCommandDirect(masterPayload);
+      }
+      
+      // ✅ Converter RelayCommand para CommandFromAPI (compatibilidade)
+      if (directResult && directResult.command) {
+        result = {
+          success: directResult.success,
+          command: { ...directResult.command } as CommandFromAPI,
+          error: directResult.error,
+        };
+      } else {
+        result = directResult as { success: boolean; command?: CommandFromAPI; error?: string } | null;
       }
       
       const directTime = Date.now() - directStartTime;
@@ -974,21 +1080,29 @@ export async function createRelayCommand(command: Omit<RelayCommand, 'id' | 'cre
     }
     
     // ✅ Converter resposta para formato RelayCommand (compatibilidade)
+    const commandFromAPI = result.command as CommandFromAPI;
+    const deviceId = commandFromAPI.device_id || commandFromAPI.master_device_id || command.device_id;
+    
+    if (!deviceId) {
+      console.error('❌ [DEBUG-CREATE-RELAY] device_id não encontrado no comando');
+      return null;
+    }
+    
     const createdCommand: RelayCommand = {
-      id: result.command.id,
-      device_id: result.command.device_id || result.command.master_device_id,
+      id: commandFromAPI.id,
+      device_id: deviceId,
       relay_number: relay_numbers[0],
       action: actions[0] as 'on' | 'off',
       duration_seconds: duration_seconds[0],
-      status: result.command.status || 'pending',
-      created_at: result.command.created_at,
-      command_type: result.command.command_type,
-      priority: result.command.priority,
-      triggered_by: result.command.triggered_by,
-      rule_id: result.command.rule_id,
-      rule_name: result.command.rule_name,
+      status: commandFromAPI.status || 'pending',
+      created_at: commandFromAPI.created_at,
+      command_type: commandFromAPI.command_type,
+      priority: commandFromAPI.priority,
+      triggered_by: commandFromAPI.triggered_by,
+      rule_id: commandFromAPI.rule_id,
+      rule_name: commandFromAPI.rule_name,
       slave_mac_address: isSlave ? command.slave_mac_address : null,
-      target_device_id: isSlave ? (result.command.slave_device_id || payload.slave_device_id) : undefined,
+      target_device_id: isSlave ? (commandFromAPI.slave_device_id || payload.slave_device_id) : undefined,
     };
     
     console.log(`✅ [DEBUG-CREATE-RELAY] Comando criado com sucesso!`);

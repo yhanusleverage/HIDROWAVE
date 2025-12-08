@@ -2290,9 +2290,17 @@ export default function AutomacaoPage() {
 
         {/* 🧠 MOTOR DE DECISÃO - Menu Colapsável */}
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
-          <button
+          <div
             onClick={() => setExpandedDecisionEngine(!expandedDecisionEngine)}
-            className="w-full p-4 sm:p-6 flex items-center justify-between hover:bg-dark-surface/50 transition-colors"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setExpandedDecisionEngine(!expandedDecisionEngine);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            className="w-full p-4 sm:p-6 flex items-center justify-between hover:bg-dark-surface/50 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {expandedDecisionEngine ? (
@@ -2355,7 +2363,7 @@ export default function AutomacaoPage() {
                 ➕ Nova Regra
               </div>
             </div>
-          </button>
+          </div>
 
           {expandedDecisionEngine && (
             <div className="p-4 sm:p-6 border-t border-dark-border">

@@ -6,6 +6,18 @@ import {
   ESP32Slave 
 } from './esp32-api';
 
+interface RuleAction {
+  relay_ids?: number[];
+  relay_names?: string[];
+  relay_id?: number;
+  relay_name?: string;
+  duration?: number;
+  target_device?: string;
+  target_device_id?: string;
+  slave_mac_address?: string;
+  [key: string]: unknown;
+}
+
 /**
  * Interface para configuração de relé de slave ESP-NOW
  * 
@@ -213,7 +225,7 @@ export async function loadSlaveRelayConfigs(
     // Filtrar regras que são para este slave
     const slaveRules = rules.filter((rule) => {
       const actions = rule.rule_json?.actions || [];
-      return actions.some((action: any) => {
+      return actions.some((action: RuleAction) => {
         // Identificar por MAC (prioritário) ou nome
         return action.target_device === slaveMac ||
                (slaveName && action.target_device === slaveName);
@@ -222,9 +234,9 @@ export async function loadSlaveRelayConfigs(
 
     // Processar cada regra
     slaveRules.forEach((rule) => {
-      const actions = rule.rule_json?.actions || [];
+      const actions = (rule.rule_json?.actions || []) as RuleAction[];
       
-      actions.forEach((action: any) => {
+      actions.forEach((action: RuleAction) => {
         const isForThisSlave = 
           action.target_device === slaveMac ||
           (slaveName && action.target_device === slaveName);

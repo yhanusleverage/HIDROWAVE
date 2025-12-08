@@ -34,9 +34,39 @@ export interface ESP32Slave {
 
 /**
  * Interface para resposta do endpoint /api/slaves
+ * (Não usado atualmente, mas mantido para referência futura)
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface ESP32SlavesResponse {
   slaves: ESP32Slave[];
+}
+
+interface DeviceStatusFromSupabase {
+  device_id: string;
+  device_name?: string;
+  device_type?: string;
+  mac_address?: string;
+  last_seen?: string;
+  [key: string]: unknown;
+}
+
+interface SlaveRelayFromSupabase {
+  device_id: string;
+  relay_states?: boolean[];
+  relay_has_timers?: boolean[];
+  relay_remaining_times?: number[];
+  last_update?: string;
+  updated_at?: string;
+  relay_name?: string;
+}
+
+interface RelayState {
+  device_id: string;
+  relay_number: number;
+  state: boolean;
+  has_timer: boolean;
+  remaining_time: number;
+  relay_name?: string;
 }
 
 /**
@@ -131,8 +161,8 @@ export async function getSlavesFromSupabase(masterDeviceId: string): Promise<ESP
     })));
 
     // ✅ Buscar estados dos relés usando relay_slaves (não relay_states)
-    const deviceIds = data.map((d: any) => d.device_id);
-    let relayStatesMap = new Map<string, any[]>();
+    const deviceIds = data.map((d: DeviceStatusFromSupabase) => d.device_id);
+    const relayStatesMap = new Map<string, RelayState[]>();
     // ✅ Criar mapa de last_update por device_id (fora do if para estar no escopo correto)
     const slaveLastUpdateMap = new Map<string, string>();
     
@@ -146,7 +176,7 @@ export async function getSlavesFromSupabase(masterDeviceId: string): Promise<ESP
       
       if (!relayError && slaveRelays) {
         // Converter arrays em objetos individuais por relé
-        slaveRelays.forEach((slave: any) => {
+        slaveRelays.forEach((slave: SlaveRelayFromSupabase) => {
           // ✅ Guardar last_update para usar no cálculo de status
           const lastUpdate = slave.last_update || slave.updated_at;
           if (lastUpdate) {
@@ -157,7 +187,7 @@ export async function getSlavesFromSupabase(masterDeviceId: string): Promise<ESP
           const hasTimers = slave.relay_has_timers || Array(8).fill(false);
           const remainingTimes = slave.relay_remaining_times || Array(8).fill(0);
           
-          const relayStates: any[] = [];
+          const relayStates: RelayState[] = [];
           for (let i = 0; i < 8; i++) {
             relayStates.push({
               device_id: slave.device_id,
@@ -177,7 +207,7 @@ export async function getSlavesFromSupabase(masterDeviceId: string): Promise<ESP
     }
 
     // Converter DeviceStatus para ESP32Slave com estados reais dos relés
-    const slaves: ESP32Slave[] = data.map((device: any) => {
+    const slaves: ESP32Slave[] = data.map((device: DeviceStatusFromSupabase) => {
       const deviceRelayStates = relayStatesMap.get(device.device_id) || [];
       
       // ✅ CORRIGIDO: Usar last_update de relay_slaves como fonte principal (mais confiável)
@@ -206,7 +236,7 @@ export async function getSlavesFromSupabase(masterDeviceId: string): Promise<ESP
       
       // Criar array de relés com estados reais do Supabase
       const relays = Array.from({ length: 8 }, (_, i) => {
-        const relayState = deviceRelayStates.find((rs: any) => rs.relay_number === i);
+        const relayState = deviceRelayStates.find((rs: RelayState) => rs.relay_number === i);
         return {
           relay_number: i,
           name: relayState?.relay_name || `Relé ${i}`,
