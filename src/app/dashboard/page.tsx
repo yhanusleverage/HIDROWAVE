@@ -1,22 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import SensorCard from '@/components/SensorCard';
 import RelayControl from '@/components/RelayControl';
 import SensorChart from '@/components/SensorChart';
-import NutrientControl from '@/components/NutrientControl';
 import CropCalendar, { CropTask } from '@/components/CropCalendar';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import { HydroMeasurement, EnvironmentMeasurement } from '@/lib/supabase';
-import { getPollingInterval } from '@/lib/settings';
+import { getPollingInterval, loadSettings, saveSettings, type Settings } from '@/lib/settings';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserDevices, DeviceStatus } from '@/lib/automation';
 import { useCropAlarms } from '@/hooks/useCropAlarms';
 import { 
-  BeakerIcon, 
-  Cog6ToothIcon, 
-  LightBulbIcon, 
-  WrenchIcon 
+  AdjustmentsHorizontalIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 export default function DashboardPage() {
@@ -36,6 +33,21 @@ export default function DashboardPage() {
   
   // Estado para tarefas do calendário
   const [calendarTasks, setCalendarTasks] = useState<CropTask[]>([]);
+  
+  // ✅ Estados para configuração de umbrales de EC
+  const [ecThresholds, setEcThresholds] = useState({
+    dangerMin: 250,
+    dangerMax: 750,
+    warningMin: 400,
+    warningMax: 600,
+  });
+  const [showECConfig, setShowECConfig] = useState(false);
+  const [savingECConfig, setSavingECConfig] = useState(false);
+  
+  // ✅ Estados para configuração de umbrales de otros sensores
+  const [showTempConfig, setShowTempConfig] = useState(false);
+  const [showPHConfig, setShowPHConfig] = useState(false);
+  const [showAmbientConfig, setShowAmbientConfig] = useState(false);
 
   // ✅ Hook para verificar alarmes do calendário
   const { alarms, acknowledgeAlarm } = useCropAlarms({
@@ -70,13 +82,33 @@ export default function DashboardPage() {
     loadUserDevices();
   }, [userEmail, selectedDeviceId]);
 
+  // ✅ Carregar umbrales de EC das configurações
+  useEffect(() => {
+    const loadECThresholds = async () => {
+      if (!userEmail) return;
+      
+      try {
+        const settings = await loadSettings(userEmail);
+        if (settings.ecThresholds) {
+          setEcThresholds(settings.ecThresholds);
+          console.log('✅ [DASHBOARD] Umbrales de EC carregados:', settings.ecThresholds);
+        }
+      } catch (error) {
+        console.warn('⚠️ [DASHBOARD] Erro ao carregar umbrales de EC, usando padrão:', error);
+      }
+    };
+
+    loadECThresholds();
+  }, [userEmail]);
+
   // ✅ Función para validar datos hidropónicos
   const validateHydroData = (data: unknown): HydroMeasurement | null => {
     if (data && typeof data === 'object') {
       const obj = data as Record<string, unknown>;
       const hasValidData = obj.temperature !== undefined || 
                           obj.ph !== undefined || 
-                          obj.tds !== undefined;
+                          obj.tds !== undefined ||
+                          obj.ec !== undefined; // ✅ También validar EC
       if (hasValidData) {
         return data as HydroMeasurement;
       }
@@ -93,6 +125,28 @@ export default function DashboardPage() {
         return data as EnvironmentMeasurement;
       }
     }
+    return null;
+  };
+
+  // ✅ Función helper para calcular EC de forma consistente
+  // Tipado correctamente para evitar errores en Vercel (sin tipos 'any')
+  // DEBE estar definida ANTES de nutrientsChartData para evitar errores de inicialización
+  const calculateEC = (item: HydroMeasurement | null | undefined): number | null => {
+    // ✅ Validar que el item existe
+    if (!item) return null;
+    
+    // ✅ Prioridad 1: Usar EC si está disponible (incluyendo 0 como valor válido)
+    // En Supabase, EC puede venir directamente o ser calculado de TDS
+    if (item.ec !== null && item.ec !== undefined && !isNaN(Number(item.ec))) {
+      return Number(item.ec);
+    }
+    
+    // ✅ Prioridad 2: Calcular de TDS: EC = TDS * 2
+    // TDS siempre existe en HydroMeasurement (es obligatorio)
+    if (item.tds !== null && item.tds !== undefined && !isNaN(Number(item.tds))) {
+      return Number(item.tds) * 2;
+    }
+    
     return null;
   };
 
@@ -113,6 +167,12 @@ export default function DashboardPage() {
         const validated = validateHydroData(hydroData);
         setHydroData(validated);
         console.log('✅ [DASHBOARD] Dados hidropônicos carregados');
+        // ✅ Debug: Verificar valores de EC y TDS
+        console.log('🔍 [DASHBOARD] EC:', validated?.ec, 'TDS:', validated?.tds);
+        if (validated) {
+          const ecValue = validated.ec ?? (validated.tds ? validated.tds * 2 : null);
+          console.log('🔍 [DASHBOARD] EC calculado para card:', ecValue);
+        }
       } else {
         console.warn(`⚠️ [DASHBOARD] Erro ao buscar hydro-data: ${hydroRes.status}`);
         setHydroData(null);
@@ -153,8 +213,27 @@ export default function DashboardPage() {
       if (hydroHistoryRes.ok) {
         const hydroHistoryData = await hydroHistoryRes.json();
         if (Array.isArray(hydroHistoryData)) {
-          setHydroHistory(hydroHistoryData);
+          // ✅ Debug: Verificar datos de pH
+          const phData = hydroHistoryData.map(item => ({ 
+            ph: item.ph, 
+            phType: typeof item.ph,
+            phIsNull: item.ph === null,
+            phIsUndefined: item.ph === undefined,
+            created_at: item.created_at 
+          }));
+          const validPhCount = hydroHistoryData.filter(item => 
+            item.ph !== null && item.ph !== undefined && !isNaN(Number(item.ph))
+          ).length;
           console.log(`✅ [DASHBOARD] Histórico hidropônico: ${hydroHistoryData.length} registros`);
+          console.log(`📊 [DASHBOARD] pH válidos: ${validPhCount}/${hydroHistoryData.length}`);
+          if (validPhCount < hydroHistoryData.length) {
+            console.warn('⚠️ [DASHBOARD] Alguns registros têm pH inválido:', phData.filter((_, i) => 
+              hydroHistoryData[i].ph === null || 
+              hydroHistoryData[i].ph === undefined || 
+              isNaN(Number(hydroHistoryData[i].ph))
+            ));
+          }
+          setHydroHistory(hydroHistoryData);
         } else {
           setHydroHistory([]);
         }
@@ -231,54 +310,61 @@ export default function DashboardPage() {
     };
   }, []);
 
-  // Prepare chart data
-  const temperatureChartData = {
-    labels: hydroHistory.map(item => {
-      const date = new Date(item.created_at || '');
-      return date.toLocaleTimeString();
-    }),
-        datasets: [
-      {
-        label: 'Temperatura da Água',
-        data: hydroHistory.map(item => item.temperature),
-        borderColor: 'rgb(53, 162, 235)',
-        backgroundColor: 'rgba(53, 162, 235, 0.5)',
-        tension: 0.3,
-      },
-      {
-        label: 'Temperatura Ambiente',
-        data: envHistory.map(item => item.temperature),
-        borderColor: 'rgb(255, 99, 132)',
-        backgroundColor: 'rgba(255, 99, 132, 0.5)',
-        tension: 0.3,
-      },
-    ],
-  };
-
-  const nutrientsChartData = {
-    labels: hydroHistory.map(item => {
-      const date = new Date(item.created_at || '');
-      return date.toLocaleTimeString();
-    }),
-    datasets: [
-      {
-        label: 'pH',
-        data: hydroHistory.map(item => item.ph),
-        borderColor: 'rgb(255, 205, 86)',
-        backgroundColor: 'rgba(255, 205, 86, 0.5)',
-        tension: 0.3,
-        yAxisID: 'y',
-      },
-      {
-        label: 'TDS (ppm)',
-        data: hydroHistory.map(item => item.tds),
-        borderColor: 'rgb(75, 192, 192)',
-        backgroundColor: 'rgba(75, 192, 192, 0.5)',
-        tension: 0.3,
-        yAxisID: 'y1',
-      },
-    ],
-  };
+  // ✅ Usar useMemo para nutrientsChartData para asegurar que calculateEC esté disponible
+  const nutrientsChartData = useMemo(() => {
+    return {
+      labels: hydroHistory.map(item => {
+        const date = new Date(item.created_at || '');
+        return date.toLocaleTimeString();
+      }),
+      datasets: [
+        {
+          label: 'pH',
+          data: hydroHistory.map(item => {
+            // ✅ Filtrar valores nulos/undefined y asegurar que sea un número válido
+            const phValue = item.ph;
+            if (phValue === null || phValue === undefined || isNaN(Number(phValue))) {
+              return null; // Chart.js manejará null correctamente
+            }
+            return Number(phValue);
+          }),
+          borderColor: 'rgb(255, 205, 86)',
+          backgroundColor: 'rgba(255, 205, 86, 0.5)',
+          tension: 0.3,
+          yAxisID: 'y',
+          spanGaps: true, // ✅ Conectar puntos aunque haya gaps
+        },
+        {
+          label: 'EC (µS/cm)',
+          data: hydroHistory.map(item => {
+            // ✅ Usar función helper compartida para calcular EC
+            const ecValue = calculateEC(item);
+            return ecValue;
+          }),
+          borderColor: 'rgb(75, 192, 192)',
+          backgroundColor: 'rgba(75, 192, 192, 0.5)',
+          tension: 0.3,
+          yAxisID: 'y1',
+          spanGaps: true,
+        },
+        {
+          label: 'Temperatura da Água (°C)',
+          data: hydroHistory.map(item => {
+            const tempValue = item.temperature;
+            if (tempValue === null || tempValue === undefined || isNaN(Number(tempValue))) {
+              return null;
+            }
+            return Number(tempValue);
+          }),
+          borderColor: 'rgb(53, 162, 235)',
+          backgroundColor: 'rgba(53, 162, 235, 0.3)',
+          tension: 0.3,
+          yAxisID: 'y2',
+          spanGaps: true,
+        },
+      ],
+    };
+  }, [hydroHistory]);
 
   const nutrientsChartOptions = {
     scales: {
@@ -290,8 +376,12 @@ export default function DashboardPage() {
           display: true,
           text: 'pH',
         },
-        min: 5,
-        max: 8,
+        min: 4,
+        max: 10, // ✅ Aumentado de 8 a 10 para mostrar valores de pH más altos (hasta 9.5+)
+        // ✅ Asegurar que el eje Y muestre valores de pH correctamente
+        ticks: {
+          stepSize: 0.5,
+        },
       },
       y1: {
         type: 'linear' as const,
@@ -299,24 +389,44 @@ export default function DashboardPage() {
         position: 'right' as const,
         title: {
           display: true,
-          text: 'TDS (ppm)',
+          text: 'EC (µS/cm)',
         },
         grid: {
           drawOnChartArea: false,
         },
       },
+      y2: {
+        type: 'linear' as const,
+        display: true,
+        position: 'left' as const,
+        title: {
+          display: true,
+          text: 'Temperatura (°C)',
+        },
+        min: 15,
+        max: 35,
+        grid: {
+          drawOnChartArea: false,
+        },
+        // ✅ Posicionar este eje después del eje y (pH)
+        afterFit: (scale: { left: number }) => {
+          // Ajustar posición para que no se superponga
+          scale.left = 60;
+        },
+      },
+    },
+    // ✅ Opciones adicionales para mejorar la visualización
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top' as const,
+      },
+      tooltip: {
+        mode: 'index' as const,
+        intersect: false,
+      },
     },
   };
-
-  // Define nutrient presets
-  const nutrients = [
-    { name: 'Grow', relayNumber: 2, mlPerLiter: 2 },
-    { name: 'Micro', relayNumber: 3, mlPerLiter: 2 },
-    { name: 'Bloom', relayNumber: 4, mlPerLiter: 2 },
-    { name: 'CalMag', relayNumber: 5, mlPerLiter: 1 },
-    { name: 'pH-', relayNumber: 0, mlPerLiter: 0.5 },
-    { name: 'pH+', relayNumber: 1, mlPerLiter: 0.5 },
-  ];
 
   // Function to determine pH status
   const getPHStatus = (ph: number): 'normal' | 'warning' | 'danger' => {
@@ -325,11 +435,38 @@ export default function DashboardPage() {
     return 'normal';
   };
 
-  // Function to determine TDS status
-  const getTDSStatus = (tds: number): 'normal' | 'warning' | 'danger' => {
-    if (tds < 500 || tds > 1500) return 'danger';
-    if (tds < 800 || tds > 1200) return 'warning';
+  // Function to determine EC status usando umbrales configurables
+  const getECStatus = (ec: number): 'normal' | 'warning' | 'danger' => {
+    if (ec < ecThresholds.dangerMin || ec > ecThresholds.dangerMax) return 'danger';
+    if (ec < ecThresholds.warningMin || ec > ecThresholds.warningMax) return 'warning';
     return 'normal';
+  };
+
+  // ✅ Função para salvar configuração de umbrales de EC
+  const handleSaveECThresholds = async () => {
+    if (!userEmail) return;
+    
+    setSavingECConfig(true);
+    try {
+      const currentSettings = await loadSettings(userEmail);
+      const updatedSettings: Settings = {
+        ...currentSettings,
+        ecThresholds,
+      };
+      
+      const saved = await saveSettings(updatedSettings, userEmail);
+      if (saved) {
+        toast.success('Umbrales de EC salvos com sucesso!');
+        setShowECConfig(false);
+      } else {
+        toast.error('Erro ao salvar configuração');
+      }
+    } catch (error) {
+      console.error('❌ [DASHBOARD] Erro ao salvar umbrales de EC:', error);
+      toast.error('Erro ao salvar configuração');
+    } finally {
+      setSavingECConfig(false);
+    }
   };
 
   return (
@@ -420,64 +557,146 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <SensorCard 
-                    title="Temperatura da Água" 
-                    value={
-                      hydroData?.temperature !== undefined && hydroData.temperature !== null
-                        ? hydroData.temperature.toFixed(1)
-                        : '--'
-                    } 
-                    unit="°C"
-                    icon={<BeakerIcon className="h-6 w-6" />}
-                    status={
-                      hydroData?.temperature !== undefined && hydroData.temperature !== null
-                        ? (hydroData.temperature < 18 || hydroData.temperature > 26) 
-                        ? 'warning' 
+                  {/* ✅ Card combinado compacto: Temperatura Ambiente + Humedad Relativa */}
+                  <div className="relative bg-dark-card border border-dark-border rounded-lg shadow-lg p-4 hover:shadow-aqua-500/20 hover:border-aqua-500/50 transition-all">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-lg font-medium text-dark-text">Ambiente</h3>
+                    </div>
+                    <button
+                      onClick={() => setShowAmbientConfig(true)}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-dark-surface hover:bg-yellow-500/20 border border-yellow-500/30 hover:border-yellow-500/50 transition-colors"
+                      title="Configurar umbrales de Ambiente"
+                    >
+                      <AdjustmentsHorizontalIcon className="h-4 w-4 text-yellow-400 hover:text-yellow-300" />
+                    </button>
+                    
+                    {/* Valores en línea compacta */}
+                    <div className="space-y-2">
+                      {/* Temperatura */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-dark-textSecondary">Temp:</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl font-bold text-dark-text">
+                            {environmentData?.temperature !== undefined && environmentData.temperature !== null
+                              ? environmentData.temperature.toFixed(1)
+                              : '--'}
+                            <span className="ml-1 text-sm text-dark-textSecondary">°C</span>
+                          </span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                            environmentData?.temperature !== undefined && environmentData.temperature !== null
+                              ? (environmentData.temperature < 15 || environmentData.temperature > 30)
+                              ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                              : 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/30'
+                              : 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/30'
+                          }`}>
+                            {environmentData?.temperature !== undefined && environmentData.temperature !== null
+                              ? (environmentData.temperature < 15 || environmentData.temperature > 30) ? 'Aviso' : 'Normal'
+                              : 'Normal'}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* Humedad */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-dark-textSecondary">Humedad:</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl font-bold text-dark-text">
+                            {environmentData?.humidity !== undefined && environmentData.humidity !== null
+                              ? environmentData.humidity.toFixed(0)
+                              : '--'}
+                            <span className="ml-1 text-sm text-dark-textSecondary">%</span>
+                          </span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                            environmentData?.humidity !== undefined && environmentData.humidity !== null
+                              ? (environmentData.humidity < 30 || environmentData.humidity > 80)
+                              ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                              : 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/30'
+                              : 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/30'
+                          }`}>
+                            {environmentData?.humidity !== undefined && environmentData.humidity !== null
+                              ? (environmentData.humidity < 30 || environmentData.humidity > 80) ? 'Aviso' : 'Normal'
+                              : 'Normal'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Card Temperatura da Água con botón */}
+                  <div className="relative">
+                    <SensorCard 
+                      title="Temperatura da Água" 
+                      value={
+                        hydroData?.temperature !== undefined && hydroData.temperature !== null
+                          ? hydroData.temperature.toFixed(1)
+                          : '--'
+                      } 
+                      unit="°C"
+                      status={
+                        hydroData?.temperature !== undefined && hydroData.temperature !== null
+                          ? (hydroData.temperature < 18 || hydroData.temperature > 26) 
+                          ? 'warning' 
+                            : 'normal'
                           : 'normal'
-                        : 'normal'
-                    }
-                  />
+                      }
+                    />
+                    <button
+                      onClick={() => setShowTempConfig(true)}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-dark-surface hover:bg-yellow-500/20 border border-yellow-500/30 hover:border-yellow-500/50 transition-colors"
+                      title="Configurar umbrales de Temperatura"
+                    >
+                      <AdjustmentsHorizontalIcon className="h-4 w-4 text-yellow-400 hover:text-yellow-300" />
+                    </button>
+                  </div>
                   
-                  <SensorCard 
-                    title="pH" 
-                    value={
-                      hydroData?.ph !== undefined && hydroData.ph !== null
-                        ? hydroData.ph.toFixed(2)
-                        : '--'
-                    }
-                    icon={<BeakerIcon className="h-6 w-6" />}
-                    status={hydroData?.ph !== undefined && hydroData.ph !== null ? getPHStatus(hydroData.ph) : 'normal'}
-                  />
+                  {/* Card pH con botón */}
+                  <div className="relative">
+                    <SensorCard 
+                      title="pH" 
+                      value={
+                        hydroData?.ph !== undefined && hydroData.ph !== null
+                          ? hydroData.ph.toFixed(2)
+                          : '--'
+                      }
+                      status={hydroData?.ph !== undefined && hydroData.ph !== null ? getPHStatus(hydroData.ph) : 'normal'}
+                    />
+                    <button
+                      onClick={() => setShowPHConfig(true)}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-dark-surface hover:bg-yellow-500/20 border border-yellow-500/30 hover:border-yellow-500/50 transition-colors"
+                      title="Configurar umbrales de pH"
+                    >
+                      <AdjustmentsHorizontalIcon className="h-4 w-4 text-yellow-400 hover:text-yellow-300" />
+                    </button>
+                  </div>
                   
-                  <SensorCard 
-                    title="TDS" 
-                    value={
-                      hydroData?.tds !== undefined && hydroData.tds !== null
-                        ? hydroData.tds.toFixed(0)
-                        : '--'
-                    } 
-                    unit="ppm"
-                    icon={<BeakerIcon className="h-6 w-6" />}
-                    status={hydroData?.tds !== undefined && hydroData.tds !== null ? getTDSStatus(hydroData.tds) : 'normal'}
-                  />
-                  
-                  <SensorCard 
-                    title="Temperatura Ambiente" 
-                    value={
-                      environmentData?.temperature !== undefined && environmentData.temperature !== null
-                        ? environmentData.temperature.toFixed(1)
-                        : '--'
-                    } 
-                    unit="°C"
-                    icon={<WrenchIcon className="h-6 w-6" />}
-                    status={
-                      environmentData?.temperature !== undefined && environmentData.temperature !== null
-                        ? (environmentData.temperature < 15 || environmentData.temperature > 30) 
-                        ? 'warning' 
-                          : 'normal'
-                        : 'normal'
-                    }
-                  />
+                  {/* Card EC con botón */}
+                  <div className="relative">
+                    <SensorCard 
+                      title="EC" 
+                      value={
+                        (() => {
+                          // ✅ Usar función helper compartida para calcular EC
+                          const ecValue = hydroData ? calculateEC(hydroData) : null;
+                          return ecValue !== null ? ecValue.toFixed(0) : '--';
+                        })()
+                      } 
+                      unit="µS/cm"
+                      status={
+                        (() => {
+                          // ✅ Usar función helper compartida para calcular EC
+                          const ecValue = hydroData ? calculateEC(hydroData) : null;
+                          return ecValue !== null ? getECStatus(ecValue) : 'normal';
+                        })()
+                      }
+                    />
+                    <button
+                      onClick={() => setShowECConfig(true)}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-dark-surface hover:bg-yellow-500/20 border border-yellow-500/30 hover:border-yellow-500/50 transition-colors"
+                      title="Configurar umbrales de EC"
+                    >
+                      <AdjustmentsHorizontalIcon className="h-4 w-4 text-yellow-400 hover:text-yellow-300" />
+                    </button>
+                  </div>
                 </div>
               )}
               
@@ -528,10 +747,9 @@ export default function DashboardPage() {
                   <p className="mt-4 text-sm text-dark-textSecondary">Carregando histórico para gráficos...</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <SensorChart title="Temperatura" data={temperatureChartData} />
+                <div className="grid grid-cols-1 gap-6">
                   <SensorChart 
-                    title="pH e TDS" 
+                    title="pH e EC" 
                     data={nutrientsChartData} 
                     options={nutrientsChartOptions} 
                   />
@@ -559,6 +777,242 @@ export default function DashboardPage() {
               />
             </section>
       </main>
+
+      {/* ✅ Modal de Configuração de Umbrales de EC */}
+      {showECConfig && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-card border border-dark-border rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-dark-text flex items-center gap-2">
+                <AdjustmentsHorizontalIcon className="h-6 w-6 text-aqua-400" />
+                Configurar Umbrales de EC
+              </h3>
+              <button
+                onClick={() => setShowECConfig(false)}
+                className="p-1 rounded-lg hover:bg-dark-surface transition-colors"
+              >
+                <XMarkIcon className="h-5 w-5 text-dark-textSecondary" />
+              </button>
+            </div>
+
+            <p className="text-sm text-dark-textSecondary mb-6">
+              Configure os valores de EC (Electrical Conductivity) em µS/cm para determinar os status de alerta.
+            </p>
+
+            <div className="space-y-4">
+              {/* Danger Range */}
+              <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4">
+                <label className="block text-sm font-medium text-red-400 mb-2">
+                  ⚠️ Perigo (Danger)
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-dark-textSecondary mb-1">Mínimo (µS/cm)</label>
+                    <input
+                      type="number"
+                      value={ecThresholds.dangerMin}
+                      onChange={(e) => setEcThresholds({ ...ecThresholds, dangerMin: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-dark-text focus:outline-none focus:border-aqua-500"
+                      min="0"
+                      step="10"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-dark-textSecondary mb-1">Máximo (µS/cm)</label>
+                    <input
+                      type="number"
+                      value={ecThresholds.dangerMax}
+                      onChange={(e) => setEcThresholds({ ...ecThresholds, dangerMax: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-dark-text focus:outline-none focus:border-aqua-500"
+                      min="0"
+                      step="10"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-red-300/70 mt-2">
+                  Valores abaixo de {ecThresholds.dangerMin} ou acima de {ecThresholds.dangerMax} µS/cm
+                </p>
+              </div>
+
+              {/* Warning Range */}
+              <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4">
+                <label className="block text-sm font-medium text-yellow-400 mb-2">
+                  ⚠️ Aviso (Warning)
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-dark-textSecondary mb-1">Mínimo (µS/cm)</label>
+                    <input
+                      type="number"
+                      value={ecThresholds.warningMin}
+                      onChange={(e) => setEcThresholds({ ...ecThresholds, warningMin: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-dark-text focus:outline-none focus:border-aqua-500"
+                      min="0"
+                      step="10"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-dark-textSecondary mb-1">Máximo (µS/cm)</label>
+                    <input
+                      type="number"
+                      value={ecThresholds.warningMax}
+                      onChange={(e) => setEcThresholds({ ...ecThresholds, warningMax: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-dark-text focus:outline-none focus:border-aqua-500"
+                      min="0"
+                      step="10"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-yellow-300/70 mt-2">
+                  Valores entre {ecThresholds.warningMin} e {ecThresholds.warningMax} µS/cm (fora da zona normal)
+                </p>
+              </div>
+
+              {/* Normal Range Info */}
+              <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
+                <label className="block text-sm font-medium text-green-400 mb-2">
+                  ✅ Normal
+                </label>
+                <p className="text-xs text-green-300/70">
+                  Valores entre {ecThresholds.warningMin} e {ecThresholds.warningMax} µS/cm (zona segura)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowECConfig(false)}
+                className="flex-1 px-4 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border rounded-lg text-dark-text transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveECThresholds}
+                disabled={savingECConfig}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-all font-medium"
+              >
+                {savingECConfig ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Modal de Configuração de Temperatura da Água */}
+      {showTempConfig && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-card border border-dark-border rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-dark-text flex items-center gap-2">
+                <AdjustmentsHorizontalIcon className="h-6 w-6 text-aqua-400" />
+                Configurar Umbrales de Temperatura
+              </h3>
+              <button
+                onClick={() => setShowTempConfig(false)}
+                className="p-1 rounded-lg hover:bg-dark-surface transition-colors"
+              >
+                <XMarkIcon className="h-5 w-5 text-dark-textSecondary" />
+              </button>
+            </div>
+            <p className="text-sm text-dark-textSecondary mb-4">
+              Configure os valores de temperatura da água em °C para determinar os status de alerta.
+            </p>
+            <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4 mb-4">
+              <p className="text-sm text-yellow-300">
+                ⚠️ Funcionalidade em desenvolvimento. Atualmente os umbrales são:
+              </p>
+              <ul className="mt-2 text-xs text-yellow-300/70 space-y-1">
+                <li>• Normal: 18°C - 26°C</li>
+                <li>• Aviso: Fora do range normal</li>
+              </ul>
+            </div>
+            <button
+              onClick={() => setShowTempConfig(false)}
+              className="w-full px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all font-medium"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Modal de Configuração de pH */}
+      {showPHConfig && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-card border border-dark-border rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-dark-text flex items-center gap-2">
+                <AdjustmentsHorizontalIcon className="h-6 w-6 text-aqua-400" />
+                Configurar Umbrales de pH
+              </h3>
+              <button
+                onClick={() => setShowPHConfig(false)}
+                className="p-1 rounded-lg hover:bg-dark-surface transition-colors"
+              >
+                <XMarkIcon className="h-5 w-5 text-dark-textSecondary" />
+              </button>
+            </div>
+            <p className="text-sm text-dark-textSecondary mb-4">
+              Configure os valores de pH para determinar os status de alerta.
+            </p>
+            <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4 mb-4">
+              <p className="text-sm text-yellow-300">
+                ⚠️ Funcionalidade em desenvolvimento. Atualmente os umbrales são:
+              </p>
+              <ul className="mt-2 text-xs text-yellow-300/70 space-y-1">
+                <li>• Normal: 5.8 - 6.8</li>
+                <li>• Aviso: 5.5-5.8 ou 6.8-7.0</li>
+                <li>• Perigo: &lt; 5.5 ou &gt; 7.0</li>
+              </ul>
+            </div>
+            <button
+              onClick={() => setShowPHConfig(false)}
+              className="w-full px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all font-medium"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Modal de Configuração de Ambiente */}
+      {showAmbientConfig && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-card border border-dark-border rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-dark-text flex items-center gap-2">
+                <AdjustmentsHorizontalIcon className="h-6 w-6 text-aqua-400" />
+                Configurar Umbrales de Ambiente
+              </h3>
+              <button
+                onClick={() => setShowAmbientConfig(false)}
+                className="p-1 rounded-lg hover:bg-dark-surface transition-colors"
+              >
+                <XMarkIcon className="h-5 w-5 text-dark-textSecondary" />
+              </button>
+            </div>
+            <p className="text-sm text-dark-textSecondary mb-4">
+              Configure os valores de temperatura ambiente e humidade relativa para determinar os status de alerta.
+            </p>
+            <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4 mb-4">
+              <p className="text-sm text-yellow-300">
+                ⚠️ Funcionalidade em desenvolvimento. Atualmente os umbrales são:
+              </p>
+              <ul className="mt-2 text-xs text-yellow-300/70 space-y-1">
+                <li>• Temperatura Normal: 15°C - 30°C</li>
+                <li>• Humidade Normal: 30% - 80%</li>
+                <li>• Aviso: Fora dos ranges normais</li>
+              </ul>
+            </div>
+            <button
+              onClick={() => setShowAmbientConfig(false)}
+              className="w-full px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all font-medium"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

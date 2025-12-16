@@ -46,6 +46,13 @@ export default function ConfiguracaoPage() {
     language: 'pt-BR',
     theme: 'dark',
     timezone: getDefaultTimezone(), // ✅ Timezone do navegador do usuário
+    // ✅ Umbrales padrão de EC
+    ecThresholds: {
+      dangerMin: 250,
+      dangerMax: 750,
+      warningMin: 400,
+      warningMax: 600,
+    },
   });
 
   // Carregar configurações do Supabase ao montar

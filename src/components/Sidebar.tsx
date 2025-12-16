@@ -9,6 +9,7 @@ import {
   Cog6ToothIcon,
   DevicePhoneMobileIcon,
   WrenchScrewdriverIcon,
+  BookOpenIcon,
   QuestionMarkCircleIcon,
 } from '@heroicons/react/24/outline';
 import {
@@ -16,6 +17,7 @@ import {
   Cog6ToothIcon as Cog6ToothIconSolid,
   DevicePhoneMobileIcon as DevicePhoneMobileIconSolid,
   WrenchScrewdriverIcon as WrenchScrewdriverIconSolid,
+  BookOpenIcon as BookOpenIconSolid,
   QuestionMarkCircleIcon as QuestionMarkCircleIconSolid,
 } from '@heroicons/react/24/solid';
 
@@ -50,6 +52,12 @@ const menuItems: MenuItem[] = [
     href: '/configuracao',
     icon: WrenchScrewdriverIcon,
     iconSolid: WrenchScrewdriverIconSolid,
+  },
+  {
+    name: 'Fundamentos',
+    href: '/fundamentos',
+    icon: BookOpenIcon,
+    iconSolid: BookOpenIconSolid,
   },
   {
     name: 'Ajuda',

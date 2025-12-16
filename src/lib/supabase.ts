@@ -15,9 +15,10 @@ export type HydroMeasurement = {
   id?: number;
   device_id?: string;
   created_at?: string;
-  temperature: number;  // Cambiado de water_temperature a temperature
+  temperature: number;  // Temperatura da solução nutritiva
   ph: number;
   tds: number;
+  ec?: number;  // ✅ Electrical Conductivity (pode vir da base de dados ou ser calculado de TDS)
   water_level_ok: boolean;
 };
 

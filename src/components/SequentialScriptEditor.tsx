@@ -511,6 +511,7 @@ export default function SequentialScriptEditor({
                     instruction={instr}
                     onChange={(updated) => updateInstruction(index, updated)}
                     espnowSlaves={espnowSlaves}
+                    onDelete={() => removeInstruction(index)}
                   />
                 )}
 

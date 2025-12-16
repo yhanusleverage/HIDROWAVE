@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { Instruction } from '../SequentialScriptEditor';
 import { ESPNowSlave } from '@/lib/esp-now-slaves';
 
@@ -8,12 +9,14 @@ interface RelayActionEditorProps {
   instruction: Instruction;
   onChange: (updated: Instruction) => void;
   espnowSlaves: ESPNowSlave[];
+  onDelete?: () => void;
 }
 
 export default function RelayActionEditor({
   instruction,
   onChange,
   espnowSlaves,
+  onDelete,
 }: RelayActionEditorProps) {
   const updateField = (field: string, value: string | number | boolean | string[] | number[]) => {
     onChange({
@@ -98,20 +101,31 @@ export default function RelayActionEditor({
       </div>
 
       {/* Duração (opcional) - Abaixo do layout horizontal */}
-      <div>
-        <label className="block text-xs text-gray-400 mb-1">
-          Duração (segundos) <span className="text-gray-500">(opcional)</span>
-        </label>
-        <input
-          type="number"
-          min="0"
-          value={instruction.duration_seconds || ''}
-          onChange={(e) =>
-            updateField('duration_seconds', e.target.value ? parseInt(e.target.value) : 0)
-          }
-          placeholder="Ex: 59"
-          className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-aqua-500"
-        />
+      <div className="flex items-end space-x-2">
+        <div className="flex-1">
+          <label className="block text-xs text-gray-400 mb-1">
+            Duração (segundos) <span className="text-gray-500">(opcional)</span>
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={instruction.duration_seconds || ''}
+            onChange={(e) =>
+              updateField('duration_seconds', e.target.value ? parseInt(e.target.value) : 0)
+            }
+            placeholder="Ex: 59"
+            className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-aqua-500"
+          />
+        </div>
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className="p-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/30 transition-colors flex-shrink-0"
+            title="Eliminar ação"
+          >
+            <XMarkIcon className="w-5 h-5" />
+          </button>
+        )}
       </div>
     </div>
   );

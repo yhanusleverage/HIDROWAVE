@@ -187,7 +187,6 @@ export default function AutomacaoPage() {
   // ✅ NOVO: Estado para rastrear si cada slave está bloqueado (MAC address -> boolean)
   const [lockedSlaves, setLockedSlaves] = useState<Map<string, boolean>>(new Map());
   const [ecControllerLocked, setEcControllerLocked] = useState<boolean>(false);
-  const [slaveRelayManagerLocked, setSlaveRelayManagerLocked] = useState<boolean>(false);
   const [decisionEngineLocked, setDecisionEngineLocked] = useState<boolean>(false);
   
   // Estado para Controle Nutricional Proporcional
@@ -204,6 +203,10 @@ export default function AutomacaoPage() {
   const [tempoRecirculacaoHours, setTempoRecirculacaoHours] = useState<number>(0);
   const [tempoRecirculacaoMinutes, setTempoRecirculacaoMinutes] = useState<number>(1);
   const [autoEnabled, setAutoEnabled] = useState<boolean>(false); // Controle automático ativado
+  
+  // ✅ REF para prevenir recarga automática después de guardar (previene data race)
+  const justSavedRef = useRef<boolean>(false);
+  const savingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // ✅ Funções helper para converter entre formato de tempo (HH:MM) e milissegundos
   const timeToMilliseconds = (timeStr: string): number => {
@@ -271,6 +274,12 @@ export default function AutomacaoPage() {
   const loadECControllerConfig = useCallback(async () => {
     if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
     
+    // ✅ PREVENIR DATA RACE: No recargar si acabamos de guardar (dentro de 2 segundos)
+    if (justSavedRef.current) {
+      console.log('⏸️ [EC Controller] Recarga bloqueada: acabamos de guardar, usando estado local');
+      return;
+    }
+    
     try {
       const response = await fetch(`/api/ec-controller/config?device_id=${encodeURIComponent(selectedDeviceId)}`);
       if (!response.ok) {
@@ -331,7 +340,10 @@ export default function AutomacaoPage() {
           setTempoRecirculacaoMinutes(1);
         }
       }
-      if (config.auto_enabled !== undefined) setAutoEnabled(config.auto_enabled);
+      // ✅ SOLUCIÓN DATA RACE: Solo actualizar auto_enabled si NO acabamos de guardar
+      if (config.auto_enabled !== undefined && !justSavedRef.current) {
+        setAutoEnabled(config.auto_enabled);
+      }
     } catch (error) {
       console.error('Erro ao carregar config EC Controller:', error);
     }
@@ -593,6 +605,20 @@ export default function AutomacaoPage() {
         next_step: 'Pressione "Ativar Auto EC" para enviar ao ESP32 via RPC'
       });
       
+      // ✅ SOLUCIÓN DATA RACE: Marcar que acabamos de guardar para prevenir recarga inmediata
+      justSavedRef.current = true;
+      
+      // Limpar timeout anterior si existe
+      if (savingTimeoutRef.current) {
+        clearTimeout(savingTimeoutRef.current);
+      }
+      
+      // Desactivar flag después de 2 segundos (tiempo suficiente para que el guardado se complete en Supabase)
+      savingTimeoutRef.current = setTimeout(() => {
+        justSavedRef.current = false;
+        console.log('✅ [EC Controller] Flag de guardado desactivado, recargas permitidas nuevamente');
+      }, 2000);
+      
       // Só mostrar toast se não estiver em modo silencioso
       if (!silent) {
         toast.success('Configuração salva com sucesso!');
@@ -604,6 +630,15 @@ export default function AutomacaoPage() {
       return false;
     }
   }, [selectedDeviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, intervaloAutoEC, tempoRecirculacao, autoEnabled, availableRelays]);
+  
+  // ✅ Cleanup: Limpiar timeout al desmontar componente
+  useEffect(() => {
+    return () => {
+      if (savingTimeoutRef.current) {
+        clearTimeout(savingTimeoutRef.current);
+      }
+    };
+  }, []);
   
   // ✅ Função para construir JSON optimizado de EC Config (para vista previa)
   const getECConfigJson = useCallback(() => {
@@ -730,8 +765,8 @@ export default function AutomacaoPage() {
       
       if (data && data.tds !== null && data.tds !== undefined) {
         // Converter TDS (ppm) para EC (µS/cm)
-        // Fator de conversão comum: TDS * 0.5 = EC (para soluções hidropônicas)
-        const ecValue = data.tds * 0.5;
+        // ✅ Fator de conversão correto: EC = TDS * 2
+        const ecValue = data.tds * 2;
         setEcAtual(ecValue);
         
         console.log('✅ [EC Controller] EC atualizado:', {
@@ -771,7 +806,10 @@ export default function AutomacaoPage() {
       loadLocalRelayNames(); // ✅ NOVO: Carregar nomes de relés locais
       loadECControllerConfig(); // ✅ NOVO: Carregar config EC Controller
     }
-  }, [selectedDeviceId, userProfile?.email, loadLocalRelayNames, loadECControllerConfig]);
+    // ✅ SOLUCIÓN DATA RACE: Remover funciones de las dependencias
+    // Solo debe ejecutarse cuando cambia selectedDeviceId o userProfile?.email
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDeviceId, userProfile?.email]);
   
   // ✅ NOVO: Atualizar EC atual periodicamente (a cada 10 segundos)
   useEffect(() => {
@@ -1843,29 +1881,6 @@ export default function AutomacaoPage() {
                 <span className="text-xs sm:text-sm text-dark-textSecondary hidden sm:inline">
                   {espnowSlaves.length} {espnowSlaves.length === 1 ? 'dispositivo' : 'dispositivos'}
                 </span>
-                {/* ✅ Candado para bloquear/desbloquear controles Slave Relay Manager (com senha admin) */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    showLockUnlockToast(
-                      slaveRelayManagerLocked,
-                      'Slave Relay Manager',
-                      () => setSlaveRelayManagerLocked(prev => !prev)
-                    );
-                  }}
-                  className={`p-1.5 rounded transition-colors ${
-                    slaveRelayManagerLocked
-                      ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
-                      : 'bg-aqua-500/20 text-aqua-400 hover:bg-aqua-500/30 border border-aqua-500/30'
-                  }`}
-                  title={slaveRelayManagerLocked ? 'Desbloquear controles (requer senha admin)' : 'Bloquear controles (requer senha admin)'}
-                >
-                  {slaveRelayManagerLocked ? (
-                    <LockClosedIcon className="w-4 h-4" />
-                  ) : (
-                    <LockOpenIcon className="w-4 h-4" />
-                  )}
-                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1936,23 +1951,30 @@ export default function AutomacaoPage() {
                               >
                                 {slave.status === 'online' ? 'Online' : 'Offline'}
                               </span>
-                              {/* ✅ Candado para bloquear/desbloquear controles */}
+                              {/* ✅ Candado para bloquear/desbloquear controles (com senha admin) */}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setLockedSlaves(prev => {
-                                    const next = new Map(prev);
-                                    const isLocked = next.get(slave.macAddress) ?? false;
-                                    next.set(slave.macAddress, !isLocked);
-                                    return next;
-                                  });
+                                  const isLocked = lockedSlaves.get(slave.macAddress) ?? false;
+                                  showLockUnlockToast(
+                                    isLocked,
+                                    `Controles do Slave ${slave.name}`,
+                                    () => {
+                                      setLockedSlaves(prev => {
+                                        const next = new Map(prev);
+                                        const currentLocked = next.get(slave.macAddress) ?? false;
+                                        next.set(slave.macAddress, !currentLocked);
+                                        return next;
+                                      });
+                                    }
+                                  );
                                 }}
                                 className={`p-1.5 rounded transition-colors ${
                                   lockedSlaves.get(slave.macAddress)
                                     ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
                                     : 'bg-aqua-500/20 text-aqua-400 hover:bg-aqua-500/30 border border-aqua-500/30'
                                 }`}
-                                title={lockedSlaves.get(slave.macAddress) ? 'Desbloquear controles' : 'Bloquear controles'}
+                                title={lockedSlaves.get(slave.macAddress) ? 'Desbloquear controles (requer senha admin)' : 'Bloquear controles (requer senha admin)'}
                               >
                                 {lockedSlaves.get(slave.macAddress) ? (
                                   <LockClosedIcon className="w-4 h-4" />
@@ -2875,9 +2897,9 @@ export default function AutomacaoPage() {
         {/* Box de Controle Nutricional Proporcional - Colapsável */}
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
           {/* Header - Colapsável */}
-          <button
+          <div
             onClick={() => setExpandedNutritionalControl(!expandedNutritionalControl)}
-            className="w-full p-6 flex items-center justify-between hover:bg-dark-surface transition-colors"
+            className="w-full p-6 flex items-center justify-between hover:bg-dark-surface transition-colors cursor-pointer"
           >
             <div className="flex items-center space-x-3">
               {expandedNutritionalControl ? (
@@ -2893,83 +2915,11 @@ export default function AutomacaoPage() {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                // ✅ CORRIGIDO: Usar useRef para guardar valor do input de forma confiável
-                let passwordInputRef: HTMLInputElement | null = null;
-                
-                // ✅ Mostrar toast de confirmação com senha admin
-                const action = ecControllerLocked ? 'desbloquear' : 'bloquear';
-                toast.custom((t) => {
-                  const handleConfirm = () => {
-                    // ✅ Buscar input usando ref ou selector dentro do toast
-                    const password = passwordInputRef?.value || '';
-                    
-                    if (password && validateAdminPassword(password)) {
-                      setEcControllerLocked(prev => !prev);
-                      toast.dismiss(t.id);
-                      toast.success(ecControllerLocked ? '✅ Controles desbloqueados' : '🔒 Controles bloqueados');
-                    } else {
-                      toast.error('Senha incorreta!', { id: 'password-error' });
-                      // Limpar input em caso de erro
-                      if (passwordInputRef) {
-                        passwordInputRef.value = '';
-                        passwordInputRef.focus();
-                      }
-                    }
-                  };
-                  
-                  return (
-                    <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-dark-card border border-dark-border shadow-lg rounded-lg pointer-events-auto flex flex-col p-4`}>
-                      <div className="flex items-start">
-                        <div className="flex-shrink-0">
-                          <LockClosedIcon className="h-6 w-6 text-yellow-400" />
-                        </div>
-                        <div className="ml-3 w-full">
-                          <h3 className="text-sm font-medium text-dark-text mb-2">
-                            🔒 {ecControllerLocked ? 'Desbloquear' : 'Bloquear'} Controles EC
-                          </h3>
-                          <p className="text-xs text-dark-textSecondary mb-3">
-                            Esta ação requer senha de administrador para proteger a configuração.
-                          </p>
-                          {/* Input de senha */}
-                          <input
-                            ref={(el) => { 
-                              passwordInputRef = el;
-                              // Auto-focus quando o ref é atribuído
-                              if (el) {
-                                setTimeout(() => el.focus(), 100);
-                              }
-                            }}
-                            type="password"
-                            className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none mb-3"
-                            placeholder="Digite a senha de administrador"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleConfirm();
-                              }
-                            }}
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={handleConfirm}
-                              className="flex-1 px-3 py-2 bg-aqua-500 hover:bg-aqua-600 text-white rounded-md text-sm font-medium transition-colors"
-                            >
-                              Confirmar
-                            </button>
-                            <button
-                              onClick={() => toast.dismiss(t.id)}
-                              className="flex-1 px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border text-dark-text rounded-md text-sm font-medium transition-colors"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }, {
-                  duration: Infinity, // Toast permanece até o usuário interagir
-                });
+                showLockUnlockToast(
+                  ecControllerLocked,
+                  'Controles EC',
+                  () => setEcControllerLocked(prev => !prev)
+                );
               }}
               className={`p-1.5 rounded transition-colors ${
                 ecControllerLocked
@@ -2984,7 +2934,7 @@ export default function AutomacaoPage() {
                 <LockOpenIcon className="w-4 h-4" />
               )}
             </button>
-          </button>
+          </div>
 
           {/* Conteúdo Expandido - Configuração EC Controller + Tabela de Nutrição */}
           {expandedNutritionalControl && (
@@ -3475,6 +3425,14 @@ export default function AutomacaoPage() {
                           if (saved) {
                             // ✅ Confirmado: auto_enabled = false em Supabase
                             setAutoEnabled(false);  // Atualizar estado local APENAS após sucesso
+                            // ✅ SOLUCIÓN DATA RACE: Marcar que acabamos de guardar para prevenir recarga
+                            justSavedRef.current = true;
+                            if (savingTimeoutRef.current) {
+                              clearTimeout(savingTimeoutRef.current);
+                            }
+                            savingTimeoutRef.current = setTimeout(() => {
+                              justSavedRef.current = false;
+                            }, 2000);
                             toast.success('✅ Auto EC desativado');
                             console.log('✅ [EC Controller] Auto EC desativado no Supabase');
                           } else {
@@ -3504,6 +3462,14 @@ export default function AutomacaoPage() {
                             const config = data[0];
                             // Atualizar estado local com a config retornada
                             setAutoEnabled(true);
+                            // ✅ SOLUCIÓN DATA RACE: Marcar que acabamos de activar para prevenir recarga
+                            justSavedRef.current = true;
+                            if (savingTimeoutRef.current) {
+                              clearTimeout(savingTimeoutRef.current);
+                            }
+                            savingTimeoutRef.current = setTimeout(() => {
+                              justSavedRef.current = false;
+                            }, 2000);
                             toast.success('✅ Auto EC ativado! Configuração enviada ao ESP32.');
                             console.log('✅ [EC Controller] Auto EC ativado via RPC:', config);
                           } else {
@@ -3578,6 +3544,14 @@ export default function AutomacaoPage() {
                             console.error('❌ [EC Controller] Erro ao desativar Auto EC no Supabase:', error);
                             toast.error(`Erro ao desativar: ${error.message}`);
                           } else {
+                            // ✅ SOLUCIÓN DATA RACE: Marcar que acabamos de guardar para prevenir recarga
+                            justSavedRef.current = true;
+                            if (savingTimeoutRef.current) {
+                              clearTimeout(savingTimeoutRef.current);
+                            }
+                            savingTimeoutRef.current = setTimeout(() => {
+                              justSavedRef.current = false;
+                            }, 2000);
                             console.log('✅ [EC Controller] Auto EC desativado no Supabase (Reset Emergencial)');
                             toast.error('🚨 Reset emergencial executado - Auto EC desativado');
                           }

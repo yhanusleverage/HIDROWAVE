@@ -17,6 +17,13 @@ export interface Settings {
   language: string;
   theme: string;
   timezone: string;  // ✅ NOVO: Timezone do usuário (ex: "America/Sao_Paulo")
+  // ✅ NOVO: Umbrales de EC (Electrical Conductivity)
+  ecThresholds: {
+    dangerMin: number;  // EC mínimo para danger
+    dangerMax: number;  // EC máximo para danger
+    warningMin: number; // EC mínimo para warning
+    warningMax: number; // EC máximo para warning
+  };
 }
 
 const defaultSettings: Settings = {
@@ -29,6 +36,13 @@ const defaultSettings: Settings = {
   language: 'pt-BR',
   theme: 'dark',
   timezone: 'America/Sao_Paulo',  // ✅ NOVO: Timezone padrão (Brasil)
+  // ✅ NOVO: Umbrales padrão de EC (250-750 danger, 400-600 warning)
+  ecThresholds: {
+    dangerMin: 250,
+    dangerMax: 750,
+    warningMin: 400,
+    warningMax: 600,
+  },
 };
 
 /**
