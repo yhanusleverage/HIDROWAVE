@@ -1960,12 +1960,12 @@ export default function AutomacaoPage() {
                                     isLocked,
                                     `Controles do Slave ${slave.name}`,
                                     () => {
-                                      setLockedSlaves(prev => {
-                                        const next = new Map(prev);
+                                  setLockedSlaves(prev => {
+                                    const next = new Map(prev);
                                         const currentLocked = next.get(slave.macAddress) ?? false;
                                         next.set(slave.macAddress, !currentLocked);
-                                        return next;
-                                      });
+                                    return next;
+                                  });
                                     }
                                   );
                                 }}
@@ -3506,7 +3506,8 @@ export default function AutomacaoPage() {
                     🔍 Debug Vista Previa
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
+                      // ✅ Limpar valores locais
                       setBaseDose(0);
                       setEcSetpoint(0);
                       setIntervaloAutoEC(300);
@@ -3514,7 +3515,29 @@ export default function AutomacaoPage() {
                       setTempoRecirculacaoHours(0);
                       setTempoRecirculacaoMinutes(1);
                       setAutoEnabled(false);
-                      toast.success('Valores limpos');
+                      
+                      // ✅ Salvar no Supabase
+                      const { error } = await supabase
+                        .from('ec_config_view')
+                        .update({ 
+                          base_dose: 0,
+                          ec_setpoint: 0,
+                          intervalo_auto_ec: 300,
+                          tempo_recirculacao: 60,
+                          auto_enabled: false,
+                          updated_at: new Date().toISOString()
+                        })
+                        .eq('device_id', selectedDeviceId);
+                      
+                      if (error) {
+                        console.error('❌ Erro ao limpar valores no Supabase:', error);
+                        toast.error('Erro ao salvar no banco de dados');
+                      } else {
+                        // ✅ Prevenir recarga sobrescrevendo valores
+                        justSavedRef.current = true;
+                        setTimeout(() => { justSavedRef.current = false; }, 2000);
+                        toast.success('✅ Valores limpos e salvos');
+                      }
                     }}
                     disabled={ecControllerLocked}
                     className={`px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all ${
