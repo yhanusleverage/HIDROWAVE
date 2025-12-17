@@ -1960,12 +1960,12 @@ export default function AutomacaoPage() {
                                     isLocked,
                                     `Controles do Slave ${slave.name}`,
                                     () => {
-                                  setLockedSlaves(prev => {
-                                    const next = new Map(prev);
+                                      setLockedSlaves(prev => {
+                                        const next = new Map(prev);
                                         const currentLocked = next.get(slave.macAddress) ?? false;
                                         next.set(slave.macAddress, !currentLocked);
-                                    return next;
-                                  });
+                                        return next;
+                                      });
                                     }
                                   );
                                 }}
@@ -3416,69 +3416,43 @@ export default function AutomacaoPage() {
                   </button>
                   <button
                     onClick={async () => {
-                      if (autoEnabled) {
-                        // ✅ CORRIGIDO: Desativar - passar auto_enabled = false explicitamente
-                        try {
-                          // ✅ Passar auto_enabled = false explicitamente para evitar problemas de closure
-                          const saved = await saveECControllerConfig(false, false);
-                          
-                          if (saved) {
-                            // ✅ Confirmado: auto_enabled = false em Supabase
-                            setAutoEnabled(false);  // Atualizar estado local APENAS após sucesso
-                            // ✅ SOLUCIÓN DATA RACE: Marcar que acabamos de guardar para prevenir recarga
-                            justSavedRef.current = true;
-                            if (savingTimeoutRef.current) {
-                              clearTimeout(savingTimeoutRef.current);
-                            }
-                            savingTimeoutRef.current = setTimeout(() => {
-                              justSavedRef.current = false;
-                            }, 2000);
-                            toast.success('✅ Auto EC desativado');
-                            console.log('✅ [EC Controller] Auto EC desativado no Supabase');
-                          } else {
-                            // ❌ Erro: não atualizar estado local
-                            toast.error('❌ Erro ao desativar Auto EC no Supabase');
-                            console.error('❌ [EC Controller] Falha ao desativar Auto EC');
-                          }
-                        } catch (err) {
-                          // ❌ Erro: não atualizar estado local
-                          console.error('❌ [EC Controller] Erro ao desativar Auto EC:', err);
-                          toast.error(`Erro: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+                      // ✅ SIMPLIFICADO: Um único método para ativar/desativar
+                      const newValue = !autoEnabled;
+                      console.log('🔄 [EC Controller] Estado atual:', autoEnabled, '→ Novo valor:', newValue);
+                      
+                      try {
+                        const { error } = await supabase
+                          .from('ec_config_view')
+                          .update({ 
+                            auto_enabled: newValue,
+                            updated_at: new Date().toISOString()
+                          })
+                          .eq('device_id', selectedDeviceId);
+                        
+                        if (error) {
+                          console.error('❌ [EC Controller] Erro ao alterar Auto EC:', error);
+                          toast.error(`Erro: ${error.message}`);
+                          return;
                         }
-                      } else {
-                        // ✅ NOVA ARQUITETURA: Ativar via RPC activate_auto_ec
-                        try {
-                          const { data, error } = await supabase.rpc('activate_auto_ec', {
-                            p_device_id: selectedDeviceId
-                          });
-                          
-                          if (error) {
-                            console.error('❌ [EC Controller] Erro ao ativar Auto EC:', error);
-                            toast.error(`Erro ao ativar: ${error.message || 'Erro desconhecido'}`);
-                            return;
-                          }
-                          
-                          if (data && data.length > 0) {
-                            const config = data[0];
-                            // Atualizar estado local com a config retornada
-                            setAutoEnabled(true);
-                            // ✅ SOLUCIÓN DATA RACE: Marcar que acabamos de activar para prevenir recarga
-                            justSavedRef.current = true;
-                            if (savingTimeoutRef.current) {
-                              clearTimeout(savingTimeoutRef.current);
-                            }
-                            savingTimeoutRef.current = setTimeout(() => {
-                              justSavedRef.current = false;
-                            }, 2000);
-                            toast.success('✅ Auto EC ativado! Configuração enviada ao ESP32.');
-                            console.log('✅ [EC Controller] Auto EC ativado via RPC:', config);
-                          } else {
-                            toast.error('Configuração não encontrada. Salve os parâmetros primeiro.');
-                          }
-                        } catch (err) {
-                          console.error('❌ [EC Controller] Erro ao chamar RPC activate_auto_ec:', err);
-                          toast.error(`Erro: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+                        
+                        // ✅ Sucesso: Atualizar estado local
+                        setAutoEnabled(newValue);
+                        
+                        // ✅ Prevenir recarga sobrescrevendo valores
+                        justSavedRef.current = true;
+                        if (savingTimeoutRef.current) {
+                          clearTimeout(savingTimeoutRef.current);
                         }
+                        savingTimeoutRef.current = setTimeout(() => {
+                          justSavedRef.current = false;
+                        }, 2000);
+                        
+                        toast.success(newValue ? '✅ Auto EC ativado!' : '✅ Auto EC desativado');
+                        console.log(`✅ [EC Controller] Auto EC ${newValue ? 'ativado' : 'desativado'} no Supabase`);
+                        
+                      } catch (err) {
+                        console.error('❌ [EC Controller] Erro:', err);
+                        toast.error(`Erro: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
                       }
                     }}
                     disabled={ecControllerLocked}
@@ -3506,8 +3480,7 @@ export default function AutomacaoPage() {
                     🔍 Debug Vista Previa
                   </button>
                   <button
-                    onClick={async () => {
-                      // ✅ Limpar valores locais
+                    onClick={() => {
                       setBaseDose(0);
                       setEcSetpoint(0);
                       setIntervaloAutoEC(300);
@@ -3515,29 +3488,7 @@ export default function AutomacaoPage() {
                       setTempoRecirculacaoHours(0);
                       setTempoRecirculacaoMinutes(1);
                       setAutoEnabled(false);
-                      
-                      // ✅ Salvar no Supabase
-                      const { error } = await supabase
-                        .from('ec_config_view')
-                        .update({ 
-                          base_dose: 0,
-                          ec_setpoint: 0,
-                          intervalo_auto_ec: 300,
-                          tempo_recirculacao: 60,
-                          auto_enabled: false,
-                          updated_at: new Date().toISOString()
-                        })
-                        .eq('device_id', selectedDeviceId);
-                      
-                      if (error) {
-                        console.error('❌ Erro ao limpar valores no Supabase:', error);
-                        toast.error('Erro ao salvar no banco de dados');
-                      } else {
-                        // ✅ Prevenir recarga sobrescrevendo valores
-                        justSavedRef.current = true;
-                        setTimeout(() => { justSavedRef.current = false; }, 2000);
-                        toast.success('✅ Valores limpos e salvos');
-                      }
+                      toast.success('Valores limpos');
                     }}
                     disabled={ecControllerLocked}
                     className={`px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all ${
