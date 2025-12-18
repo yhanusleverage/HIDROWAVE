@@ -47,7 +47,6 @@ export default function DashboardPage() {
   // ✅ Estados para configuração de umbrales de otros sensores
   const [showTempConfig, setShowTempConfig] = useState(false);
   const [showPHConfig, setShowPHConfig] = useState(false);
-  const [showAmbientConfig, setShowAmbientConfig] = useState(false);
 
   // ✅ Hook para verificar alarmes do calendário
   const { alarms, acknowledgeAlarm } = useCropAlarms({
@@ -556,72 +555,7 @@ export default function DashboardPage() {
                   <p className="mt-4 text-sm text-dark-textSecondary">Carregando sensores...</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {/* ✅ Card combinado compacto: Temperatura Ambiente + Humedad Relativa */}
-                  <div className="relative bg-dark-card border border-dark-border rounded-lg shadow-lg p-4 hover:shadow-aqua-500/20 hover:border-aqua-500/50 transition-all">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-lg font-medium text-dark-text">Ambiente</h3>
-                    </div>
-                    <button
-                      onClick={() => setShowAmbientConfig(true)}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-dark-surface hover:bg-yellow-500/20 border border-yellow-500/30 hover:border-yellow-500/50 transition-colors"
-                      title="Configurar umbrales de Ambiente"
-                    >
-                      <AdjustmentsHorizontalIcon className="h-4 w-4 text-yellow-400 hover:text-yellow-300" />
-                    </button>
-                    
-                    {/* Valores en línea compacta */}
-                    <div className="space-y-2">
-                      {/* Temperatura */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-dark-textSecondary">Temp:</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl font-bold text-dark-text">
-                            {environmentData?.temperature !== undefined && environmentData.temperature !== null
-                              ? environmentData.temperature.toFixed(1)
-                              : '--'}
-                            <span className="ml-1 text-sm text-dark-textSecondary">°C</span>
-                          </span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                            environmentData?.temperature !== undefined && environmentData.temperature !== null
-                              ? (environmentData.temperature < 15 || environmentData.temperature > 30)
-                              ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                              : 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/30'
-                              : 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/30'
-                          }`}>
-                            {environmentData?.temperature !== undefined && environmentData.temperature !== null
-                              ? (environmentData.temperature < 15 || environmentData.temperature > 30) ? 'Aviso' : 'Normal'
-                              : 'Normal'}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      {/* Humedad */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-dark-textSecondary">Humedad:</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl font-bold text-dark-text">
-                            {environmentData?.humidity !== undefined && environmentData.humidity !== null
-                              ? environmentData.humidity.toFixed(0)
-                              : '--'}
-                            <span className="ml-1 text-sm text-dark-textSecondary">%</span>
-                          </span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                            environmentData?.humidity !== undefined && environmentData.humidity !== null
-                              ? (environmentData.humidity < 30 || environmentData.humidity > 80)
-                              ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                              : 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/30'
-                              : 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/30'
-                          }`}>
-                            {environmentData?.humidity !== undefined && environmentData.humidity !== null
-                              ? (environmentData.humidity < 30 || environmentData.humidity > 80) ? 'Aviso' : 'Normal'
-                              : 'Normal'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* Card Temperatura da Água con botón */}
                   <div className="relative">
                     <SensorCard 
@@ -975,44 +909,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ✅ Modal de Configuração de Ambiente */}
-      {showAmbientConfig && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-card border border-dark-border rounded-lg shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-dark-text flex items-center gap-2">
-                <AdjustmentsHorizontalIcon className="h-6 w-6 text-aqua-400" />
-                Configurar Umbrales de Ambiente
-              </h3>
-              <button
-                onClick={() => setShowAmbientConfig(false)}
-                className="p-1 rounded-lg hover:bg-dark-surface transition-colors"
-              >
-                <XMarkIcon className="h-5 w-5 text-dark-textSecondary" />
-              </button>
-            </div>
-            <p className="text-sm text-dark-textSecondary mb-4">
-              Configure os valores de temperatura ambiente e humidade relativa para determinar os status de alerta.
-            </p>
-            <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4 mb-4">
-              <p className="text-sm text-yellow-300">
-                ⚠️ Funcionalidade em desenvolvimento. Atualmente os umbrales são:
-              </p>
-              <ul className="mt-2 text-xs text-yellow-300/70 space-y-1">
-                <li>• Temperatura Normal: 15°C - 30°C</li>
-                <li>• Humidade Normal: 30% - 80%</li>
-                <li>• Aviso: Fora dos ranges normais</li>
-              </ul>
-            </div>
-            <button
-              onClick={() => setShowAmbientConfig(false)}
-              className="w-full px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all font-medium"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 } 
