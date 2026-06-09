@@ -30,6 +30,9 @@ import {
   mergeRelayStatesMap,
   RELAY_REST_FALLBACK_MS,
 } from '@/lib/realtime/relay-apply';
+import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
+import { ecFromTds, HYDRO_EC_FALLBACK_MS } from '@/lib/realtime/hydro-ec';
+import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 // Removido: import { getRelayStates } from '@/lib/automation'; // ❌ Não usar mais relay_states
 import { getMasterLocalRelayNames, saveMasterLocalRelayName } from '@/lib/nutrition-plan';
 
@@ -817,19 +820,26 @@ export default function AutomacaoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, userProfile?.email]);
   
-  // ✅ NOVO: Atualizar EC atual periodicamente (a cada 10 segundos)
+  // EC Controller — WSS hydro_measurements + REST fallback lento
   useEffect(() => {
     if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
-    
-    // Carregar imediatamente
+
     fetchCurrentEC();
-    
-    // Atualizar a cada 10 segundos
-    const interval = setInterval(() => {
-      fetchCurrentEC();
-    }, 10000); // 10 segundos
-    
-    return () => clearInterval(interval);
+
+    const unsubscribe = subscribeSensorMeasurements(selectedDeviceId, {
+      onHydro: (row) => {
+        if (row.device_id && row.device_id !== selectedDeviceId) return;
+        const ec = ecFromTds(row.tds);
+        if (ec !== null) setEcAtual(ec);
+      },
+    });
+
+    const clearFallback = setVisibleInterval(fetchCurrentEC, HYDRO_EC_FALLBACK_MS);
+
+    return () => {
+      unsubscribe();
+      clearFallback();
+    };
   }, [selectedDeviceId, fetchCurrentEC]);
 
   // ✅ Auto-expandir seção e slave quando há apenas 1 slave
@@ -949,15 +959,14 @@ export default function AutomacaoPage() {
     }
   }, [selectedDeviceId]); // ✅ CORRIGIDO: Removido espnowSlaves das dependências para evitar loop infinito
 
-  // ✅ Atualizar estados dos slaves periodicamente (a cada 30 segundos)
+  // Descubrimiento de slaves — REST lento (estados van por WSS relay_slaves)
   useEffect(() => {
     if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
-    
-    const interval = setInterval(() => {
+
+    return setVisibleInterval(() => {
       loadESPNOWSlaves();
-    }, 30000); // A cada 30 segundos
-    
-    return () => clearInterval(interval);
+    }, 120_000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, userProfile?.email]);
 
   // ✅ NOVO: Verificar ACKs de comandos pendentes (padrão indústria)
@@ -1037,13 +1046,11 @@ export default function AutomacaoPage() {
       }
     );
 
-    const fallbackInterval = setInterval(() => {
-      updateRelayStatesOnly();
-    }, RELAY_REST_FALLBACK_MS);
+    const clearFallback = setVisibleInterval(updateRelayStatesOnly, RELAY_REST_FALLBACK_MS);
 
     return () => {
       unsubscribe();
-      clearInterval(fallbackInterval);
+      clearFallback();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, updateRelayStatesOnly]);

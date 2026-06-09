@@ -14,6 +14,7 @@ import {
   mergeRelayStatesMap,
   RELAY_REST_FALLBACK_MS,
 } from '@/lib/realtime/relay-apply';
+import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 
 interface DeviceControlPanelProps {
   device: DeviceStatus;
@@ -198,13 +199,11 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
       }
     );
 
-    const fallbackInterval = setInterval(() => {
-      loadSlaves();
-    }, RELAY_REST_FALLBACK_MS);
+    const clearFallback = setVisibleInterval(loadSlaves, RELAY_REST_FALLBACK_MS);
 
     return () => {
       unsubscribe();
-      clearInterval(fallbackInterval);
+      clearFallback();
     };
   }, [isOpen, device.device_id]);
 

@@ -12,6 +12,7 @@ import {
   appendToHistoryDesc,
   CHART_HISTORY_FALLBACK_MS,
 } from '@/lib/realtime/chart-history';
+import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { getPollingInterval, loadSettings, saveSettings, type Settings } from '@/lib/settings';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserDevices, DeviceStatus } from '@/lib/automation';
@@ -265,12 +266,9 @@ export default function DashboardPage() {
     }
   };
 
-  // ✅ Función principal que carga todo de forma optimizada
   const fetchData = async () => {
-    // Cargar sensores primero (crítico)
     await fetchSensorData();
-    // Luego cargar histórico (menos crítico)
-    fetchHistoryData(); // Sin await para no bloquear
+    fetchHistoryData();
   };
 
   // Realtime sensores — tarjetas + gráficos (ventana deslizante); REST solo carga inicial + fallback lento
@@ -305,39 +303,30 @@ export default function DashboardPage() {
   }, [selectedDeviceId]);
 
   useEffect(() => {
-    // Carga inicial: sensores + histórico
-    fetchData();
+    if (!userEmail) return;
 
-    // Fallback polling si Realtime no está activo en Supabase
     const fallbackMs = Math.max(getPollingInterval(), 60000);
 
     console.log(
-      `🔄 [DASHBOARD] Fallback sensores ${fallbackMs / 1000}s | histórico REST ${CHART_HISTORY_FALLBACK_MS / 1000}s (WS ventana deslizante activa)`
+      `🔄 [DASHBOARD] Fallback sensores ${fallbackMs / 1000}s | histórico REST ${CHART_HISTORY_FALLBACK_MS / 1000}s (pausa en background)`
     );
 
-    const sensorInterval = setInterval(fetchSensorData, fallbackMs);
-    const historyInterval = setInterval(fetchHistoryData, CHART_HISTORY_FALLBACK_MS);
-    
-    // ✅ Ouvir mudanças nas configurações para recarregar página (aplicar novo intervalo)
+    const clearSensorFallback = setVisibleInterval(fetchSensorData, fallbackMs);
+    const clearHistoryFallback = setVisibleInterval(fetchHistoryData, CHART_HISTORY_FALLBACK_MS);
+
     const handleSettingsUpdate = () => {
-      console.log('🔄 [DASHBOARD] Configurações atualizadas! Recarregando página para aplicar novo intervalo...');
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      setTimeout(() => window.location.reload(), 1000);
     };
-    
-    if (typeof window !== 'undefined') {
-      window.addEventListener('settingsUpdated', handleSettingsUpdate);
-    }
-    
+
+    window.addEventListener('settingsUpdated', handleSettingsUpdate);
+
     return () => {
-      clearInterval(sensorInterval);
-      clearInterval(historyInterval);
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('settingsUpdated', handleSettingsUpdate);
-      }
+      clearSensorFallback();
+      clearHistoryFallback();
+      window.removeEventListener('settingsUpdated', handleSettingsUpdate);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmail]);
 
   // ✅ Usar useMemo para nutrientsChartData para asegurar que calculateEC esté disponible
   const nutrientsChartData = useMemo(() => {
