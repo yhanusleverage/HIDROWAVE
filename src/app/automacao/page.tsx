@@ -33,6 +33,12 @@ import {
 import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
 import { ecFromTds, HYDRO_EC_FALLBACK_MS } from '@/lib/realtime/hydro-ec';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
+import {
+  isSlaveDeviceRow,
+  patchSlaveFromDeviceStatus,
+  SLAVES_METADATA_FALLBACK_MS,
+} from '@/lib/realtime/slave-status';
+import { subscribeDeviceStatusUpdates } from '@/lib/realtime/device-status';
 // Removido: import { getRelayStates } from '@/lib/automation'; // ❌ Não usar mais relay_states
 import { getMasterLocalRelayNames, saveMasterLocalRelayName } from '@/lib/nutrition-plan';
 
@@ -959,13 +965,32 @@ export default function AutomacaoPage() {
     }
   }, [selectedDeviceId]); // ✅ CORRIGIDO: Removido espnowSlaves das dependências para evitar loop infinito
 
-  // Descubrimiento de slaves — REST lento (estados van por WSS relay_slaves)
+  // Slaves online/offline — WSS device_status (instantáneo)
+  useEffect(() => {
+    if (!userProfile?.email) return;
+
+    return subscribeDeviceStatusUpdates(userProfile.email, (event) => {
+      const { row } = event;
+      if (!isSlaveDeviceRow(row)) return;
+
+      setEspnowSlaves((prev) => {
+        const { slaves: patched, matched } = patchSlaveFromDeviceStatus(prev, row);
+        if (!matched && event.type === 'insert') {
+          loadESPNOWSlaves();
+        }
+        return matched ? patched : prev;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile?.email]);
+
+  // Metadata slaves (nombres) — REST muy lento; estados y online van por WSS
   useEffect(() => {
     if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
 
     return setVisibleInterval(() => {
       loadESPNOWSlaves();
-    }, 120_000);
+    }, SLAVES_METADATA_FALLBACK_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, userProfile?.email]);
 
