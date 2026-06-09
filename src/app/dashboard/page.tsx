@@ -156,14 +156,15 @@ export default function DashboardPage() {
   };
 
   // ✅ Cargar datos críticos primero (sensores) - carga paralela
-  const fetchSensorData = async () => {
-    console.log('🔄 [DASHBOARD] ========== CARGANDO SENSORES (PARALELO) ==========');
+  const fetchSensorData = async (deviceId: string) => {
+    if (!deviceId) return;
+    console.log('🔄 [DASHBOARD] Cargando sensores para', deviceId);
     setLoadingSensors(true);
     try {
-      // ✅ Carga paralela de ambos sensores
+      const q = encodeURIComponent(deviceId);
       const [hydroRes, envRes] = await Promise.all([
-        fetch('/api/hydro-data'),
-        fetch('/api/environment-data')
+        fetch(`/api/hydro-data?device_id=${q}`),
+        fetch(`/api/environment-data?device_id=${q}`),
       ]);
 
       // Procesar datos hidropónicos
@@ -205,14 +206,15 @@ export default function DashboardPage() {
   };
 
   // ✅ Cargar datos históricos después (gráficos) - carga paralela
-  const fetchHistoryData = async () => {
-    console.log('🔄 [DASHBOARD] ========== CARGANDO HISTÓRICO (PARALELO) ==========');
+  const fetchHistoryData = async (deviceId: string) => {
+    if (!deviceId) return;
+    console.log('🔄 [DASHBOARD] Cargando histórico para', deviceId);
     setLoadingCharts(true);
     try {
-      // ✅ Carga paralela de ambos históricos
+      const q = encodeURIComponent(deviceId);
       const [hydroHistoryRes, envHistoryRes] = await Promise.all([
-        fetch('/api/hydro-data?history=true&limit=24'),
-        fetch('/api/environment-data?history=true&limit=24')
+        fetch(`/api/hydro-data?device_id=${q}&history=true&limit=24`),
+        fetch(`/api/environment-data?device_id=${q}&history=true&limit=24`),
       ]);
 
       if (hydroHistoryRes.ok) {
@@ -266,9 +268,9 @@ export default function DashboardPage() {
     }
   };
 
-  const fetchData = async () => {
-    await fetchSensorData();
-    fetchHistoryData();
+  const fetchData = async (deviceId: string) => {
+    await fetchSensorData(deviceId);
+    fetchHistoryData(deviceId);
   };
 
   // Realtime sensores — tarjetas + gráficos (ventana deslizante); REST solo carga inicial + fallback lento
@@ -298,21 +300,28 @@ export default function DashboardPage() {
   // Recarga REST al cambiar dispositivo (primer paint del gráfico)
   useEffect(() => {
     if (!selectedDeviceId) return;
-    fetchSensorData();
-    fetchHistoryData();
+    setHydroData(null);
+    setEnvironmentData(null);
+    setHydroHistory([]);
+    setEnvHistory([]);
+    fetchSensorData(selectedDeviceId);
+    fetchHistoryData(selectedDeviceId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId]);
 
   useEffect(() => {
-    if (!userEmail) return;
+    if (!userEmail || !selectedDeviceId) return;
 
     const fallbackMs = Math.max(getPollingInterval(), 60000);
 
-    console.log(
-      `🔄 [DASHBOARD] Fallback sensores ${fallbackMs / 1000}s | histórico REST ${CHART_HISTORY_FALLBACK_MS / 1000}s (pausa en background)`
+    const clearSensorFallback = setVisibleInterval(
+      () => fetchSensorData(selectedDeviceId),
+      fallbackMs
     );
-
-    const clearSensorFallback = setVisibleInterval(fetchSensorData, fallbackMs);
-    const clearHistoryFallback = setVisibleInterval(fetchHistoryData, CHART_HISTORY_FALLBACK_MS);
+    const clearHistoryFallback = setVisibleInterval(
+      () => fetchHistoryData(selectedDeviceId),
+      CHART_HISTORY_FALLBACK_MS
+    );
 
     const handleSettingsUpdate = () => {
       setTimeout(() => window.location.reload(), 1000);
@@ -326,7 +335,7 @@ export default function DashboardPage() {
       window.removeEventListener('settingsUpdated', handleSettingsUpdate);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userEmail]);
+  }, [userEmail, selectedDeviceId]);
 
   // ✅ Usar useMemo para nutrientsChartData para asegurar que calculateEC esté disponible
   const nutrientsChartData = useMemo(() => {
@@ -509,7 +518,7 @@ export default function DashboardPage() {
                 {new Date().toLocaleDateString('pt-BR')} {new Date().toLocaleTimeString('pt-BR')}
               </div>
               <button 
-                onClick={fetchData}
+                onClick={() => selectedDeviceId && fetchData(selectedDeviceId)}
                 disabled={loadingSensors || loadingCharts}
                 className="bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm font-medium flex items-center gap-2"
               >

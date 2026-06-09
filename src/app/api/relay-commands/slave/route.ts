@@ -74,6 +74,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: 'Comando slave criado com sucesso',
+      command_id: lastCommand?.id,
       command: lastCommand,
     });
   } catch (error) {

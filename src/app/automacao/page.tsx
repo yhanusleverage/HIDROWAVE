@@ -40,6 +40,7 @@ import {
 } from '@/lib/realtime/slave-status';
 import { subscribeDeviceStatusUpdates } from '@/lib/realtime/device-status';
 import { subscribeRelayCommandUpdates } from '@/lib/realtime/relay-commands';
+import { applyRelayCommandAck, type PendingRelayCommand } from '@/lib/relay-pending-commands';
 // Removido: import { getRelayStates } from '@/lib/automation'; // ❌ Não usar mais relay_states
 import { getMasterLocalRelayNames, saveMasterLocalRelayName } from '@/lib/nutrition-plan';
 
@@ -198,7 +199,7 @@ export default function AutomacaoPage() {
   const [showCycleInput, setShowCycleInput] = useState<string | null>(null); // relayKey que está mostrando input de ciclo
   
   // ✅ NOVO: Mapeamento Command ID → Relay Key (padrão indústria)
-  const commandToRelayMap = useRef<Map<string | number, string>>(new Map());
+  const commandToRelayMap = useRef<Map<string | number, PendingRelayCommand>>(new Map());
   
   // ✅ NOVO: Estado para rastrear si cada slave está bloqueado (MAC address -> boolean)
   const [lockedSlaves, setLockedSlaves] = useState<Map<string, boolean>>(new Map());
@@ -997,21 +998,33 @@ export default function AutomacaoPage() {
 
   const processCommandAck = useCallback(
     (commandId: number | string, status: string, action?: string, relayNumber?: number) => {
-      const relayKey = commandToRelayMap.current.get(commandId);
-      if (!relayKey) return;
-
-      if (status === 'completed') {
-        setRelayStates((prev) => {
-          const newMap = new Map(prev);
-          newMap.set(relayKey, action === 'on');
-          return newMap;
-        });
-        commandToRelayMap.current.delete(commandId);
-      } else if (status === 'failed') {
-        const relayNum = relayNumber !== undefined ? String(relayNumber) : 'desconhecido';
-        toast.error(`Comando falhou para relé ${relayNum}`);
-        commandToRelayMap.current.delete(commandId);
-      }
+      applyRelayCommandAck(
+        commandToRelayMap.current,
+        commandId,
+        status,
+        {
+          onCompleted: (relayKey, ackAction) => {
+            if (ackAction === 'on' || ackAction === 'off') {
+              setRelayStates((prev) => {
+                const newMap = new Map(prev);
+                newMap.set(relayKey, ackAction === 'on');
+                return newMap;
+              });
+            }
+          },
+          onFailed: (relayKey, previousState, num) => {
+            setRelayStates((prev) => {
+              const newMap = new Map(prev);
+              newMap.set(relayKey, previousState);
+              return newMap;
+            });
+            const relayNum = num !== undefined ? String(num) : 'desconhecido';
+            toast.error(`Comando falhou para relé ${relayNum}`);
+          },
+        },
+        action,
+        relayNumber
+      );
     },
     []
   );
@@ -2106,8 +2119,9 @@ export default function AutomacaoPage() {
                                             <button
                                               onClick={async () => {
                                                 if (isRelayOn) {
-                                                  // OFF
+                                                  const previousState = isRelayOn;
                                                   setLoadingRelays(prev => new Map(prev).set(relayKey, true));
+                                                  setRelayStates(prev => new Map(prev).set(relayKey, false));
                                                   try {
                                                     const response = await fetch('/api/esp-now/command', {
                                                       method: 'POST',
@@ -2119,26 +2133,26 @@ export default function AutomacaoPage() {
                                                         relay_number: relay.id,
                                                         action: 'off',
                                                         duration_seconds: 0,
-                                                        triggered_by: 'manual',
-                                                        command_type: 'manual',
                                                       }),
                                                     });
 
                                                     if (response.ok) {
                                                       const result = await response.json();
                                                       if (result.command_id) {
-                                                        commandToRelayMap.current.set(result.command_id, relayKey);
+                                                        commandToRelayMap.current.set(result.command_id, {
+                                                          relayKey,
+                                                          previousState,
+                                                        });
                                                       }
-                                                      setRelayStates(prev => new Map(prev).set(relayKey, false));
                                                       toast.success(`${relay.name || `Relé ${relay.id + 1}`} desligado`);
-                                                      setTimeout(() => {
-                                                        updateRelayStatesOnly();
-                                                      }, 2000);
+                                                      setTimeout(() => updateRelayStatesOnly(), 2000);
                                                     } else {
+                                                      setRelayStates(prev => new Map(prev).set(relayKey, previousState));
                                                       const error = await response.json();
                                                       toast.error(`Erro: ${error.error}`);
                                                     }
-                                                  } catch (error) {
+                                                  } catch {
+                                                    setRelayStates(prev => new Map(prev).set(relayKey, previousState));
                                                     toast.error('Erro ao enviar comando');
                                                   } finally {
                                                     setLoadingRelays(prev => {
@@ -2148,9 +2162,10 @@ export default function AutomacaoPage() {
                                                     });
                                                   }
                                                 } else {
-                                                  // ON
                                                   const timerDuration = relayTimers.get(relayKey) || 0;
+                                                  const previousState = isRelayOn;
                                                   setLoadingRelays(prev => new Map(prev).set(relayKey, true));
+                                                  setRelayStates(prev => new Map(prev).set(relayKey, true));
                                                   try {
                                                     const response = await fetch('/api/esp-now/command', {
                                                       method: 'POST',
@@ -2162,26 +2177,26 @@ export default function AutomacaoPage() {
                                                         relay_number: relay.id,
                                                         action: 'on',
                                                         duration_seconds: timerDuration,
-                                                        triggered_by: 'manual',
-                                                        command_type: 'manual',
                                                       }),
                                                     });
 
                                                     if (response.ok) {
                                                       const result = await response.json();
                                                       if (result.command_id) {
-                                                        commandToRelayMap.current.set(result.command_id, relayKey);
+                                                        commandToRelayMap.current.set(result.command_id, {
+                                                          relayKey,
+                                                          previousState,
+                                                        });
                                                       }
-                                                      setRelayStates(prev => new Map(prev).set(relayKey, true));
                                                       toast.success(`${relay.name || `Relé ${relay.id + 1}`} ligado${timerDuration > 0 ? ` (${timerDuration}s)` : ''}`);
-                                                      setTimeout(() => {
-                                                        updateRelayStatesOnly();
-                                                      }, 2000);
+                                                      setTimeout(() => updateRelayStatesOnly(), 2000);
                                                     } else {
+                                                      setRelayStates(prev => new Map(prev).set(relayKey, previousState));
                                                       const error = await response.json();
                                                       toast.error(`Erro: ${error.error}`);
                                                     }
-                                                  } catch (error) {
+                                                  } catch {
+                                                    setRelayStates(prev => new Map(prev).set(relayKey, previousState));
                                                     toast.error('Erro ao enviar comando');
                                                   } finally {
                                                     setLoadingRelays(prev => {

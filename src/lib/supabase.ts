@@ -40,16 +40,14 @@ export type EnvironmentMeasurement = {
   humidity: number;
 };
 
-export async function getLatestHydroData(): Promise<HydroMeasurement | null> {
-  console.log('🔍 [SUPABASE] ========== getLatestHydroData() INICIADO ==========');
-  console.log('🔍 [SUPABASE] URL:', supabaseUrl);
-  console.log('🔍 [SUPABASE] Tabela: hydro_measurements');
-  console.log('🔍 [SUPABASE] Query: SELECT * FROM hydro_measurements ORDER BY created_at DESC LIMIT 1');
-  
+export async function getLatestHydroData(deviceId: string): Promise<HydroMeasurement | null> {
+  console.log('🔍 [SUPABASE] getLatestHydroData device_id=', deviceId);
+
   try {
   const { data, error } = await supabase
     .from('hydro_measurements')
     .select('*')
+    .eq('device_id', deviceId)
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
@@ -91,16 +89,14 @@ export async function getLatestHydroData(): Promise<HydroMeasurement | null> {
   }
 }
 
-export async function getLatestEnvironmentData(): Promise<EnvironmentMeasurement | null> {
-  console.log('🔍 [SUPABASE] ========== getLatestEnvironmentData() INICIADO ==========');
-  console.log('🔍 [SUPABASE] URL:', supabaseUrl);
-  console.log('🔍 [SUPABASE] Tabela: environment_data');
-  console.log('🔍 [SUPABASE] Query: SELECT * FROM environment_data ORDER BY created_at DESC LIMIT 1');
-  
+export async function getLatestEnvironmentData(deviceId: string): Promise<EnvironmentMeasurement | null> {
+  console.log('🔍 [SUPABASE] getLatestEnvironmentData device_id=', deviceId);
+
   try {
   const { data, error } = await supabase
       .from('environment_data')
     .select('*')
+    .eq('device_id', deviceId)
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
@@ -140,13 +136,14 @@ export async function getLatestEnvironmentData(): Promise<EnvironmentMeasurement
   }
 }
 
-export async function getHydroDataHistory(limit: number = 24): Promise<HydroMeasurement[]> {
-  console.log(`🔍 [SUPABASE] Buscando histórico hidropônico (limit: ${limit})...`);
-  
+export async function getHydroDataHistory(deviceId: string, limit: number = 24): Promise<HydroMeasurement[]> {
+  console.log(`🔍 [SUPABASE] Histórico hidropônico device_id=${deviceId} limit=${limit}`);
+
   try {
   const { data, error } = await supabase
     .from('hydro_measurements')
     .select('*')
+    .eq('device_id', deviceId)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -177,13 +174,14 @@ export async function getHydroDataHistory(limit: number = 24): Promise<HydroMeas
   }
 }
 
-export async function getEnvironmentDataHistory(limit: number = 24): Promise<EnvironmentMeasurement[]> {
-  console.log(`🔍 [SUPABASE] Buscando histórico ambiental (limit: ${limit})...`);
-  
+export async function getEnvironmentDataHistory(deviceId: string, limit: number = 24): Promise<EnvironmentMeasurement[]> {
+  console.log(`🔍 [SUPABASE] Histórico ambiental device_id=${deviceId} limit=${limit}`);
+
   try {
   const { data, error } = await supabase
       .from('environment_data')
     .select('*')
+    .eq('device_id', deviceId)
     .order('created_at', { ascending: false })
     .limit(limit);
 

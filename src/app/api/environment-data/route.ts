@@ -4,25 +4,23 @@ import { getLatestEnvironmentData, getEnvironmentDataHistory } from '@/lib/supab
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
+    const deviceId = searchParams.get('device_id');
     const history = searchParams.get('history') === 'true';
     const limit = parseInt(searchParams.get('limit') || '24', 10);
 
-    console.log(`📡 [API] /api/environment-data - history: ${history}, limit: ${limit}`);
+    if (!deviceId) {
+      return NextResponse.json({ error: 'device_id é obrigatório' }, { status: 400 });
+    }
+
+    console.log(`📡 [API] /api/environment-data device_id=${deviceId} history=${history} limit=${limit}`);
 
     if (history) {
-      const data = await getEnvironmentDataHistory(limit);
-      console.log(`✅ [API] /api/environment-data (history): Retornando ${Array.isArray(data) ? data.length : 0} registros`);
+      const data = await getEnvironmentDataHistory(deviceId, limit);
       return NextResponse.json(data);
-    } else {
-      const data = await getLatestEnvironmentData();
-      console.log(`✅ [API] /api/environment-data (latest):`, data ? {
-        id: data.id,
-        temperature: data.temperature,
-        humidity: data.humidity,
-        created_at: data.created_at
-      } : 'null');
-      return NextResponse.json(data || {});
     }
+
+    const data = await getLatestEnvironmentData(deviceId);
+    return NextResponse.json(data || {});
   } catch (error) {
     console.error('❌ [API] Error in environment-data API:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -31,4 +29,4 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
-} 
+}

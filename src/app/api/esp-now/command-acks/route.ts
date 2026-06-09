@@ -31,8 +31,8 @@ export async function GET(request: Request) {
       .from('relay_commands')
       .select('*')
       .eq('device_id', masterDeviceId)
-      .in('status', ['completed', 'failed', 'sent'])
-      .order('updated_at', { ascending: false })
+      .in('status', ['completed', 'failed'])
+      .order('id', { ascending: false })
       .limit(limit);
 
     // Se command_id foi fornecido, filtrar por ele
@@ -60,7 +60,7 @@ export async function GET(request: Request) {
       success: cmd.status === 'completed',
       status: cmd.status,
       created_at: cmd.created_at,
-      updated_at: cmd.updated_at,
+      completed_at: cmd.completed_at,
       // Nota: current_state não está disponível diretamente
       // Seria necessário buscar do Master ou do Slave
     }));

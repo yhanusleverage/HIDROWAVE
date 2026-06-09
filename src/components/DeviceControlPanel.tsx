@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { DeviceStatus } from '@/lib/automation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,6 +15,8 @@ import {
   RELAY_REST_FALLBACK_MS,
 } from '@/lib/realtime/relay-apply';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
+import { subscribeRelayCommandUpdates } from '@/lib/realtime/relay-commands';
+import { applyRelayCommandAck, type PendingRelayCommand } from '@/lib/relay-pending-commands';
 
 interface DeviceControlPanelProps {
   device: DeviceStatus;
@@ -93,6 +95,47 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
   // ✅ Estado para rastrear relés ligados/desligados (slave_mac-relay_id -> boolean)
   const [relayStates, setRelayStates] = useState<Map<string, boolean>>(new Map());
   const [loadingRelays, setLoadingRelays] = useState<Map<string, boolean>>(new Map());
+  const commandToRelayMap = useRef<Map<string | number, PendingRelayCommand>>(new Map());
+
+  const applyRelayState = useCallback((relayKey: string, isOn: boolean) => {
+    if (relayKey.startsWith('local-')) {
+      const relayId = parseInt(relayKey.slice(6), 10);
+      setLocalRelays((prev) =>
+        prev.map((r) => (r.id === relayId ? { ...r, state: isOn } : r))
+      );
+      return;
+    }
+    setRelayStates((prev) => {
+      const next = new Map(prev);
+      next.set(relayKey, isOn);
+      return next;
+    });
+  }, []);
+
+  const processCommandAck = useCallback(
+    (commandId: number | string, status: string, action?: string, relayNumber?: number) => {
+      applyRelayCommandAck(
+        commandToRelayMap.current,
+        commandId,
+        status,
+        {
+          onCompleted: (relayKey, ackAction) => {
+            if (ackAction === 'on' || ackAction === 'off') {
+              applyRelayState(relayKey, ackAction === 'on');
+            }
+          },
+          onFailed: (relayKey, previousState, num) => {
+            applyRelayState(relayKey, previousState);
+            const relayNum = num !== undefined ? String(num) : 'desconhecido';
+            toast.error(`Comando falhou para relé ${relayNum}`);
+          },
+        },
+        action,
+        relayNumber
+      );
+    },
+    [applyRelayState]
+  );
 
   /**
    * Carrega slaves ESP-NOW do Supabase
@@ -207,16 +250,56 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
     };
   }, [isOpen, device.device_id]);
 
+  // ACKs relay_commands — revertir optimistic UI si failed por WSS
+  useEffect(() => {
+    if (!isOpen || !device.device_id) return;
+
+    const unsubscribe = subscribeRelayCommandUpdates(device.device_id, (row) => {
+      processCommandAck(
+        row.id,
+        (row.status || '').toLowerCase(),
+        row.action ?? undefined,
+        row.relay_number ?? undefined
+      );
+    });
+
+    const clearFallback = setVisibleInterval(async () => {
+      if (commandToRelayMap.current.size === 0) return;
+      try {
+        const response = await fetch(
+          `/api/esp-now/command-acks?master_device_id=${encodeURIComponent(device.device_id)}&limit=50`
+        );
+        if (!response.ok) return;
+        const result = await response.json();
+        (result.acks || []).forEach(
+          (ack: { command_id: number | string; status: string; action?: string; relay_number?: number }) => {
+            processCommandAck(ack.command_id, ack.status, ack.action, ack.relay_number);
+          }
+        );
+      } catch (error) {
+        console.error('Erro no fallback ACK REST:', error);
+      }
+    }, 60_000);
+
+    return () => {
+      unsubscribe();
+      clearFallback();
+    };
+  }, [isOpen, device.device_id, processCommandAck]);
+
   // Toggle relé local (HydroControl - PCF8574)
   const toggleLocalRelay = async (relayId: number) => {
     const relay = localRelays.find(r => r.id === relayId);
     if (!relay) return;
 
+    const previousState = relay.state;
     const newState = !relay.state;
     const action = newState ? 'on' : 'off';
+    const relayKey = `local-${relayId}`;
+
+    applyRelayState(relayKey, newState);
 
     try {
-      // ✅ NOVA API: Usar /api/relay-commands/master para relés locais
       const response = await fetch('/api/relay-commands/master', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -224,28 +307,29 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
           master_device_id: device.device_id,
           user_email: userProfile?.email,
           master_mac_address: device.mac_address,
-          relay_numbers: [relayId],      // ✅ ARRAY
-          actions: [action],             // ✅ ARRAY
-          duration_seconds: [0],          // ✅ ARRAY (0 = permanente)
-          command_type: 'manual',
-          priority: 10,
-          expires_at: null,
-          triggered_by: 'manual',
+          relay_numbers: [relayId],
+          actions: [action],
+          duration_seconds: [0],
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        setLocalRelays(prev =>
-          prev.map(r => (r.id === relayId ? { ...r, state: newState } : r))
-        );
-        console.log(`Relé local ${relay.name} (${relayId}) ${action === 'on' ? 'ligado' : 'desligado'}. Comando ID: ${data.command_id}`);
+        const commandId = data.command_id ?? data.command?.id;
+        if (commandId) {
+          commandToRelayMap.current.set(commandId, { relayKey, previousState });
+        }
+        console.log(`Relé local ${relay.name} (${relayId}) ${action}. Comando ID: ${commandId}`);
       } else {
+        applyRelayState(relayKey, previousState);
         const error = await response.json();
         console.error('Erro ao controlar relé local:', error);
+        toast.error(`Erro: ${error.error || 'comando falhou'}`);
       }
     } catch (error) {
+      applyRelayState(relayKey, previousState);
       console.error('Erro ao controlar relé local:', error);
+      toast.error('Erro ao enviar comando');
     }
   };
 
@@ -1440,79 +1524,56 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                                       <div className="flex space-x-1">
                                         <button
                                           onClick={async () => {
-                                            console.log(`🔘 [DeviceControlPanel] Botão ON clicado: Slave ${slave.macAddress}, Relé ${relay.id}`);
-                                            console.log(`   Estado ANTES: ${relay.state ? 'ON' : 'OFF'}`);
-                                            
+                                            const previousState = relayStates.has(relayKey)
+                                              ? relayStates.get(relayKey) || false
+                                              : relay.state || false;
+
                                             setLoadingRelays(prev => new Map(prev).set(relayKey, true));
-                                            
-                                            // ✅ Atualizar estado local IMEDIATAMENTE (otimista)
                                             setRelayStates(prev => {
                                               const newMap = new Map(prev);
                                               newMap.set(relayKey, true);
-                                              console.log(`   ✅ Estado local atualizado para: ON`);
                                               return newMap;
                                             });
-                                            
+
                                             try {
-                                              console.log(`📤 [DeviceControlPanel] Enviando comando ON para Supabase...`);
-                                              // ✅ NOVA API: Usar /api/relay-commands/slave para slaves
                                               const response = await fetch('/api/relay-commands/slave', {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({
                                                   master_device_id: device.device_id,
-                                                  user_email: userProfile?.email,
-                                                  master_mac_address: device.mac_address,
-                                                  slave_device_id: `ESP32_SLAVE_${slave.macAddress.replace(/:/g, '_')}`,
                                                   slave_mac_address: slave.macAddress,
-                                                  relay_numbers: [relay.id],      // ✅ ARRAY
-                                                  actions: ['on'],                // ✅ ARRAY
-                                                  duration_seconds: [0],          // ✅ ARRAY (0 = permanente)
-                                                  command_type: 'manual',
-                                                  priority: 10,
-                                                  expires_at: null,
-                                                  triggered_by: 'manual',
-                                                  }),
+                                                  relay_numbers: [relay.id],
+                                                  actions: ['on'],
+                                                  duration_seconds: [0],
+                                                }),
                                               });
 
                                               if (response.ok) {
                                                 const data = await response.json();
-                                                console.log(`✅ [DeviceControlPanel] Comando criado com sucesso:`, data);
-                                                console.log(`   Comando ID: ${data.command_id}`);
-                                                console.log(`   Status: ${data.command?.status}`);
-                                                
+                                                const commandId = data.command_id ?? data.command?.id;
+                                                if (commandId) {
+                                                  commandToRelayMap.current.set(commandId, {
+                                                    relayKey,
+                                                    previousState,
+                                                  });
+                                                }
                                                 toast.success(`${relay.name || `Relé ${relay.id + 1}`} ligado`);
-                                                
-                                                // ✅ Aguardar 2 segundos antes de recarregar (dar tempo para ESP32 processar)
-                                                setTimeout(() => {
-                                                  console.log(`🔄 [DeviceControlPanel] Recarregando slaves após 2s para verificar estado atualizado...`);
-                                                  loadSlaves();
-                                                }, 2000);
+                                                setTimeout(() => loadSlaves(), 2000);
                                               } else {
                                                 const error = await response.json();
-                                                console.error(`❌ [DeviceControlPanel] Erro ao criar comando:`, error);
-                                                
-                                                // ✅ Reverter estado local se falhou
                                                 setRelayStates(prev => {
                                                   const newMap = new Map(prev);
-                                                  newMap.set(relayKey, false);
-                                                  console.log(`   ⚠️ Estado local revertido para: OFF (comando falhou)`);
+                                                  newMap.set(relayKey, previousState);
                                                   return newMap;
                                                 });
-                                                
                                                 toast.error(`Erro: ${error.error}`);
                                               }
-                                            } catch (error) {
-                                              console.error(`❌ [DeviceControlPanel] Erro ao enviar comando:`, error);
-                                              
-                                              // ✅ Reverter estado local se falhou
+                                            } catch {
                                               setRelayStates(prev => {
                                                 const newMap = new Map(prev);
-                                                newMap.set(relayKey, false);
-                                                console.log(`   ⚠️ Estado local revertido para: OFF (erro na requisição)`);
+                                                newMap.set(relayKey, previousState);
                                                 return newMap;
                                               });
-                                              
                                               toast.error('Erro ao enviar comando');
                                             } finally {
                                               setLoadingRelays(prev => {
@@ -1533,79 +1594,56 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                                         </button>
                                         <button
                                           onClick={async () => {
-                                            console.log(`🔘 [DeviceControlPanel] Botão OFF clicado: Slave ${slave.macAddress}, Relé ${relay.id}`);
-                                            console.log(`   Estado ANTES: ${relay.state ? 'ON' : 'OFF'}`);
-                                            
+                                            const previousState = relayStates.has(relayKey)
+                                              ? relayStates.get(relayKey) || false
+                                              : relay.state || false;
+
                                             setLoadingRelays(prev => new Map(prev).set(relayKey, true));
-                                            
-                                            // ✅ Atualizar estado local IMEDIATAMENTE (otimista)
                                             setRelayStates(prev => {
                                               const newMap = new Map(prev);
                                               newMap.set(relayKey, false);
-                                              console.log(`   ✅ Estado local atualizado para: OFF`);
                                               return newMap;
                                             });
-                                            
+
                                             try {
-                                              console.log(`📤 [DeviceControlPanel] Enviando comando OFF para Supabase...`);
-                                              // ✅ NOVA API: Usar /api/relay-commands/slave para slaves
                                               const response = await fetch('/api/relay-commands/slave', {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({
                                                   master_device_id: device.device_id,
-                                                  user_email: userProfile?.email,
-                                                  master_mac_address: device.mac_address,
-                                                  slave_device_id: `ESP32_SLAVE_${slave.macAddress.replace(/:/g, '_')}`,
                                                   slave_mac_address: slave.macAddress,
-                                                  relay_numbers: [relay.id],      // ✅ ARRAY
-                                                  actions: ['off'],              // ✅ ARRAY
-                                                  duration_seconds: [0],         // ✅ ARRAY
-                                                  command_type: 'manual',
-                                                  priority: 10,
-                                                  expires_at: null,
-                                                  triggered_by: 'manual',
+                                                  relay_numbers: [relay.id],
+                                                  actions: ['off'],
+                                                  duration_seconds: [0],
                                                 }),
                                               });
 
                                               if (response.ok) {
                                                 const data = await response.json();
-                                                console.log(`✅ [DeviceControlPanel] Comando criado com sucesso:`, data);
-                                                console.log(`   Comando ID: ${data.command_id}`);
-                                                console.log(`   Status: ${data.command?.status}`);
-                                                
+                                                const commandId = data.command_id ?? data.command?.id;
+                                                if (commandId) {
+                                                  commandToRelayMap.current.set(commandId, {
+                                                    relayKey,
+                                                    previousState,
+                                                  });
+                                                }
                                                 toast.success(`${relay.name || `Relé ${relay.id + 1}`} desligado`);
-                                                
-                                                // ✅ Aguardar 2 segundos antes de recarregar (dar tempo para ESP32 processar)
-                                                setTimeout(() => {
-                                                  console.log(`🔄 [DeviceControlPanel] Recarregando slaves após 2s para verificar estado atualizado...`);
-                                                  loadSlaves();
-                                                }, 2000);
+                                                setTimeout(() => loadSlaves(), 2000);
                                               } else {
                                                 const error = await response.json();
-                                                console.error(`❌ [DeviceControlPanel] Erro ao criar comando:`, error);
-                                                
-                                                // ✅ Reverter estado local se falhou
                                                 setRelayStates(prev => {
                                                   const newMap = new Map(prev);
-                                                  newMap.set(relayKey, true);
-                                                  console.log(`   ⚠️ Estado local revertido para: ON (comando falhou)`);
+                                                  newMap.set(relayKey, previousState);
                                                   return newMap;
                                                 });
-                                                
                                                 toast.error(`Erro: ${error.error}`);
                                               }
-                                            } catch (error) {
-                                              console.error(`❌ [DeviceControlPanel] Erro ao enviar comando:`, error);
-                                              
-                                              // ✅ Reverter estado local se falhou
+                                            } catch {
                                               setRelayStates(prev => {
                                                 const newMap = new Map(prev);
-                                                newMap.set(relayKey, true);
-                                                console.log(`   ⚠️ Estado local revertido para: ON (erro na requisição)`);
+                                                newMap.set(relayKey, previousState);
                                                 return newMap;
                                               });
-                                              
                                               toast.error('Erro ao enviar comando');
                                             } finally {
                                               setLoadingRelays(prev => {
