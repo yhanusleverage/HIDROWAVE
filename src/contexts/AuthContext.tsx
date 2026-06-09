@@ -131,13 +131,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .from('users')
         .select('*')
         .eq('email', normalizedEmail)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        if (error.code === 'PGRST116') {
-          await createUserProfile(normalizedEmail);
-          return;
-        }
         if (error.code === 'PGRST205') {
           setUserProfile(buildFallbackProfile(normalizedEmail));
           return;
@@ -147,7 +143,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (data && !data.is_active) {
+      if (!data) {
+        await createUserProfile(normalizedEmail);
+        return;
+      }
+
+      if (!data.is_active) {
         toast.error('Sua conta está desativada. Contate o administrador.');
         await supabase.auth.signOut();
         setUser(null);
@@ -175,11 +176,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           subscription_type: 'free',
           max_devices: 5,
           total_devices: 0,
+          is_active: true,
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) {
+        if (error.code === '42501' || error.code === 'PGRST301') {
+          console.warn('RLS bloqueou INSERT em users — usar perfil fallback');
+          setUserProfile(buildFallbackProfile(normalizedEmail));
+          return;
+        }
         if (error.code === 'PGRST205') {
           setUserProfile(buildFallbackProfile(normalizedEmail));
           return;

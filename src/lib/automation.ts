@@ -1,4 +1,12 @@
 import { supabase } from './supabase';
+import {
+  isMasterDeviceType,
+  isSimulationDevice,
+  isSlaveDeviceType,
+  isTestEmail,
+  isValidMac,
+  normalizeEmail,
+} from './db-schema';
 
 export interface DecisionRule {
   id?: string;
@@ -264,34 +272,13 @@ export async function getDeviceStatus(deviceId: string): Promise<DeviceStatus | 
 }
 
 export async function getUserDevices(userEmail: string): Promise<DeviceStatus[]> {
-  console.log('🔍 Buscando dispositivos por EMAIL e MAC_ADDRESS...');
-  console.log('📧 Email do usuário recebido:', userEmail);
-  
-  const { data: usersData, error: usersError } = await supabase
-    .from('users')
-    .select('email')
-    .eq('is_active', true);
+  const normalizedEmail = normalizeEmail(userEmail);
+  if (!normalizedEmail) return [];
 
-  const usersTableAvailable = !usersError;
-  const validEmails = new Set(
-    (usersData || []).map(u => u.email?.toLowerCase().trim()).filter(Boolean)
-  );
-
-  const normalizedEmail = userEmail?.trim().toLowerCase() || '';
-  const isUserEmailValid = usersTableAvailable
-    ? normalizedEmail && validEmails.has(normalizedEmail)
-    : !!normalizedEmail;
-
-  if (usersTableAvailable) {
-    console.log(`📧 ${validEmails.size} emails na tabela users`);
-  } else {
-    console.log('ℹ️ Tabela users indisponível — filtrando por device_status.user_email');
-  }
-  
-  // ✅ PASO 2: Buscar dispositivos do device_status
   const { data, error } = await supabase
     .from('device_status')
     .select('*')
+    .eq('user_email', normalizedEmail)
     .order('last_seen', { ascending: false });
 
   if (error) {
@@ -299,70 +286,12 @@ export async function getUserDevices(userEmail: string): Promise<DeviceStatus[]>
     return [];
   }
 
-  if (!data || data.length === 0) {
-    console.log('⚠️ Nenhum dispositivo encontrado na tabela device_status');
-    return [];
-  }
-
-  console.log(`📊 Total de dispositivos na tabela: ${data.length}`);
-  
-  // ✅ PASO 3: Filtrar dispositivos que:
-  // 1. Têm mac_address válido (OBRIGATÓRIO)
-  // 2. Têm user_email que EXISTE na tabela users (VÍNCULO EMAIL)
-  // 3. NÃO são simulações
-  // 4. Se usuário tem email válido, mostrar apenas os dele. Se não, mostrar todos com email válido
-  const userDevices = data.filter(device => {
-    // ✅ 1. OBRIGATÓRIO: Tem mac_address válido
-    if (!device.mac_address || device.mac_address.trim() === '' || device.mac_address === '00:00:00:00:00:00') {
-      return false;
-    }
-
-    // ✅ 2. OBRIGATÓRIO: Tem user_email
-    if (!device.user_email || device.user_email.trim() === '') {
-      return false;
-    }
-
-    const deviceEmail = device.user_email.toLowerCase().trim();
-    
-    // Excluir emails temporários/teste
-    if (deviceEmail === 'temp@local.dev' || deviceEmail.includes('test') || deviceEmail.includes('temp')) {
-      return false;
-    }
-
-    if (usersTableAvailable && !validEmails.has(deviceEmail)) {
-      return false;
-    }
-
-    // ✅ 4. Excluir dispositivos de simulação/teste
-    const deviceId = device.device_id?.toLowerCase() || '';
-    const deviceName = device.device_name?.toLowerCase() || '';
-    const deviceType = device.device_type?.toLowerCase() || '';
-    
-    const isSimulation = 
-      deviceId.includes('simul') || deviceId.includes('test') || deviceId.includes('mock') || deviceId.includes('demo') ||
-      deviceName.includes('simul') || deviceName.includes('test') || deviceName.includes('mock') || deviceName.includes('demo') ||
-      deviceType.includes('simul') || deviceType.includes('test') || deviceType.includes('mock') || deviceType.includes('demo');
-
-    if (isSimulation) {
-      return false;
-    }
-
-    if (normalizedEmail) {
-      return deviceEmail === normalizedEmail;
-    }
-
-    return usersTableAvailable;
-  });
-
-  console.log(`✅ Dispositivos encontrados: ${userDevices.length}`);
-  if (userDevices.length > 0) {
-    console.log('📋 Lista de dispositivos:');
-    userDevices.forEach(d => {
-      console.log(`   - ${d.device_id} | Email: ${d.user_email} | MAC: ${d.mac_address}`);
-    });
-  }
-  
-  return userDevices;
+  return (data || []).filter(
+    (device) =>
+      isValidMac(device.mac_address) &&
+      !isTestEmail(device.user_email || '') &&
+      !isSimulationDevice(device)
+  );
 }
 
 // ✅ Función para descubrir dispositivos disponibles (sin asignar o con email diferente)

@@ -12,12 +12,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       eventsPerSecond: 10,
     },
   },
-  global: {
-    headers: {
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${supabaseAnonKey}`,
-    },
-  },
+  // Não definir Authorization global — quebra o JWT da sessão após login (RLS 42501 / 401)
 });
 
 if (typeof window !== 'undefined' && supabaseAnonKey.length < 30) {
