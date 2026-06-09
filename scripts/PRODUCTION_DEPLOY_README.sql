@@ -1,0 +1,25 @@
+-- =====================================================
+-- HIDROWAVE prod — ejecutar en Supabase SQL Editor
+-- Schema confirmado: 9 tablas (incl. decision_rules)
+-- target_device_id ya existe en relay_commands → omitir paso 2
+-- =====================================================
+--
+-- ORDEN ACTUAL (may 2026):
+--
+-- 1. scripts/PRODUCTION_VERIFY.sql
+--    → columnas relay_commands, últimos comandos, Realtime
+--
+-- 2. ~~PRODUCTION_RELAY_COMMANDS_TARGET.sql~~  OMITIR
+--    → target_device_id ya en prod
+--
+-- 3. scripts/PRODUCTION_DECISION_RULES_RLS.sql
+--    → tabla ya existe; script idempotente: RPC + RLS + índices
+--
+-- 4. scripts/ENABLE_REALTIME_REPLICATION.sql
+--    → ACK WSS instantáneo (relay_commands + 5 tablas)
+--
+-- 5. Deploy frontend (Railway) + test manual:
+--    - /automacao toggle relé → pending→sent→completed
+--    - Network WS phx_join relay_commands
+--    - Crear regla en /automacao
+-- =====================================================

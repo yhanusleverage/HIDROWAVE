@@ -39,6 +39,7 @@ import {
   SLAVES_METADATA_FALLBACK_MS,
 } from '@/lib/realtime/slave-status';
 import { subscribeDeviceStatusUpdates } from '@/lib/realtime/device-status';
+import { subscribeRelayCommandUpdates } from '@/lib/realtime/relay-commands';
 // Removido: import { getRelayStates } from '@/lib/automation'; // ❌ Não usar mais relay_states
 import { getMasterLocalRelayNames, saveMasterLocalRelayName } from '@/lib/nutrition-plan';
 
@@ -994,58 +995,57 @@ export default function AutomacaoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, userProfile?.email]);
 
-  // ✅ NOVO: Verificar ACKs de comandos pendentes (padrão indústria)
+  const processCommandAck = useCallback(
+    (commandId: number | string, status: string, action?: string, relayNumber?: number) => {
+      const relayKey = commandToRelayMap.current.get(commandId);
+      if (!relayKey) return;
+
+      if (status === 'completed') {
+        setRelayStates((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(relayKey, action === 'on');
+          return newMap;
+        });
+        commandToRelayMap.current.delete(commandId);
+      } else if (status === 'failed') {
+        const relayNum = relayNumber !== undefined ? String(relayNumber) : 'desconhecido';
+        toast.error(`Comando falhou para relé ${relayNum}`);
+        commandToRelayMap.current.delete(commandId);
+      }
+    },
+    []
+  );
+
+  // ACKs — WSS relay_commands (sin polling 5s); REST fallback solo si hay pendientes
   useEffect(() => {
     if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
-    if (commandToRelayMap.current.size === 0) return; // Só verificar se há comandos pendentes
-    
-    const interval = setInterval(async () => {
+
+    const unsubscribe = subscribeRelayCommandUpdates(selectedDeviceId, (row) => {
+      processCommandAck(row.id, (row.status || '').toLowerCase(), row.action ?? undefined, row.relay_number ?? undefined);
+    });
+
+    const clearFallback = setVisibleInterval(async () => {
+      if (commandToRelayMap.current.size === 0) return;
       try {
-        // Buscar ACKs dos comandos pendentes
         const response = await fetch(
-          `/api/esp-now/command-acks?master_device_id=${selectedDeviceId}&limit=100`
+          `/api/esp-now/command-acks?master_device_id=${selectedDeviceId}&limit=50`
         );
-        
-        if (response.ok) {
-          const result = await response.json();
-          const acks = result.acks || [];
-          
-          interface CommandAck {
-            command_id: number | string;
-            status: string;
-            action: 'on' | 'off';
-            relay_number?: number;
-          }
-          
-          // Atualizar estados baseado em ACKs
-          acks.forEach((ack: CommandAck) => {
-            const commandIdKey = ack.command_id;
-            const relayKey = commandToRelayMap.current.get(commandIdKey);
-            if (relayKey && ack.status === 'completed') {
-              // Comando foi completado, atualizar estado
-              setRelayStates(prev => {
-                const newMap = new Map(prev);
-                newMap.set(relayKey, ack.action === 'on');
-                return newMap;
-              });
-              
-              // Remover do mapa após processar
-              commandToRelayMap.current.delete(commandIdKey);
-            } else if (relayKey && ack.status === 'failed') {
-              // Comando falhou, manter estado anterior ou desligar
-              const relayNum = ack.relay_number !== undefined ? String(ack.relay_number) : 'desconhecido';
-              toast.error(`Comando falhou para relé ${relayNum}`);
-              commandToRelayMap.current.delete(commandIdKey);
-            }
-          });
-        }
+        if (!response.ok) return;
+        const result = await response.json();
+        const acks = result.acks || [];
+        acks.forEach((ack: { command_id: number | string; status: string; action?: string; relay_number?: number }) => {
+          processCommandAck(ack.command_id, ack.status, ack.action, ack.relay_number);
+        });
       } catch (error) {
-        console.error('Erro ao verificar ACKs:', error);
+        console.error('Erro no fallback ACK REST:', error);
       }
-    }, 5000); // Verificar ACKs a cada 5 segundos
-    
-    return () => clearInterval(interval);
-  }, [selectedDeviceId]);
+    }, 60_000);
+
+    return () => {
+      unsubscribe();
+      clearFallback();
+    };
+  }, [selectedDeviceId, processCommandAck]);
 
   // Realtime relay_slaves — aplica payload WS; REST fallback lento (timers + eventos perdidos)
   useEffect(() => {

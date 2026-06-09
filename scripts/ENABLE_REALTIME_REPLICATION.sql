@@ -10,6 +10,7 @@ DECLARE
     'device_status',
     'relay_master',
     'relay_slaves',
+    'relay_commands',
     'hydro_measurements',
     'environment_data'
   ];

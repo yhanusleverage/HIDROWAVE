@@ -68,3 +68,27 @@ export const DEVICE_STATUS_COLUMNS = [
   'device_type',
   'reboot_count',
 ] as const;
+
+/** Columnas reales de relay_commands (producción). */
+export const RELAY_COMMANDS_COLUMNS = [
+  'id',
+  'device_id',
+  'relay_number',
+  'action',
+  'duration_seconds',
+  'status',
+  'created_at',
+  'sent_at',
+  'completed_at',
+  'created_by',
+  'error_message',
+  'target_device_id',
+] as const;
+
+export type RelayCommandStatus = 'pending' | 'sent' | 'completed' | 'failed';
+
+/** duration_seconds prod: NULL = permanente (CHECK no acepta 0). */
+export function normalizeRelayDuration(seconds?: number | null): number | null {
+  if (seconds === null || seconds === undefined || seconds <= 0) return null;
+  return seconds;
+}

@@ -4,6 +4,7 @@ import {
   isTestEmail,
   isValidMac,
   normalizeEmail,
+  normalizeRelayDuration,
 } from './db-schema';
 
 export interface DecisionRule {
@@ -530,16 +531,59 @@ export async function registerSlaveDevice(
   }
 }
 
-// ===== RELAY COMMANDS =====
+// ===== RELAY COMMANDS (PROD: public.relay_commands) =====
+
+export type CreateRelayCommandProdPayload = {
+  device_id: string;
+  relay_number: number;
+  action: 'on' | 'off';
+  duration_seconds?: number | null;
+  /** MAC o nombre slave; requiere columna target_device_id (PRODUCTION_RELAY_COMMANDS_TARGET.sql) */
+  target_device_id?: string | null;
+  created_by?: string;
+};
 
 /**
- * ✅ FUNCIONES COMPARTIDAS: Crear comandos directamente sin fetch HTTP
- * Optimizado para mejor tiempo de respuesta del usuario
+ * INSERT en relay_commands — schema prod (1 fila, 1 relé).
+ * ESP pollea: device_id=eq.MASTER & status=eq.pending
  */
+export async function createRelayCommandProd(
+  payload: CreateRelayCommandProdPayload
+): Promise<RelayCommand | null> {
+  if (!payload.device_id) return null;
+  if (payload.relay_number < 0 || payload.relay_number > 15) return null;
+  if (payload.action !== 'on' && payload.action !== 'off') return null;
+
+  const row: Record<string, unknown> = {
+    device_id: payload.device_id,
+    relay_number: payload.relay_number,
+    action: payload.action,
+    duration_seconds: normalizeRelayDuration(payload.duration_seconds),
+    status: 'pending',
+    created_by: payload.created_by || 'web_interface',
+  };
+
+  const target = payload.target_device_id?.trim();
+  if (target) {
+    row.target_device_id = target;
+  }
+
+  const { data, error } = await supabase
+    .from('relay_commands')
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[createRelayCommandProd] INSERT failed:', error.message, error.code);
+    return null;
+  }
+
+  return data as RelayCommand;
+}
 
 /**
- * Crea un comando Master directamente en Supabase (sin fetch HTTP)
- * ⚡ OPTIMIZADO: Validaciones rápidas, menos queries, sin logs innecesarios
+ * @deprecated Tablas relay_commands_master/slave no existen en prod. Usar createRelayCommandProd.
  */
 export async function createMasterCommandDirect(payload: {
   master_device_id: string;
@@ -665,8 +709,7 @@ export async function createMasterCommandDirect(payload: {
 }
 
 /**
- * Crea un comando Slave directamente en Supabase (sin fetch HTTP)
- * ⚡ OPTIMIZADO: Validaciones rápidas, menos queries, sin logs innecesarios
+ * @deprecated Tablas relay_commands_slave no existen en prod. Usar createRelayCommandProd.
  */
 export async function createSlaveCommandDirect(payload: {
   master_device_id: string;
@@ -803,236 +846,44 @@ export async function createSlaveCommandDirect(payload: {
 }
 
 /**
- * ✅ SOLUCIÓN OPTIMIZADA PARA PRODUCCIÓN
- * 
- * ⚡ MEJORAS DE TIEMPO DE RESPUESTA:
- * 1. En SERVIDOR: Llama funciones directas (0ms latencia HTTP)
- * 2. En CLIENTE: Usa fetch HTTP (necesario desde navegador)
- * 3. Validaciones rápidas con early returns
- * 4. Menos queries a Supabase (solo las necesarias)
- * 5. Sin logs innecesarios en producción
- * 
- * Esto elimina el error 401 en Vercel y mejora significativamente el tiempo de respuesta
+ * Cria comando em relay_commands (prod). Servidor: insert directo; cliente: API routes prod.
  */
 export async function createRelayCommand(command: Omit<RelayCommand, 'id' | 'created_at'>): Promise<RelayCommand | null> {
-  const startTime = Date.now();
   const isServer = typeof window === 'undefined';
-  const env = process.env.NODE_ENV || 'development';
-  const isVercel = !!process.env.VERCEL;
-  
-  console.log(`🔍 [DEBUG-CREATE-RELAY] Iniciando createRelayCommand`);
-  console.log(`   Ambiente: ${isServer ? 'SERVIDOR' : 'CLIENTE'} | ${env} | Vercel: ${isVercel ? 'SIM' : 'NÃO'}`);
-  
-  try {
-    // ✅ Determinar se é Master ou Slave
-    const isSlave = !!command.slave_mac_address;
-    console.log(`   Tipo: ${isSlave ? 'SLAVE' : 'MASTER'}`);
-    
-    // ✅ Preparar dados (optimizado - sin conversiones innecesarias)
-    const relay_numbers: number[] = Array.isArray((command as RelayCommand & { relay_numbers?: number[] }).relay_numbers) 
-      ? (command as RelayCommand & { relay_numbers?: number[] }).relay_numbers!
-      : [command.relay_number];
-    
-    const actions: ('on' | 'off')[] = Array.isArray((command as RelayCommand & { actions?: ('on' | 'off')[] }).actions) 
-      ? (command as RelayCommand & { actions?: ('on' | 'off')[] }).actions!
-      : [command.action];
-    
-    const duration_seconds: number[] = Array.isArray((command as RelayCommand & { duration_seconds?: number[] }).duration_seconds)
-      ? (command as RelayCommand & { duration_seconds?: number[] }).duration_seconds!
-      : [command.duration_seconds || 0];
-    
-    // ✅ Tipo para resposta da API (pode ter campos adicionais)
-    interface CommandFromAPI extends Partial<RelayCommand> {
-      master_device_id?: string;
-      slave_device_id?: string;
-      user_email?: string;
-      master_mac_address?: string;
-      expires_at?: string | null;
-      [key: string]: unknown;
-    }
+  const isSlave = !!command.slave_mac_address;
+  const targetId = isSlave
+    ? command.slave_mac_address || command.target_device_id || null
+    : null;
 
-    // ✅ Tipo para payload enviado à API
-    interface CommandPayload {
-      master_device_id: string;
-      user_email: string | null;
-      master_mac_address: string | null;
-      relay_numbers: number[];
-      actions: ('on' | 'off')[];
-      duration_seconds: number[];
-      command_type: 'manual' | 'rule' | 'peristaltic';
-      priority: number;
-      expires_at: string | null;
-      triggered_by: 'manual' | 'automation' | 'rule' | 'peristaltic';
-      rule_id: string | null;
-      rule_name: string | null;
-      slave_device_id?: string;
-      slave_mac_address?: string | null;
-    }
+  const prodPayload: CreateRelayCommandProdPayload = {
+    device_id: command.device_id,
+    relay_number: command.relay_number,
+    action: command.action,
+    duration_seconds: command.duration_seconds,
+    target_device_id: targetId,
+    created_by: command.created_by || 'web_interface',
+  };
 
-    // ✅ Preparar payload base
-    // ✅ Validar y convertir tipos de forma segura usando funciones helper
-    const triggeredByValue = validateTriggeredBy(command.triggered_by);
-    const commandTypeValue = validateCommandType(command.command_type);
-    
-    const payload: CommandPayload = {
-      master_device_id: command.device_id,
-      user_email: (command as RelayCommand & { user_email?: string }).user_email || null,
-      master_mac_address: (command as RelayCommand & { master_mac_address?: string }).master_mac_address || null,
-      relay_numbers,
-      actions,
-      duration_seconds,
-      command_type: commandTypeValue,
-      priority: command.priority || 50,
-      expires_at: (command as RelayCommand & { expires_at?: string | null }).expires_at || null,
-      triggered_by: triggeredByValue,
-      rule_id: command.rule_id || null,
-      rule_name: command.rule_name || null,
-    };
-    
-    // ✅ Adicionar campos específicos de Slave
-    if (isSlave) {
-      payload.slave_device_id = (command as RelayCommand & { slave_device_id?: string }).slave_device_id || `ESP32_SLAVE_${command.slave_mac_address?.replace(/:/g, '_')}`;
-      payload.slave_mac_address = command.slave_mac_address;
-    }
-    
-    console.log(`   Payload resumido: device_id=${payload.master_device_id}, relays=[${relay_numbers.join(',')}], actions=[${actions.join(',')}]`);
-    
-    let result: { success: boolean; command?: CommandFromAPI; error?: string } | null = null;
-    
-    // ⚡ OPTIMIZACIÓN CRÍTICA: Si estamos en el servidor, usar funciones directas (0ms latencia)
-    // Si estamos en el cliente, usar fetch HTTP (necesario desde navegador)
-    if (isServer) {
-      // 🚀 SERVIDOR: Llamada directa (SIN HTTP) - MUCHO MÁS RÁPIDO
-      console.log(`🚀 [DEBUG-CREATE-RELAY] Usando função DIRETA (servidor)`);
-      const directStartTime = Date.now();
-      
-      let directResult: { success: boolean; command?: RelayCommand; error?: string } | null = null;
-      if (isSlave) {
-        // ✅ Converter payload para formato esperado pela função (user_email não pode ser null)
-        const slavePayload = {
-          master_device_id: payload.master_device_id,
-          user_email: payload.user_email || '',
-          master_mac_address: payload.master_mac_address || '',
-          slave_device_id: payload.slave_device_id || '',
-          slave_mac_address: payload.slave_mac_address || '',
-          relay_numbers: payload.relay_numbers,
-          actions: payload.actions,
-          duration_seconds: payload.duration_seconds,
-          command_type: payload.command_type,
-          priority: payload.priority,
-          expires_at: payload.expires_at,
-          triggered_by: payload.triggered_by,
-          rule_id: payload.rule_id,
-          rule_name: payload.rule_name,
-        };
-        directResult = await createSlaveCommandDirect(slavePayload);
-      } else {
-        // ✅ Converter payload para formato esperado pela função (user_email não pode ser null)
-        const masterPayload = {
-          master_device_id: payload.master_device_id,
-          user_email: payload.user_email || '',
-          master_mac_address: payload.master_mac_address || '',
-          relay_numbers: payload.relay_numbers,
-          actions: payload.actions,
-          duration_seconds: payload.duration_seconds,
-          command_type: payload.command_type,
-          priority: payload.priority,
-          expires_at: payload.expires_at,
-          triggered_by: payload.triggered_by,
-          rule_id: payload.rule_id,
-          rule_name: payload.rule_name,
-        };
-        directResult = await createMasterCommandDirect(masterPayload);
-      }
-      
-      // ✅ Converter RelayCommand para CommandFromAPI (compatibilidade)
-      if (directResult && directResult.command) {
-        result = {
-          success: directResult.success,
-          command: { ...directResult.command } as CommandFromAPI,
-          error: directResult.error,
-        };
-      } else {
-        result = directResult as { success: boolean; command?: CommandFromAPI; error?: string } | null;
-      }
-      
-      const directTime = Date.now() - directStartTime;
-      console.log(`   ⏱️ [DEBUG-CREATE-RELAY] Função direta executada em: ${directTime}ms`);
-    } else {
-      // 🌐 CLIENTE: Fetch HTTP (necesario desde navegador)
-      const endpoint = isSlave 
-        ? '/api/relay-commands/slave'
-        : '/api/relay-commands/master';
-      
-      console.log(`🌐 [DEBUG-CREATE-RELAY] Usando FETCH HTTP (cliente) → ${endpoint}`);
-      const fetchStartTime = Date.now();
-      
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const fetchTime = Date.now() - fetchStartTime;
-      console.log(`   ⏱️ [DEBUG-CREATE-RELAY] Fetch HTTP executado em: ${fetchTime}ms | Status: ${response.status}`);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
-        console.error(`❌ [DEBUG-CREATE-RELAY] Erro no fetch:`, errorData);
-        return null;
-      }
-      
-      result = await response.json();
-    }
-    
-    const totalTime = Date.now() - startTime;
-
-    if (!result || !result.success || !result.command) {
-      console.error(`❌ [DEBUG-CREATE-RELAY] Resultado inválido:`, result);
-      console.error(`   ⏱️ Tempo total: ${totalTime}ms`);
-      return null;
-    }
-    
-    // ✅ Converter resposta para formato RelayCommand (compatibilidade)
-    const commandFromAPI = result.command as CommandFromAPI;
-    const deviceId = commandFromAPI.device_id || commandFromAPI.master_device_id || command.device_id;
-    
-    if (!deviceId) {
-      console.error('❌ [DEBUG-CREATE-RELAY] device_id não encontrado no comando');
-      return null;
-    }
-    
-    const createdCommand: RelayCommand = {
-      id: commandFromAPI.id,
-      device_id: deviceId,
-      relay_number: relay_numbers[0],
-      action: actions[0] as 'on' | 'off',
-      duration_seconds: duration_seconds[0],
-      status: commandFromAPI.status || 'pending',
-      created_at: commandFromAPI.created_at,
-      command_type: commandFromAPI.command_type,
-      priority: commandFromAPI.priority,
-      triggered_by: commandFromAPI.triggered_by,
-      rule_id: commandFromAPI.rule_id,
-      rule_name: commandFromAPI.rule_name,
-      slave_mac_address: isSlave ? command.slave_mac_address : null,
-      target_device_id: isSlave ? (commandFromAPI.slave_device_id || payload.slave_device_id) : undefined,
-    };
-    
-    console.log(`✅ [DEBUG-CREATE-RELAY] Comando criado com sucesso!`);
-    console.log(`   ID: ${createdCommand.id} | Status: ${createdCommand.status}`);
-    console.log(`   ⏱️ Tempo total: ${totalTime}ms`);
-    
-    return createdCommand;
-  } catch (error) {
-    const totalTime = Date.now() - startTime;
-    console.error(`❌ [DEBUG-CREATE-RELAY] Erro inesperado:`, error);
-    console.error(`   ⏱️ Tempo total: ${totalTime}ms`);
-    if (error instanceof Error) {
-      console.error(`   Stack:`, error.stack);
-    }
-    return null;
+  if (isServer) {
+    return createRelayCommandProd(prodPayload);
   }
+
+  const endpoint = isSlave ? '/api/relay-commands/slave' : '/api/relay-commands/master';
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      master_device_id: command.device_id,
+      relay_number: command.relay_number,
+      action: command.action,
+      duration_seconds: command.duration_seconds ?? null,
+      slave_mac_address: command.slave_mac_address ?? null,
+    }),
+  });
+
+  if (!response.ok) return null;
+  const result = await response.json();
+  return (result.command as RelayCommand) || null;
 }
 
 // ===== RELAY STATES (TABELA UNIFICADA) =====
