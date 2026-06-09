@@ -10,7 +10,11 @@ import {
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { getUserDevices, DeviceStatus, registerDeviceWithEmail, discoverAvailableDevices } from '@/lib/automation';
-import { isOnlineFromLastSeen, subscribeDeviceStatusUpdates } from '@/lib/realtime/device-status';
+import {
+  isDisplayableMaster,
+  isOnlineFromLastSeen,
+  subscribeDeviceStatusUpdates,
+} from '@/lib/realtime/device-status';
 import { useAuth } from '@/contexts/AuthContext';
 import DeviceControlPanel from '@/components/DeviceControlPanel';
 
@@ -29,11 +33,12 @@ export default function DispositivosPage() {
     loadDevices();
   }, [userProfile]);
 
-  // WebSocket Supabase Realtime — actualiza online/last_seen sem polling
+  // WebSocket Supabase Realtime — browser → Supabase (no pasa por Railway)
   useEffect(() => {
     if (!userProfile?.email) return;
 
-    return subscribeDeviceStatusUpdates((row) => {
+    return subscribeDeviceStatusUpdates(userProfile.email, (event) => {
+      const { row } = event;
       const patch: Partial<DeviceStatus> = {
         last_seen: row.last_seen ?? undefined,
         is_online: isOnlineFromLastSeen(row.last_seen),
@@ -43,10 +48,21 @@ export default function DispositivosPage() {
         reboot_count: row.reboot_count ?? undefined,
         firmware_version: row.firmware_version ?? undefined,
       };
+
+      if (event.type === 'insert' && isDisplayableMaster(row)) {
+        const newDevice = {
+          ...row,
+          ...patch,
+        } as DeviceStatus;
+        setDevices((prev) => {
+          if (prev.some((d) => d.device_id === row.device_id)) return prev;
+          return [newDevice, ...prev];
+        });
+        return;
+      }
+
       setDevices((prev) =>
-        prev.map((d) =>
-          d.device_id === row.device_id ? { ...d, ...patch } : d
-        )
+        prev.map((d) => (d.device_id === row.device_id ? { ...d, ...patch } : d))
       );
       setSelectedDevice((prev) =>
         prev?.device_id === row.device_id ? { ...prev, ...patch } : prev

@@ -18,11 +18,23 @@ Repositório ESP: `ESP-HIDROWAVE-main/docs/mqtt/README.md`
 | `device_status.last_seen` | Bridge atualiza ao receber `heartbeat` MQTT (mais frequente que só HTTPS 60 s) |
 | `is_online` | Pode refletir LWT mais rápido após bridge processar `.../status` |
 
+## Supabase Realtime (WebSocket) — implementado
+
+- **Arquitetura:** browser → Supabase WSS (não passa pelo Next.js/Railway).
+- **Código:** `src/lib/realtime/device-status.ts`, `relay-states.ts`, `sensor-measurements.ts`
+- **Activar en Supabase:** ejecutar `scripts/ENABLE_REALTIME_REPLICATION.sql`
+- **Coste Railway:** sin cambio. Coste Supabase Realtime: ~$0 en MVP (1 user, 1 device).
+
+| Página / componente | Tabla Realtime |
+|---------------------|----------------|
+| `/dispositivos` | `device_status` |
+| `DeviceControlPanel` | `relay_master`, `relay_slaves` |
+| `/dashboard` tarjetas | `hydro_measurements`, `environment_data` (histórico sigue REST) |
+
 ## Melhorias opcionais (após bridge ativo)
 
 1. Reduzir janela offline de 5 min para **2 min** se heartbeats forem confiáveis a cada 30 s.
-2. Supabase Realtime em `device_status` para UI sem polling pesado.
-3. **Não** adicionar `mqtt.js` no browser.
+2. **Não** adicionar `mqtt.js` no browser.
 
 ## Comandos de relé (fase 3)
 

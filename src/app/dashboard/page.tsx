@@ -7,6 +7,7 @@ import SensorChart from '@/components/SensorChart';
 import CropCalendar, { CropTask } from '@/components/CropCalendar';
 import { Toaster, toast } from 'react-hot-toast';
 import { HydroMeasurement, EnvironmentMeasurement } from '@/lib/supabase';
+import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
 import { getPollingInterval, loadSettings, saveSettings, type Settings } from '@/lib/settings';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserDevices, DeviceStatus } from '@/lib/automation';
@@ -268,25 +269,33 @@ export default function DashboardPage() {
     fetchHistoryData(); // Sin await para no bloquear
   };
 
+  // Realtime sensores — tarjetas en vivo; histórico sigue con REST
   useEffect(() => {
-    // ✅ Carga inicial: sensores primero, luego histórico
+    if (!userEmail) return;
+
+    return subscribeSensorMeasurements(selectedDeviceId || undefined, {
+      onHydro: (row) => {
+        const validated = validateHydroData(row);
+        if (validated) setHydroData(validated);
+      },
+      onEnvironment: (row) => {
+        const validated = validateEnvData(row);
+        if (validated) setEnvironmentData(validated);
+      },
+    });
+  }, [userEmail, selectedDeviceId]);
+
+  useEffect(() => {
+    // Carga inicial: sensores + histórico
     fetchData();
-    
-    // ✅ Carregar intervalo de polling das configurações
-    let pollingInterval = 30000; // Padrão: 30 segundos
-    
-    try {
-      pollingInterval = getPollingInterval();
-    } catch (error) {
-      console.warn('Erro ao carregar intervalo de polling, usando padrão (30s):', error);
-    }
-    
-    console.log(`🔄 [DASHBOARD] Configurando polling a cada ${pollingInterval / 1000} segundos`);
-    
-    // ✅ Polling optimizado: solo actualizar sensores (más frecuente)
-    // El histórico se actualiza menos frecuentemente
-    const sensorInterval = setInterval(fetchSensorData, pollingInterval);
-    const historyInterval = setInterval(fetchHistoryData, pollingInterval * 2); // Histórico cada 2x el intervalo
+
+    // Fallback polling (60s sensores) si Realtime no está activo en Supabase
+    const fallbackMs = Math.max(getPollingInterval(), 60000);
+
+    console.log(`🔄 [DASHBOARD] Polling fallback cada ${fallbackMs / 1000}s (Realtime activo para tarjetas)`);
+
+    const sensorInterval = setInterval(fetchSensorData, fallbackMs);
+    const historyInterval = setInterval(fetchHistoryData, fallbackMs * 2);
     
     // ✅ Ouvir mudanças nas configurações para recarregar página (aplicar novo intervalo)
     const handleSettingsUpdate = () => {

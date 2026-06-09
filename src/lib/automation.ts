@@ -1,8 +1,6 @@
 import { supabase } from './supabase';
 import {
-  isMasterDeviceType,
   isSimulationDevice,
-  isSlaveDeviceType,
   isTestEmail,
   isValidMac,
   normalizeEmail,

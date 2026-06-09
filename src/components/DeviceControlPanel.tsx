@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { getDeviceAnalytics, DosageMetrics } from '@/lib/analytics';
 import toast from 'react-hot-toast';
+import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
 
 interface DeviceControlPanelProps {
   device: DeviceStatus;
@@ -168,6 +169,23 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
       loadAnalytics();
     }
   }, [isOpen, device.device_id, userProfile?.email, analyticsDays]);
+
+  // Realtime relay_master / relay_slaves — recarrega estados ao mudar no Supabase
+  useEffect(() => {
+    if (!isOpen || !device.device_id) return;
+
+    return subscribeRelayStateUpdates(
+      device.device_id,
+      () => {
+        console.log('[Realtime] relay_master update — refresh slaves/local');
+        loadSlaves();
+      },
+      () => {
+        console.log('[Realtime] relay_slaves update — refresh');
+        loadSlaves();
+      }
+    );
+  }, [isOpen, device.device_id]);
 
   // Toggle relé local (HydroControl - PCF8574)
   const toggleLocalRelay = async (relayId: number) => {
