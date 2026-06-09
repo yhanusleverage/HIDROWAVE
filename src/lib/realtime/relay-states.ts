@@ -14,6 +14,8 @@ export type RelaySlaveRow = {
   master_device_id: string;
   slave_mac_address?: string;
   relay_states?: boolean[];
+  relay_has_timers?: boolean[];
+  relay_remaining_times?: number[];
   last_update?: string;
 };
 

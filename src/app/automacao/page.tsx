@@ -24,6 +24,12 @@ import { getDecisionRules, createDecisionRule, updateDecisionRule, deleteDecisio
 import { useAuth } from '@/contexts/AuthContext';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { supabase } from '@/lib/supabase';
+import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
+import {
+  applySlaveRelayRow,
+  mergeRelayStatesMap,
+  RELAY_REST_FALLBACK_MS,
+} from '@/lib/realtime/relay-apply';
 // Removido: import { getRelayStates } from '@/lib/automation'; // ❌ Não usar mais relay_states
 import { getMasterLocalRelayNames, saveMasterLocalRelayName } from '@/lib/nutrition-plan';
 
@@ -1007,19 +1013,39 @@ export default function AutomacaoPage() {
     return () => clearInterval(interval);
   }, [selectedDeviceId]);
 
-  // ✅ NOVO: Polling periódico para sincronizar estados dos relés do Supabase
+  // Realtime relay_slaves — aplica payload WS; REST fallback lento (timers + eventos perdidos)
   useEffect(() => {
     if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
-    
-    // Atualizar estados imediatamente ao montar
+
     updateRelayStatesOnly();
-    
-    // Polling a cada 10 segundos para sincronizar estados reais do Supabase
-    const interval = setInterval(() => {
+
+    const unsubscribe = subscribeRelayStateUpdates(
+      selectedDeviceId,
+      () => {
+        // relay_master = relés locais del master; automação gestiona slaves ESP-NOW
+      },
+      (slaveRow) => {
+        setEspnowSlaves((prev) => {
+          const { slaves: updated, matched } = applySlaveRelayRow(prev, slaveRow);
+          if (!matched) {
+            loadESPNOWSlaves();
+            return prev;
+          }
+          setRelayStates((r) => mergeRelayStatesMap(r, updated));
+          return updated;
+        });
+      }
+    );
+
+    const fallbackInterval = setInterval(() => {
       updateRelayStatesOnly();
-    }, 10000); // 10 segundos
-    
-    return () => clearInterval(interval);
+    }, RELAY_REST_FALLBACK_MS);
+
+    return () => {
+      unsubscribe();
+      clearInterval(fallbackInterval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, updateRelayStatesOnly]);
 
   const loadMasters = async () => {

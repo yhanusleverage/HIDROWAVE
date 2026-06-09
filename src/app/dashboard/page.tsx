@@ -8,6 +8,10 @@ import CropCalendar, { CropTask } from '@/components/CropCalendar';
 import { Toaster, toast } from 'react-hot-toast';
 import { HydroMeasurement, EnvironmentMeasurement } from '@/lib/supabase';
 import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
+import {
+  appendToHistoryDesc,
+  CHART_HISTORY_FALLBACK_MS,
+} from '@/lib/realtime/chart-history';
 import { getPollingInterval, loadSettings, saveSettings, type Settings } from '@/lib/settings';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserDevices, DeviceStatus } from '@/lib/automation';
@@ -269,33 +273,50 @@ export default function DashboardPage() {
     fetchHistoryData(); // Sin await para no bloquear
   };
 
-  // Realtime sensores — tarjetas en vivo; histórico sigue con REST
+  // Realtime sensores — tarjetas + gráficos (ventana deslizante); REST solo carga inicial + fallback lento
   useEffect(() => {
     if (!userEmail) return;
 
-    return subscribeSensorMeasurements(selectedDeviceId || undefined, {
+    const deviceId = selectedDeviceId || undefined;
+
+    return subscribeSensorMeasurements(deviceId, {
       onHydro: (row) => {
         const validated = validateHydroData(row);
-        if (validated) setHydroData(validated);
+        if (validated) {
+          setHydroData(validated);
+          setHydroHistory((prev) => appendToHistoryDesc(prev, validated, deviceId));
+        }
       },
       onEnvironment: (row) => {
         const validated = validateEnvData(row);
-        if (validated) setEnvironmentData(validated);
+        if (validated) {
+          setEnvironmentData(validated);
+          setEnvHistory((prev) => appendToHistoryDesc(prev, validated, deviceId));
+        }
       },
     });
   }, [userEmail, selectedDeviceId]);
+
+  // Recarga REST al cambiar dispositivo (primer paint del gráfico)
+  useEffect(() => {
+    if (!selectedDeviceId) return;
+    fetchSensorData();
+    fetchHistoryData();
+  }, [selectedDeviceId]);
 
   useEffect(() => {
     // Carga inicial: sensores + histórico
     fetchData();
 
-    // Fallback polling (60s sensores) si Realtime no está activo en Supabase
+    // Fallback polling si Realtime no está activo en Supabase
     const fallbackMs = Math.max(getPollingInterval(), 60000);
 
-    console.log(`🔄 [DASHBOARD] Polling fallback cada ${fallbackMs / 1000}s (Realtime activo para tarjetas)`);
+    console.log(
+      `🔄 [DASHBOARD] Fallback sensores ${fallbackMs / 1000}s | histórico REST ${CHART_HISTORY_FALLBACK_MS / 1000}s (WS ventana deslizante activa)`
+    );
 
     const sensorInterval = setInterval(fetchSensorData, fallbackMs);
-    const historyInterval = setInterval(fetchHistoryData, fallbackMs * 2);
+    const historyInterval = setInterval(fetchHistoryData, CHART_HISTORY_FALLBACK_MS);
     
     // ✅ Ouvir mudanças nas configurações para recarregar página (aplicar novo intervalo)
     const handleSettingsUpdate = () => {

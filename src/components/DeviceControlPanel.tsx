@@ -8,6 +8,12 @@ import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { getDeviceAnalytics, DosageMetrics } from '@/lib/analytics';
 import toast from 'react-hot-toast';
 import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
+import {
+  applyMasterRelayRow,
+  applySlaveRelayRow,
+  mergeRelayStatesMap,
+  RELAY_REST_FALLBACK_MS,
+} from '@/lib/realtime/relay-apply';
 
 interface DeviceControlPanelProps {
   device: DeviceStatus;
@@ -170,21 +176,36 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
     }
   }, [isOpen, device.device_id, userProfile?.email, analyticsDays]);
 
-  // Realtime relay_master / relay_slaves — recarrega estados ao mudar no Supabase
+  // Realtime relay_master / relay_slaves — aplica payload WS directo; REST solo fallback lento
   useEffect(() => {
     if (!isOpen || !device.device_id) return;
 
-    return subscribeRelayStateUpdates(
+    const unsubscribe = subscribeRelayStateUpdates(
       device.device_id,
-      () => {
-        console.log('[Realtime] relay_master update — refresh slaves/local');
-        loadSlaves();
+      (masterRow) => {
+        setLocalRelays((prev) => applyMasterRelayRow(prev, masterRow));
       },
-      () => {
-        console.log('[Realtime] relay_slaves update — refresh');
-        loadSlaves();
+      (slaveRow) => {
+        setSlaves((prev) => {
+          const { slaves: updated, matched } = applySlaveRelayRow(prev, slaveRow);
+          if (!matched) {
+            loadSlaves();
+            return prev;
+          }
+          setRelayStates((r) => mergeRelayStatesMap(r, updated));
+          return updated;
+        });
       }
     );
+
+    const fallbackInterval = setInterval(() => {
+      loadSlaves();
+    }, RELAY_REST_FALLBACK_MS);
+
+    return () => {
+      unsubscribe();
+      clearInterval(fallbackInterval);
+    };
   }, [isOpen, device.device_id]);
 
   // Toggle relé local (HydroControl - PCF8574)
