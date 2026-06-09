@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a1628;
+  --foreground: #e0f2fe;
+}
+
+body {
+  background: #0a1628;
+  color: #e0f2fe;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+* {
+  @apply border-dark-border;
+}

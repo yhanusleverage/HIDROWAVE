@@ -1,0 +1,36 @@
+{
+  "recommendations": [
+    // Next.js y React
+    "ms-vscode.vscode-typescript-next",
+    "bradlc.vscode-tailwindcss",
+    "dsznajder.es7-react-js-snippets",
+    "formulahendry.auto-rename-tag",
+    
+    // Supabase
+    "supabase.supabase-vscode",
+    
+    // TypeScript y JavaScript
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    
+    // Utilidades de desarrollo
+    "usernamehw.errorlens",
+    "christian-kohler.path-intellisense",
+    "ms-vscode.vscode-json",
+    
+    // Git
+    "eamodio.gitlens",
+    
+    // Productividad
+    "streetsidesoftware.code-spell-checker",
+    "streetsidesoftware.code-spell-checker-portuguese-brazilian",
+    "ms-vscode.vscode-typescript-next",
+    
+    // Debugging
+    "ms-vscode.vscode-json",
+    
+    // Formateo automático
+    "editorconfig.editorconfig"
+  ]
+}
+
