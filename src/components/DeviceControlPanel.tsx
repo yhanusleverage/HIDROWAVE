@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { DeviceStatus } from '@/lib/automation';
+import { resolveDeviceOnline } from '@/lib/realtime/device-status';
 import { useAuth } from '@/contexts/AuthContext';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { getDeviceAnalytics, DosageMetrics } from '@/lib/analytics';
@@ -39,6 +40,14 @@ interface RelayConfig {
 
 export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceControlPanelProps) {
   const { userProfile } = useAuth();
+  const [, setTick] = useState(0);
+  const isOnline = resolveDeviceOnline(device);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(interval);
+  }, [isOpen]);
   const [activeTab, setActiveTab] = useState<'status' | 'rules' | 'local' | 'slaves'>('status');
   
   // Estado para relés locais (PCF8574) - apenas botões de teste por enquanto
@@ -614,8 +623,8 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
                   <p className="text-sm text-dark-textSecondary mb-1">Status</p>
-                  <p className={`text-lg font-bold ${device.is_online ? 'text-aqua-400' : 'text-red-400'}`}>
-                    {device.is_online ? 'Online' : 'Offline'}
+                  <p className={`text-lg font-bold ${isOnline ? 'text-aqua-400' : 'text-red-400'}`}>
+                    {isOnline ? 'Online' : 'Offline'}
                   </p>
                 </div>
                 <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
@@ -753,7 +762,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                                 <p className="text-dark-textSecondary">🔄 Reinícios</p>
                                 <button
                                   onClick={handleReboot}
-                                  disabled={rebooting || !device.is_online}
+                                  disabled={rebooting || !isOnline}
                                   className="p-1.5 hover:bg-dark-border rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="Reiniciar dispositivo"
                                 >

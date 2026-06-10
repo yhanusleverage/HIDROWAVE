@@ -14,8 +14,9 @@ import {
 } from '@/lib/realtime/chart-history';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { getPollingInterval, loadSettings, saveSettings, type Settings } from '@/lib/settings';
+import { formatSensorValue } from '@/lib/format-sensor-value';
 import { useAuth } from '@/contexts/AuthContext';
-import { getUserDevices, DeviceStatus } from '@/lib/automation';
+import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import { useCropAlarms } from '@/hooks/useCropAlarms';
 import { 
   AdjustmentsHorizontalIcon,
@@ -26,7 +27,7 @@ export default function DashboardPage() {
   const { userProfile } = useAuth();
   const userEmail = userProfile?.email || '';
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
-  const [devices, setDevices] = useState<DeviceStatus[]>([]);
+  const { devices } = useDevicesWithRealtime(userEmail || undefined);
   const [hydroData, setHydroData] = useState<HydroMeasurement | null>(null);
   const [environmentData, setEnvironmentData] = useState<EnvironmentMeasurement | null>(null);
   const [hydroHistory, setHydroHistory] = useState<HydroMeasurement[]>([]);
@@ -62,30 +63,12 @@ export default function DashboardPage() {
     checkInterval: 60000, // Verificar a cada 60 segundos
   });
 
-  // ✅ Carregar dispositivos do usuário e selecionar o primeiro
   useEffect(() => {
-    const loadUserDevices = async () => {
-      if (!userEmail) {
-        return;
-      }
-
-      try {
-        const userDevices = await getUserDevices(userEmail);
-        setDevices(userDevices);
-        
-        // Selecionar o primeiro dispositivo disponível
-        if (userDevices.length > 0 && !selectedDeviceId) {
-          const firstDevice = userDevices[0];
-          setSelectedDeviceId(firstDevice.device_id);
-          console.log('✅ [DASHBOARD] Dispositivo selecionado:', firstDevice.device_id);
-        }
-      } catch (error) {
-        console.error('❌ [DASHBOARD] Erro ao carregar dispositivos:', error);
-      }
-    };
-
-    loadUserDevices();
-  }, [userEmail, selectedDeviceId]);
+    if (devices.length > 0 && !selectedDeviceId) {
+      setSelectedDeviceId(devices[0].device_id);
+      console.log('✅ [DASHBOARD] Dispositivo selecionado:', devices[0].device_id);
+    }
+  }, [devices, selectedDeviceId]);
 
   // ✅ Carregar umbrales de EC das configurações
   useEffect(() => {
@@ -590,7 +573,7 @@ export default function DashboardPage() {
                       title="Temperatura da Água" 
                       value={
                         hydroData?.temperature !== undefined && hydroData.temperature !== null
-                          ? hydroData.temperature.toFixed(1)
+                          ? formatSensorValue(hydroData.temperature, 1)
                           : '--'
                       } 
                       unit="°C"
@@ -617,7 +600,7 @@ export default function DashboardPage() {
                       title="pH" 
                       value={
                         hydroData?.ph !== undefined && hydroData.ph !== null
-                          ? hydroData.ph.toFixed(2)
+                          ? formatSensorValue(hydroData.ph, 2)
                           : '--'
                       }
                       status={hydroData?.ph !== undefined && hydroData.ph !== null ? getPHStatus(hydroData.ph) : 'normal'}
@@ -639,7 +622,7 @@ export default function DashboardPage() {
                         (() => {
                           // ✅ Usar función helper compartida para calcular EC
                           const ecValue = hydroData ? calculateEC(hydroData) : null;
-                          return ecValue !== null ? ecValue.toFixed(0) : '--';
+                          return ecValue !== null ? formatSensorValue(ecValue, 0) : '--';
                         })()
                       } 
                       unit="µS/cm"

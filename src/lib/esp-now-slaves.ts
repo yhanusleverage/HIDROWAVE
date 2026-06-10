@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getDecisionRules } from './automation';
+import { patchSlaveRelayNamesArray } from './relay-names-prod';
 import { 
   getSlavesFromMaster, 
   getRelayNamesFromSupabase,
@@ -69,7 +70,7 @@ export interface ESPNowSlave {
  * ESTRATÉGIA:
  * 1. Buscar slaves do Supabase (device_status)
  * 2. Buscar estados dos relés do Supabase (slave_relay_states)
- * 3. Buscar nomes personalizados da tabela relay_names (Supabase)
+ * 3. Buscar nomes de relay_slaves.relay_names (schema prod)
  * 4. Combinar todos os dados do Supabase
  * 
  * @param masterDeviceId ID do dispositivo master
@@ -135,16 +136,7 @@ export async function getESPNOWSlaves(
 }
 
 /**
- * Salva nome personalizado de relé de slave na tabela relay_names
- * 
- * NOVA ESTRATÉGIA: Usar tabela relay_names (não decision_rules)
- * 
- * @param masterDeviceId ID do master (não usado, mantido para compatibilidade)
- * @param slaveMac MAC do slave (não usado, mantido para compatibilidade)
- * @param slaveName Nome do slave (não usado, mantido para compatibilidade)
- * @param relayId ID do relé
- * @param relayName Nome personalizado do relé
- * @param deviceId Device ID do slave (ESP32_SLAVE_XX_XX_XX_XX_XX_XX)
+ * Salva nome personalizado de relé de slave em relay_slaves.relay_names
  */
 export async function saveSlaveRelayName(
   masterDeviceId: string,
@@ -155,13 +147,11 @@ export async function saveSlaveRelayName(
   deviceId?: string
 ): Promise<boolean> {
   try {
-    // Se deviceId não foi fornecido, tentar buscar do ESP32 Master
     let slaveDeviceId = deviceId;
-    
+
     if (!slaveDeviceId) {
-      // Buscar slaves do Supabase para encontrar device_id pelo MAC
       const esp32Slaves = await getSlavesFromMaster(masterDeviceId);
-      const slave = esp32Slaves.find(s => s.mac_address === slaveMac);
+      const slave = esp32Slaves.find((s) => s.mac_address === slaveMac);
       slaveDeviceId = slave?.device_id;
     }
 
@@ -170,22 +160,35 @@ export async function saveSlaveRelayName(
       return false;
     }
 
-    // Salvar/atualizar na tabela relay_names
-    const { error } = await supabase
-      .from('relay_names')
-      .upsert(
-        {
-          device_id: slaveDeviceId,
-          relay_number: relayId,
-          relay_name: relayName,
-        },
-        {
-          onConflict: 'device_id,relay_number',
-        }
-      );
+    const { data: existing, error: fetchError } = await supabase
+      .from('relay_slaves')
+      .select('relay_names')
+      .eq('device_id', slaveDeviceId)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Erro ao buscar relay_slaves:', fetchError);
+      return false;
+    }
+
+    const relay_names = patchSlaveRelayNamesArray(
+      relayId,
+      relayName,
+      existing?.relay_names
+    );
+
+    const { error } = await supabase.from('relay_slaves').upsert(
+      {
+        device_id: slaveDeviceId,
+        master_device_id: masterDeviceId,
+        relay_names,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'device_id' }
+    );
 
     if (error) {
-      console.error('Erro ao salvar nome do relé na tabela relay_names:', error);
+      console.error('Erro ao salvar nome do relé slave:', error);
       return false;
     }
 

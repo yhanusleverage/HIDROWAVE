@@ -3,6 +3,7 @@
  */
 
 import { supabase } from './supabase';
+import { patchMasterRelayNameArrays } from './relay-names-prod';
 
 export interface NutrientConfig {
   name: string;
@@ -17,7 +18,7 @@ interface NutrientFromSupabase {
 }
 
 /**
- * Busca nomes de relés LOCAIS do Master de relay_names
+ * Busca nomes de relés LOCAIS do Master (relay_master — schema prod)
  */
 export async function getMasterLocalRelayNames(
   masterDeviceId: string
@@ -54,7 +55,7 @@ export async function getMasterLocalRelayNames(
 }
 
 /**
- * Salva nome de relé LOCAL do Master em relay_names
+ * Salva nome de relé LOCAL do Master em relay_master (arrays de nomes)
  */
 export async function saveMasterLocalRelayName(
   masterDeviceId: string,
@@ -62,24 +63,33 @@ export async function saveMasterLocalRelayName(
   relayName: string
 ): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from('relay_names')
-      .upsert(
-        {
-          device_id: masterDeviceId,
-          relay_number: relayNumber,
-          relay_name: relayName,
-        },
-        {
-          onConflict: 'device_id,relay_number',
-        }
-      );
-    
+    const { data: existing, error: fetchError } = await supabase
+      .from('relay_master')
+      .select('doser_relay_names, level_relay_names, reserved_relay_names')
+      .eq('device_id', masterDeviceId)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Erro ao buscar relay_master:', fetchError);
+      return false;
+    }
+
+    const patched = patchMasterRelayNameArrays(relayNumber, relayName, existing || {});
+
+    const { error } = await supabase.from('relay_master').upsert(
+      {
+        device_id: masterDeviceId,
+        ...patched,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'device_id' }
+    );
+
     if (error) {
       console.error('Erro ao salvar nome do relé local:', error);
       return false;
     }
-    
+
     return true;
   } catch (error) {
     console.error('Erro ao salvar nome do relé local:', error);

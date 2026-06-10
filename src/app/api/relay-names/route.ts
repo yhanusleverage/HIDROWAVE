@@ -1,95 +1,70 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { masterRelayNamesToMap, slaveRelayNamesToMap } from '@/lib/relay-names-prod';
 
 /**
- * API para buscar nomes personalizados dos relés
- * 
- * ✅ CORRIGIDO: Agora roda no servidor (não no cliente)
- * Isso garante que a chave de API seja enviada corretamente
- * 
- * Query params:
- * - device_ids: Array de device_ids separados por vírgula
+ * Nomes personalizados dos relés — schema prod.
+ * Master: relay_master (doser / level / reserved _relay_names)
+ * Slave: relay_slaves.relay_names
  */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const deviceIdsParam = searchParams.get('device_ids');
-    
+
     if (!deviceIdsParam) {
-      console.warn('⚠️ /api/relay-names: device_ids não fornecido');
       return NextResponse.json(
         { error: 'device_ids é obrigatório', relay_names: {} },
         { status: 400 }
       );
     }
-    
-    // Converter string separada por vírgula em array
-    const deviceIds = deviceIdsParam.split(',').filter(id => id.trim().length > 0);
-    
+
+    const deviceIds = deviceIdsParam.split(',').map((id) => id.trim()).filter(Boolean);
+
     if (deviceIds.length === 0) {
-      console.warn('⚠️ /api/relay-names: Nenhum device_id válido fornecido');
       return NextResponse.json({ relay_names: {} });
     }
-    
-    console.log('🔍 /api/relay-names: Buscando nomes para devices:', deviceIds);
-    
-    // Buscar nomes dos relés do Supabase
-    const { data, error } = await supabase
-      .from('relay_names')
-      .select('device_id, relay_number, relay_name')
-      .in('device_id', deviceIds);
-    
-    if (error) {
-      console.error('❌ Erro ao buscar nomes de relés do Supabase:', error);
-      console.error('   Código:', error.code);
-      console.error('   Mensagem:', error.message);
-      console.error('   Detalhes:', error.details);
-      
-      // Se erro for "tabela não existe", retornar vazio mas logar
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
-        console.error('⚠️ Tabela relay_names não existe! Execute FASE1_VERIFICAR_RELAY_NAMES.sql');
-        return NextResponse.json(
-          { 
-            error: 'Tabela relay_names não existe. Execute script de verificação.',
-            relay_names: {} 
-          },
-          { status: 500 }
-        );
-      }
-      
-      return NextResponse.json(
-        { 
-          error: 'Erro ao buscar nomes de relés', 
-          error_details: error.message,
-          relay_names: {} 
-        },
-        { status: 500 }
-      );
-    }
-    
-    console.log(`✅ /api/relay-names: ${data?.length || 0} nomes encontrados`);
-    
-    // Organizar em objeto: { device_id: { relay_number: relay_name } }
+
     const relayNamesMap: Record<string, Record<number, string>> = {};
-    
-    (data || []).forEach((row) => {
-      if (!relayNamesMap[row.device_id]) {
-        relayNamesMap[row.device_id] = {};
+
+    const { data: masters, error: masterError } = await supabase
+      .from('relay_master')
+      .select('device_id, doser_relay_names, level_relay_names, reserved_relay_names')
+      .in('device_id', deviceIds);
+
+    if (masterError) {
+      console.error('❌ relay-names relay_master:', masterError.message);
+    } else {
+      (masters || []).forEach((row) => {
+        relayNamesMap[row.device_id] = masterRelayNamesToMap(row);
+      });
+    }
+
+    const remainingIds = deviceIds.filter((id) => !relayNamesMap[id]);
+    if (remainingIds.length > 0) {
+      const { data: slaves, error: slaveError } = await supabase
+        .from('relay_slaves')
+        .select('device_id, relay_names')
+        .in('device_id', remainingIds);
+
+      if (slaveError) {
+        console.error('❌ relay-names relay_slaves:', slaveError.message);
+      } else {
+        (slaves || []).forEach((row) => {
+          relayNamesMap[row.device_id] = slaveRelayNamesToMap(row.relay_names);
+        });
       }
-      relayNamesMap[row.device_id][row.relay_number] = row.relay_name;
-    });
-    
+    }
+
     return NextResponse.json({ relay_names: relayNamesMap });
   } catch (error) {
     console.error('❌ Erro em GET /api/relay-names:', error);
     return NextResponse.json(
-      { 
-        error: 'Internal server error', 
-        error_details: error instanceof Error ? error.message : String(error),
-        relay_names: {} 
+      {
+        error: 'Internal server error',
+        relay_names: {},
       },
       { status: 500 }
     );
   }
 }
-

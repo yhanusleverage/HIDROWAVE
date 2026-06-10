@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { Toaster, toast, type Toast } from 'react-hot-toast';
 import {
   ClockIcon,
@@ -18,20 +19,25 @@ import {
   ClipboardDocumentCheckIcon,
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
+import { formatSensorValue } from '@/lib/format-sensor-value';
 import CreateRuleModal from '@/components/CreateRuleModal';
 import RuleCard from '@/components/RuleCard';
-import { getDecisionRules, createDecisionRule, updateDecisionRule, deleteDecisionRule, DecisionRule, getUserDevices, DeviceStatus } from '@/lib/automation';
+import { getDecisionRules, createDecisionRule, updateDecisionRule, deleteDecisionRule, DecisionRule } from '@/lib/automation';
+import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import { useAuth } from '@/contexts/AuthContext';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { supabase } from '@/lib/supabase';
-import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
+import { subscribeRelayStateUpdates, type RelayMasterRow } from '@/lib/realtime/relay-states';
 import {
   applySlaveRelayRow,
   mergeRelayStatesMap,
   RELAY_REST_FALLBACK_MS,
 } from '@/lib/realtime/relay-apply';
 import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
-import { ecFromTds, HYDRO_EC_FALLBACK_MS } from '@/lib/realtime/hydro-ec';
+import { resolveEcForDisplay, HYDRO_EC_FALLBACK_MS } from '@/lib/realtime/hydro-ec';
+import { useLastDosage } from '@/hooks/useLastDosage';
+import { useEcOperationState } from '@/hooks/useEcOperationState';
+import { NutrientDosageDetail } from '@/components/NutrientDosageDetail';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import {
   isSlaveDeviceRow,
@@ -43,6 +49,10 @@ import { subscribeRelayCommandUpdates } from '@/lib/realtime/relay-commands';
 import { applyRelayCommandAck, type PendingRelayCommand } from '@/lib/relay-pending-commands';
 // Removido: import { getRelayStates } from '@/lib/automation'; // ❌ Não usar mais relay_states
 import { getMasterLocalRelayNames, saveMasterLocalRelayName } from '@/lib/nutrition-plan';
+import { formatFlowRate } from '@/lib/pump-calibration';
+
+/** Mínimo ml/L por nutriente na tabela nutricional (Auto EC). Para excluir um nutriente, remova a linha. */
+const MIN_NUTRIENT_ML_PER_LITER = 0.1;
 
 interface Relay {
   id: number;
@@ -157,7 +167,7 @@ export default function AutomacaoPage() {
   const [copiedRuleId, setCopiedRuleId] = useState<string | null>(null); // ✅ rule_id copiado para feedback visual
   const [loading, setLoading] = useState(true);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default_device');
-  const [availableMasters, setAvailableMasters] = useState<DeviceStatus[]>([]);
+  const { masters: availableMasters } = useDevicesWithRealtime(userProfile?.email);
   
   const [relays, setRelays] = useState<Relay[]>([
     { id: 0, name: 'Aquecedor' },
@@ -216,9 +226,9 @@ export default function AutomacaoPage() {
   const [baseDose, setBaseDose] = useState<number>(1525.0); // EC base em µS/cm
   const [ecSetpoint, setEcSetpoint] = useState<number>(1500.0); // EC Setpoint em µS/cm
   const [intervaloAutoEC, setIntervaloAutoEC] = useState<number>(300); // Intervalo entre verificações (segundos)
-  const [tempoRecirculacao, setTempoRecirculacao] = useState<string>('00:01'); // Tempo de recirculação (formato HH:MM)
+  const [tempoRecirculacao, setTempoRecirculacao] = useState<string>('00:02'); // Tempo de recirculação (formato HH:MM)
   const [tempoRecirculacaoHours, setTempoRecirculacaoHours] = useState<number>(0);
-  const [tempoRecirculacaoMinutes, setTempoRecirculacaoMinutes] = useState<number>(1);
+  const [tempoRecirculacaoMinutes, setTempoRecirculacaoMinutes] = useState<number>(2);
   const [autoEnabled, setAutoEnabled] = useState<boolean>(false); // Controle automático ativado
   
   // ✅ REF para prevenir recarga automática después de guardar (previene data race)
@@ -245,11 +255,18 @@ export default function AutomacaoPage() {
     const regex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
     return regex.test(timeStr);
   };
+
+  /** BD/firmware: tempo_recirculacao em segundos → HH:MM para UI */
+  const secondsToHHMM = (totalSec: number): string => {
+    const sec = Math.max(0, Math.floor(totalSec));
+    const hours = Math.floor(sec / 3600);
+    const minutes = Math.floor((sec % 3600) / 60);
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  };
   
   // ✅ EC Controller - Status e Monitoramento
   const [ecError, setEcError] = useState<number>(0); // Erro atual (µS/cm)
-  const [lastDosage, setLastDosage] = useState<number>(0); // Última dosagem (ml)
-  const [ecAtual, setEcAtual] = useState<number>(0); // EC atual do sensor
+  const [ecAtual, setEcAtual] = useState<number | null>(null); // EC atual do sensor (null = inválido)
   // ✅ REMOVIDO: Nutrientes hardcodeados - agora inicia vazio e carrega apenas do Supabase
   const [nutrientsState, setNutrientsState] = useState<Array<{name: string, relayNumber: number, mlPerLiter: number}>>([]);
   const [isLoadingNutrients, setIsLoadingNutrients] = useState<Record<number, boolean>>({});
@@ -259,12 +276,76 @@ export default function AutomacaoPage() {
   // ✅ NOVO: Nomes de relés LOCAIS do Master
   const [localRelayNames, setLocalRelayNames] = useState<Map<number, string>>(new Map());
   const [availableRelays, setAvailableRelays] = useState<Array<{number: number, name: string}>>([]);
-  
+  const [doserRelayStates, setDoserRelayStates] = useState<boolean[]>([]);
 
-  // Carregar Masters disponíveis e selecionar o primeiro automaticamente
+  const loadDoserRelayStates = useCallback(async () => {
+    if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
+
+    try {
+      const { data, error } = await supabase
+        .from('relay_master')
+        .select('doser_relay_states')
+        .eq('device_id', selectedDeviceId)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('[EC Controller] relay_master doser states:', error.message);
+        return;
+      }
+      if (data?.doser_relay_states?.length) {
+        setDoserRelayStates(data.doser_relay_states);
+      }
+    } catch (err) {
+      console.warn('[EC Controller] Falha ao carregar doser_relay_states:', err);
+    }
+  }, [selectedDeviceId]);
+
+  const ecDeviceActive = Boolean(
+    selectedDeviceId && selectedDeviceId !== 'default_device'
+  );
+
+  const {
+    totalMl: lastDosageMl,
+    sequenceId: lastDosageSequenceId,
+  } = useLastDosage(selectedDeviceId, ecDeviceActive);
+
+  const {
+    isDosando: firmwareDosando,
+    isAguardandoRecirculacao,
+    operationRemainingSec: recirculacaoRestanteSec,
+    nextCheckInSec: ecNextCheckInSec,
+  } = useEcOperationState(selectedDeviceId, ecDeviceActive, {
+    intervalCeilingSec: intervaloAutoEC,
+    autoEnabled,
+  });
+
+  const isDosandoRelayFallback = useMemo(() => {
+    if (!autoEnabled || doserRelayStates.length === 0 || nutrientsState.length === 0) {
+      return false;
+    }
+    return nutrientsState.some(
+      (nut) => nut.relayNumber >= 0 && doserRelayStates[nut.relayNumber] === true
+    );
+  }, [autoEnabled, doserRelayStates, nutrientsState]);
+
+  /** Firmware ec_operation_state; fallback relé se colunas ainda não migradas */
+  const isDosando =
+    autoEnabled && (firmwareDosando || isDosandoRelayFallback);
+
+  const formatRecircCountdown = useCallback((totalSec: number) => {
+    const minutes = Math.floor(totalSec / 60);
+    const seconds = totalSec % 60;
+    if (minutes > 0) {
+      return `${minutes}:${String(seconds).padStart(2, '0')}`;
+    }
+    return `${seconds}s`;
+  }, []);
+
   useEffect(() => {
-    loadMasters();
-  }, [userProfile?.email]);
+    if (availableMasters.length > 0 && selectedDeviceId === 'default_device') {
+      setSelectedDeviceId(availableMasters[0].device_id || 'default_device');
+    }
+  }, [availableMasters, selectedDeviceId]);
 
   // ✅ NOVO: Carregar nomes de relés LOCAIS do Master
   const loadLocalRelayNames = useCallback(async () => {
@@ -335,16 +416,15 @@ export default function AutomacaoPage() {
       if (config.ec_setpoint !== undefined && !isNaN(config.ec_setpoint)) setEcSetpoint(config.ec_setpoint);
       if (config.intervalo_auto_ec !== undefined && !isNaN(config.intervalo_auto_ec)) setIntervaloAutoEC(config.intervalo_auto_ec);
       if (config.tempo_recirculacao !== undefined && config.tempo_recirculacao !== null) {
-        // ✅ ATUALIZADO: tempo_recirculacao agora é INTEGER (milisegundos) na BD
-        // Converter milisegundos para formato HH:MM para exibição no frontend
-        const ms = typeof config.tempo_recirculacao === 'number' 
-          ? config.tempo_recirculacao 
-          : parseInt(String(config.tempo_recirculacao), 10);
-        
-        if (!isNaN(ms) && ms > 0) {
-          const timeStr = millisecondsToTime(ms);
+        // ✅ BD/firmware: tempo_recirculacao em SEGUNDOS (integer)
+        const sec =
+          typeof config.tempo_recirculacao === 'number'
+            ? config.tempo_recirculacao
+            : parseInt(String(config.tempo_recirculacao), 10);
+
+        if (!isNaN(sec) && sec > 0) {
+          const timeStr = secondsToHHMM(sec);
           setTempoRecirculacao(timeStr);
-          // Atualizar também os campos separados
           const parts = timeStr.split(':');
           if (parts.length >= 2) {
             setTempoRecirculacaoHours(parseInt(parts[0], 10) || 0);
@@ -352,9 +432,9 @@ export default function AutomacaoPage() {
           }
         } else {
           console.warn('⚠️ [EC Controller] tempo_recirculacao inválido ao carregar, usando default:', config.tempo_recirculacao);
-          setTempoRecirculacao('00:01'); // Default: 1 minuto
+          setTempoRecirculacao('00:02'); // Default: 2 minutos
           setTempoRecirculacaoHours(0);
-          setTempoRecirculacaoMinutes(1);
+          setTempoRecirculacaoMinutes(2);
         }
       }
       // ✅ SOLUCIÓN DATA RACE: Solo actualizar auto_enabled si NO acabamos de guardar
@@ -384,10 +464,11 @@ export default function AutomacaoPage() {
   // - utNutriente = totalUt × proporção
   // - tempoDosagem = utNutriente / flowRate
   const calculateDistribution = useCallback(() => {
-    // Calcular total_ml (soma de todos os mlPerLiter)
-    const totalMlPerLiter = nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
+    const activeNutrients = nutrientsState.filter(
+      (n) => n.mlPerLiter >= MIN_NUTRIENT_ML_PER_LITER
+    );
+    const totalMlPerLiter = activeNutrients.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
     
-    // Validar que temos dados suficientes
     if (totalMlPerLiter <= 0 || baseDose <= 0 || pumpFlowRate <= 0 || totalVolume <= 0) {
       console.warn('⚠️ [EC Controller] Dados insuficientes para calcular distribution:', {
         totalMlPerLiter,
@@ -427,8 +508,8 @@ export default function AutomacaoPage() {
     // Calcular distribuição proporcional para cada nutriente
     const distribution: NutrientDistribution[] = [];
     
-    nutrientsState.forEach(nut => {
-      if (nut.mlPerLiter > 0 && totalMlPerLiter > 0) {
+    activeNutrients.forEach(nut => {
+      if (nut.mlPerLiter >= MIN_NUTRIENT_ML_PER_LITER && totalMlPerLiter > 0) {
         // Calcular proporção
         const proporcao = nut.mlPerLiter / totalMlPerLiter;
         
@@ -467,19 +548,36 @@ export default function AutomacaoPage() {
   // Este botão apenas salva na view table, não ativa o Auto EC
   // Para ativar, use o botão "Ativar Auto EC" que chama RPC activate_auto_ec
   const saveECControllerConfig = useCallback(async (silent: boolean = false, overrideAutoEnabled?: boolean) => {
-    if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
+    if (!selectedDeviceId || selectedDeviceId === 'default_device') return false;
+
+    const invalidNutrients = nutrientsState.filter(
+      (n) => n.mlPerLiter < MIN_NUTRIENT_ML_PER_LITER
+    );
+    if (invalidNutrients.length > 0) {
+      toast.error(
+        `Cada nutriente deve ter pelo menos ${MIN_NUTRIENT_ML_PER_LITER} ml/L (ex.: ${invalidNutrients[0].name}). Para excluir um nutriente, remova a linha da tabela.`
+      );
+      return false;
+    }
+
+    if (nutrientsState.length === 0) {
+      toast.error('Adicione pelo menos um nutriente na tabela nutricional');
+      return false;
+    }
     
     try {
-      // Converter array de nutrientes para formato JSONB
-      const nutrientsJson = nutrientsState.map(nut => ({
+      const activeNutrients = nutrientsState.filter(
+        (n) => n.mlPerLiter >= MIN_NUTRIENT_ML_PER_LITER
+      );
+
+      const nutrientsJson = activeNutrients.map((nut) => ({
         name: nut.name,
         relay: nut.relayNumber,
         mlPerLiter: nut.mlPerLiter,
         active: true,
       }));
       
-      // Calcular total_ml (soma de todos os mlPerLiter)
-      const totalMl = nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
+      const totalMl = activeNutrients.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
       
       interface ECConfigPayload {
         device_id: string;
@@ -518,7 +616,7 @@ export default function AutomacaoPage() {
       
       // ✅ ATUALIZADO: Converter tempo_recirculacao de HH:MM para SEGUNDOS (INTEGER)
       // ✅ IMPORTANTE: Enviar em SEGUNDOS, no milisegundos ni formato string
-      let tempoRecirculacaoSegundos = 60; // Default: 60 segundos (1 minuto)
+      let tempoRecirculacaoSegundos = 120; // Default: 120 segundos (2 minutos)
       
       if (tempoRecirculacao !== undefined && tempoRecirculacao !== null && tempoRecirculacao.trim() !== '') {
         // Validar formato HH:MM
@@ -528,7 +626,7 @@ export default function AutomacaoPage() {
           if (ms > 0 && !isNaN(ms) && isFinite(ms)) {
             tempoRecirculacaoSegundos = Math.floor(ms / 1000); // ✅ Convertir a SEGUNDOS
             if (tempoRecirculacaoSegundos < 1) {
-              tempoRecirculacaoSegundos = 60; // Mínimo 1 segundo
+              tempoRecirculacaoSegundos = 120; // Mínimo fallback: 2 minutos
             }
           } else {
             console.warn('⚠️ [EC Controller] tempo_recirculacao resultou em valor inválido, usando default:', tempoRecirculacao, ms);
@@ -659,8 +757,10 @@ export default function AutomacaoPage() {
   
   // ✅ Função para construir JSON optimizado de EC Config (para vista previa)
   const getECConfigJson = useCallback(() => {
-    // Converter array de nutrientes para formato JSONB
-    const nutrientsJson = nutrientsState.map(nut => ({
+    const activeNutrients = nutrientsState.filter(
+      (n) => n.mlPerLiter >= MIN_NUTRIENT_ML_PER_LITER
+    );
+    const nutrientsJson = activeNutrients.map((nut) => ({
       name: nut.name,
       relay: nut.relayNumber,
       mlPerLiter: nut.mlPerLiter,
@@ -668,8 +768,7 @@ export default function AutomacaoPage() {
       relayName: availableRelays.find(r => r.number === nut.relayNumber)?.name || `Relay ${nut.relayNumber}`,
     }));
     
-    // Calcular total_ml (soma de todos os mlPerLiter)
-    const totalMl = nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
+    const totalMl = activeNutrients.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
     
     interface ECConfigJSON {
       device_id: string;
@@ -760,58 +859,58 @@ export default function AutomacaoPage() {
   // ✅ NOVO: Função para obter EC atual desde Supabase (hydro_measurements)
   const fetchCurrentEC = useCallback(async () => {
     if (!selectedDeviceId || selectedDeviceId === 'default_device') {
-      setEcAtual(0);
+      setEcAtual(null);
       return;
     }
     
     try {
-      // Usar diretamente a tabela hydro_measurements (vista hydromensures não existe)
       const { data, error } = await supabase
         .from('hydro_measurements')
-        .select('tds, device_id, created_at')
+        .select('tds, ec, device_id, created_at')
         .eq('device_id', selectedDeviceId)
         .order('created_at', { ascending: false })
         .limit(1)
-        .maybeSingle(); // Usar maybeSingle() em vez de single() para evitar erro se não houver dados
+        .maybeSingle();
       
       if (error) {
         console.warn('⚠️ [EC Controller] Erro ao buscar TDS:', error);
-        // Não resetar para 0 em caso de erro, manter último valor válido
         return;
       }
       
-      if (data && data.tds !== null && data.tds !== undefined) {
-        // Converter TDS (ppm) para EC (µS/cm)
-        // ✅ Fator de conversão correto: EC = TDS * 2
-        const ecValue = data.tds * 2;
-        setEcAtual(ecValue);
-        
-        console.log('✅ [EC Controller] EC atualizado:', {
-          tds: data.tds,
-          ec: ecValue.toFixed(1),
-          setpoint: ecSetpoint,
-          error: (ecValue - ecSetpoint).toFixed(1)
-        });
+      if (data) {
+        const ecValue = resolveEcForDisplay(data);
+
+        if (ecValue !== null) {
+          setEcAtual(ecValue);
+          console.log('✅ [EC Controller] EC atualizado:', {
+            tds: data.tds,
+            ec: ecValue,
+            setpoint: ecSetpoint,
+            error: ecValue - ecSetpoint,
+          });
+        } else {
+          setEcAtual(null);
+        }
       } else {
         console.warn('⚠️ [EC Controller] Nenhum dado TDS encontrado para device:', selectedDeviceId);
-        // Não resetar para 0, manter último valor válido
       }
-      // ✅ O erro será recalculado automaticamente pelo useEffect quando ecAtual mudar
     } catch (err) {
       console.error('❌ [EC Controller] Erro ao buscar EC atual:', err);
-      // Não resetar para 0 em caso de erro, manter último valor válido
     }
   }, [selectedDeviceId, ecSetpoint]);
   
   // ✅ SEMPRE recalcular o erro quando ecAtual ou ecSetpoint mudarem
-  // Isso garante que o erro seja atualizado mesmo quando não há novos dados do sensor
   useEffect(() => {
+    if (ecAtual === null) {
+      setEcError(0);
+      return;
+    }
     const error = ecAtual - ecSetpoint;
     setEcError(error);
     console.log('📊 [EC Controller] Erro recalculado:', {
       ecAtual: ecAtual.toFixed(1),
       ecSetpoint: ecSetpoint.toFixed(1),
-      error: error.toFixed(1)
+      error: error.toFixed(1),
     });
   }, [ecAtual, ecSetpoint]);
 
@@ -827,6 +926,18 @@ export default function AutomacaoPage() {
     // Solo debe ejecutarse cuando cambia selectedDeviceId o userProfile?.email
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, userProfile?.email]);
+
+  // Sincronizar vazão após calibragem em /calibragem
+  useEffect(() => {
+    const onFlowRateUpdated = (e: Event) => {
+      const detail = (e as CustomEvent<{ deviceId: string; flowRate: number }>).detail;
+      if (detail?.deviceId === selectedDeviceId && detail.flowRate > 0) {
+        setPumpFlowRate(detail.flowRate);
+      }
+    };
+    window.addEventListener('flowRateUpdated', onFlowRateUpdated);
+    return () => window.removeEventListener('flowRateUpdated', onFlowRateUpdated);
+  }, [selectedDeviceId]);
   
   // EC Controller — WSS hydro_measurements + REST fallback lento
   useEffect(() => {
@@ -837,8 +948,8 @@ export default function AutomacaoPage() {
     const unsubscribe = subscribeSensorMeasurements(selectedDeviceId, {
       onHydro: (row) => {
         if (row.device_id && row.device_id !== selectedDeviceId) return;
-        const ec = ecFromTds(row.tds);
-        if (ec !== null) setEcAtual(ec);
+        const ec = resolveEcForDisplay(row);
+        setEcAtual(ec);
       },
     });
 
@@ -1065,11 +1176,14 @@ export default function AutomacaoPage() {
     if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
 
     updateRelayStatesOnly();
+    loadDoserRelayStates();
 
     const unsubscribe = subscribeRelayStateUpdates(
       selectedDeviceId,
-      () => {
-        // relay_master = relés locais del master; automação gestiona slaves ESP-NOW
+      (masterRow: RelayMasterRow) => {
+        if (masterRow.doser_relay_states?.length) {
+          setDoserRelayStates(masterRow.doser_relay_states);
+        }
       },
       (slaveRow) => {
         setEspnowSlaves((prev) => {
@@ -1084,47 +1198,17 @@ export default function AutomacaoPage() {
       }
     );
 
-    const clearFallback = setVisibleInterval(updateRelayStatesOnly, RELAY_REST_FALLBACK_MS);
+    const clearFallback = setVisibleInterval(() => {
+      updateRelayStatesOnly();
+      loadDoserRelayStates();
+    }, RELAY_REST_FALLBACK_MS);
 
     return () => {
       unsubscribe();
       clearFallback();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDeviceId, updateRelayStatesOnly]);
-
-  const loadMasters = async () => {
-    if (!userProfile?.email) return;
-    
-    try {
-      const userDevices = await getUserDevices(userProfile.email);
-      // ✅ Filtrar apenas Masters (device_type exato: "ESP32_HYDROPONIC")
-      const masters = userDevices.filter(d => {
-        const deviceType = d.device_type?.toLowerCase() || '';
-        return (
-          deviceType === 'esp32_hydroponic' ||
-          deviceType.includes('hydroponic') ||
-          deviceType.includes('master')
-        );
-      });
-      
-      console.log(`✅ Masters encontrados: ${masters.length}`, masters.map(m => ({ 
-        device_id: m.device_id, 
-        device_type: m.device_type,
-        device_name: m.device_name 
-      })));
-      
-      setAvailableMasters(masters);
-      
-      // Se houver Masters e selectedDeviceId ainda for 'default_device', selecionar o primeiro
-      if (masters.length > 0 && selectedDeviceId === 'default_device') {
-        setSelectedDeviceId(masters[0].device_id || 'default_device');
-      }
-    } catch (error) {
-      console.error('Erro ao carregar Masters:', error);
-      toast.error('Erro ao carregar dispositivos Master');
-    }
-  };
+  }, [selectedDeviceId, updateRelayStatesOnly, loadDoserRelayStates]);
 
   const loadRules = async () => {
     setLoading(true);
@@ -3042,27 +3126,22 @@ export default function AutomacaoPage() {
                   </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div>
-                  <label htmlFor="pumpRate" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                    Taxa de dosagem (ml/segundo):
-                  </label>
-                  <input
-                    id="pumpRate"
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    value={isNaN(pumpFlowRate) ? '' : pumpFlowRate}
-                    onChange={(e) => {
-                      const value = parseFloat(e.target.value);
-                      setPumpFlowRate(isNaN(value) ? 1.0 : value);
-                    }}
-                    disabled={ecControllerLocked}
-                    className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
-                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  />
+                <div className="bg-dark-surface/60 border border-aqua-500/25 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-dark-textSecondary">Vazão calibrada (bomba peristáltica)</p>
+                    <p className="text-xl font-semibold text-aqua-400 mt-1">{formatFlowRate(pumpFlowRate)}</p>
+                    <p className="text-xs text-dark-textSecondary mt-1">
+                      Usada para calcular tempo de dosagem na tabela abaixo
+                    </p>
+                  </div>
+                  <Link
+                    href="/calibragem"
+                    className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg border border-aqua-500/40 text-aqua-400 hover:bg-aqua-500/10 transition-colors whitespace-nowrap"
+                  >
+                    Calibrar bombas →
+                  </Link>
                 </div>
-                
+
                 <div>
                   <label htmlFor="totalVolume" className="block text-sm font-medium text-dark-textSecondary mb-1">
                     Volume do Reservatório (L):
@@ -3086,7 +3165,10 @@ export default function AutomacaoPage() {
               </div>
               
                   {/* ===== TABELA DE NUTRIENTES ===== */}
-                  <div className="overflow-x-auto mt-6">
+                  <p className="mt-6 text-sm text-dark-textSecondary">
+                    Cada nutriente deve ter no mínimo {MIN_NUTRIENT_ML_PER_LITER} ml/L. Para excluir um nutriente do Auto EC, remova a linha (🗑️) — não use 0 ml/L.
+                  </p>
+                  <div className="overflow-x-auto mt-2">
                 <table className="w-full">
                   <thead className="bg-dark-surface">
                     <tr>
@@ -3183,8 +3265,8 @@ export default function AutomacaoPage() {
                           <td className="py-2 px-4">
                             <input
                               type="number"
-                              min="0"
-                              step="0.1"
+                              min={MIN_NUTRIENT_ML_PER_LITER}
+                              step={0.1}
                               value={nutrient.mlPerLiter}
                               onChange={(e) => {
                                 const value = parseFloat(e.target.value);
@@ -3422,6 +3504,57 @@ export default function AutomacaoPage() {
                   <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
                     <h3 className="text-base font-semibold text-dark-text mb-3">📊 Status do Controle</h3>
                     <div className="space-y-2.5">
+                      {isDosando && (
+                        <div
+                          className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-lg bg-emerald-500/15 border border-emerald-500/40"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <span className="relative flex h-3 w-3 shrink-0">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
+                          </span>
+                          <span className="text-base font-semibold text-emerald-400 tracking-wide animate-pulse">
+                            Dosando
+                          </span>
+                        </div>
+                      )}
+                      {!isDosando &&
+                        autoEnabled &&
+                        isAguardandoRecirculacao &&
+                        recirculacaoRestanteSec > 0 && (
+                        <div
+                          className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-lg bg-cyan-500/15 border border-cyan-500/40"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <ClockIcon className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
+                          <span className="text-base font-semibold text-cyan-400 tracking-wide">
+                            Aguardando recirculação
+                          </span>
+                          <span className="text-sm font-mono tabular-nums text-cyan-300/90 bg-cyan-500/10 px-2 py-0.5 rounded">
+                            {formatRecircCountdown(recirculacaoRestanteSec)}
+                          </span>
+                        </div>
+                      )}
+                      {!isDosando &&
+                        !isAguardandoRecirculacao &&
+                        autoEnabled &&
+                        ecNextCheckInSec > 0 && (
+                        <div
+                          className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-lg bg-violet-500/15 border border-violet-500/40"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <ClockIcon className="w-4 h-4 text-violet-400 shrink-0" />
+                          <span className="text-base font-semibold text-violet-400 tracking-wide">
+                            Próxima verificação EC
+                          </span>
+                          <span className="text-sm font-mono tabular-nums text-violet-300/90 bg-violet-500/10 px-2 py-0.5 rounded">
+                            {formatRecircCountdown(ecNextCheckInSec)}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span className="text-base text-dark-textSecondary">Status:</span>
                         <span className={`text-base font-medium ${autoEnabled ? 'text-green-400' : 'text-red-400'}`}>
@@ -3430,17 +3563,32 @@ export default function AutomacaoPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-base text-dark-textSecondary">Erro atual:</span>
-                        <span className="text-base font-medium text-dark-text">{Math.abs(ecError).toFixed(1)} µS/cm</span>
+                        <span className="text-base font-medium text-dark-text">
+                          {ecAtual !== null
+                            ? `${formatSensorValue(Math.abs(ecError), 1)} µS/cm`
+                            : '-- µS/cm'}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-base text-dark-textSecondary">Última dosagem:</span>
-                        <span className="text-base font-medium text-dark-text">{lastDosage.toFixed(2)} ml</span>
+                        <span className="text-base font-medium text-dark-text">
+                          {lastDosageMl != null ? `${lastDosageMl.toFixed(2)} ml` : '-- ml'}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-base text-dark-textSecondary">EC Atual:</span>
-                        <span className="text-base font-medium text-dark-text">{ecAtual.toFixed(1)} µS/cm</span>
+                        <span className="text-base font-medium text-dark-text">
+                          {ecAtual !== null
+                            ? `${formatSensorValue(ecAtual, 1)} µS/cm`
+                            : '-- µS/cm'}
+                        </span>
                       </div>
                     </div>
+                    <NutrientDosageDetail
+                      deviceId={selectedDeviceId}
+                      sequenceId={lastDosageSequenceId}
+                      enabled={ecDeviceActive}
+                    />
                   </div>
                   
                   {/* Equação de Controle */}
@@ -3466,7 +3614,7 @@ export default function AutomacaoPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-dark-textSecondary">e (Erro EC):</span>
-                        <span className="text-dark-text font-medium">{Math.abs(ecError).toFixed(1)} µS/cm</span>
+                        <span className="text-dark-text font-medium">{formatSensorValue(Math.abs(ecError), 1)} µS/cm</span>
                       </div>
                     </div>
                   </div>
@@ -3477,7 +3625,6 @@ export default function AutomacaoPage() {
                   <button
                     onClick={async () => {
                       await saveECControllerConfig();
-                      toast.success('Parâmetros salvos com sucesso!');
                     }}
                     disabled={ecControllerLocked}
                     className={`px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg transition-all shadow-lg hover:shadow-green-500/50 ${
@@ -3489,11 +3636,18 @@ export default function AutomacaoPage() {
                   </button>
                   <button
                     onClick={async () => {
-                      // ✅ SIMPLIFICADO: Um único método para ativar/desativar
                       const newValue = !autoEnabled;
                       console.log('🔄 [EC Controller] Estado atual:', autoEnabled, '→ Novo valor:', newValue);
                       
                       try {
+                        if (newValue) {
+                          const saved = await saveECControllerConfig(true);
+                          if (!saved) {
+                            toast.error('Salve os parâmetros antes de ativar Auto EC');
+                            return;
+                          }
+                        }
+
                         const { error } = await supabase
                           .from('ec_config_view')
                           .update({ 
@@ -3507,11 +3661,27 @@ export default function AutomacaoPage() {
                           toast.error(`Erro: ${error.message}`);
                           return;
                         }
+
+                        if (!newValue) {
+                          const { error: idleError } = await supabase
+                            .from('relay_master')
+                            .update({
+                              ec_operation_state: 'idle',
+                              ec_operation_remaining_sec: 0,
+                              ec_next_check_in_sec: 0,
+                            })
+                            .eq('device_id', selectedDeviceId);
+
+                          if (idleError) {
+                            console.warn(
+                              '⚠️ [EC Controller] Falha ao limpar ec_operation:',
+                              idleError.message
+                            );
+                          }
+                        }
                         
-                        // ✅ Sucesso: Atualizar estado local
                         setAutoEnabled(newValue);
                         
-                        // ✅ Prevenir recarga sobrescrevendo valores
                         justSavedRef.current = true;
                         if (savingTimeoutRef.current) {
                           clearTimeout(savingTimeoutRef.current);
@@ -3520,7 +3690,11 @@ export default function AutomacaoPage() {
                           justSavedRef.current = false;
                         }, 2000);
                         
-                        toast.success(newValue ? '✅ Auto EC ativado!' : '✅ Auto EC desativado');
+                        if (newValue) {
+                          toast.success('✅ Auto EC ativado!');
+                        } else {
+                          toast.success('✅ Auto EC desativado');
+                        }
                         console.log(`✅ [EC Controller] Auto EC ${newValue ? 'ativado' : 'desativado'} no Supabase`);
                         
                       } catch (err) {
@@ -3557,9 +3731,9 @@ export default function AutomacaoPage() {
                       setBaseDose(0);
                       setEcSetpoint(0);
                       setIntervaloAutoEC(300);
-                      setTempoRecirculacao('00:01');
+                      setTempoRecirculacao('00:02');
                       setTempoRecirculacaoHours(0);
-                      setTempoRecirculacaoMinutes(1);
+                      setTempoRecirculacaoMinutes(2);
                       setAutoEnabled(false);
                       toast.success('Valores limpos');
                     }}

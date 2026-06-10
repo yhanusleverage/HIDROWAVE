@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createRelayCommandProd } from '@/lib/automation';
+import { notifyDeviceRelayCommand } from '@/lib/mqtt-command-publish';
 
 /**
  * Cria comando(s) em relay_commands (prod) — relés locais do master.
@@ -58,6 +59,14 @@ export async function POST(request: Request) {
       if (!lastCommand) {
         return NextResponse.json({ error: 'Erro ao inserir em relay_commands' }, { status: 500 });
       }
+
+      await notifyDeviceRelayCommand({
+        device_id: master_device_id,
+        id: lastCommand.id as number,
+        relay_index: rn,
+        action: actions[i],
+        duration_s: durations[i] ?? null,
+      });
     }
 
     return NextResponse.json({

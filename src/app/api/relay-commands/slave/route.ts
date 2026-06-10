@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createRelayCommandProd } from '@/lib/automation';
+import { notifyDeviceRelayCommand } from '@/lib/mqtt-command-publish';
 
 /**
  * Cria comando(s) em relay_commands (prod) — relés de slave ESP-NOW.
@@ -69,6 +70,15 @@ export async function POST(request: Request) {
           { status: 500 }
         );
       }
+
+      await notifyDeviceRelayCommand({
+        device_id: master_device_id,
+        id: lastCommand.id as number,
+        relay_index: rn,
+        action: actions[i],
+        duration_s: durations[i] ?? null,
+        target_device_id: slave_mac_address,
+      });
     }
 
     return NextResponse.json({

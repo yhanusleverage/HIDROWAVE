@@ -9,124 +9,31 @@ import {
   XCircleIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
-import { getUserDevices, DeviceStatus, registerDeviceWithEmail, discoverAvailableDevices } from '@/lib/automation';
+import { DeviceStatus, registerDeviceWithEmail, discoverAvailableDevices } from '@/lib/automation';
 import {
-  isDisplayableMaster,
-  isOnlineFromLastSeen,
-  subscribeDeviceStatusUpdates,
+  getDeviceDisplayStatus,
+  getDeviceStatusText,
+  getLastSeenText,
+  type DeviceDisplayStatus,
 } from '@/lib/realtime/device-status';
+import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import { useAuth } from '@/contexts/AuthContext';
 import DeviceControlPanel from '@/components/DeviceControlPanel';
 
 export default function DispositivosPage() {
   const { userProfile } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [devices, setDevices] = useState<DeviceStatus[]>([]);
+  const { masters: devices, loading, reload } = useDevicesWithRealtime(userProfile?.email);
   const [selectedDevice, setSelectedDevice] = useState<DeviceStatus | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [availableDevices, setAvailableDevices] = useState<DeviceStatus[]>([]);
   const [loadingAvailable, setLoadingAvailable] = useState(false);
 
-  // Carregar dispositivos do Supabase
   useEffect(() => {
-    loadDevices();
-  }, [userProfile]);
-
-  // WebSocket Supabase Realtime — browser → Supabase (no pasa por Railway)
-  useEffect(() => {
-    if (!userProfile?.email) return;
-
-    return subscribeDeviceStatusUpdates(userProfile.email, (event) => {
-      const { row } = event;
-      const patch: Partial<DeviceStatus> = {
-        last_seen: row.last_seen ?? undefined,
-        is_online: isOnlineFromLastSeen(row.last_seen),
-        wifi_rssi: row.wifi_rssi ?? undefined,
-        free_heap: row.free_heap ?? undefined,
-        uptime_seconds: row.uptime_seconds ?? undefined,
-        reboot_count: row.reboot_count ?? undefined,
-        firmware_version: row.firmware_version ?? undefined,
-      };
-
-      if (event.type === 'insert' && isDisplayableMaster(row)) {
-        const newDevice = {
-          ...row,
-          ...patch,
-        } as DeviceStatus;
-        setDevices((prev) => {
-          if (prev.some((d) => d.device_id === row.device_id)) return prev;
-          return [newDevice, ...prev];
-        });
-        return;
-      }
-
-      setDevices((prev) =>
-        prev.map((d) => (d.device_id === row.device_id ? { ...d, ...patch } : d))
-      );
-      setSelectedDevice((prev) =>
-        prev?.device_id === row.device_id ? { ...prev, ...patch } : prev
-      );
-    });
-  }, [userProfile?.email]);
-
-  const loadDevices = async () => {
-    // ✅ CORRIGIDO: Carregar APENAS dispositivos do usuário logado
-    setLoading(true);
-    try {
-      // ✅ VALIDAR: Usuário deve estar autenticado
-      if (!userProfile?.email) {
-        console.warn('⚠️ Usuário não autenticado, não é possível carregar dispositivos');
-        setDevices([]);
-        setLoading(false);
-        return;
-      }
-
-      const userEmail = userProfile.email;
-      console.log('🔍 [DISPOSITIVOS] Carregando dispositivos do usuário:', userEmail);
-      const userDevices = await getUserDevices(userEmail);
-      
-      // ✅ CORRIGIDO: Recalcular is_online baseado em last_seen antes de exibir
-      const now = Date.now();
-      const updatedDevices = userDevices.map(device => {
-        if (device.last_seen) {
-          const lastSeen = new Date(device.last_seen).getTime();
-          const minutesAgo = (now - lastSeen) / 60000;
-          // Atualizar is_online baseado em last_seen (última atualização < 5 minutos = online)
-          const calculatedIsOnline = minutesAgo < 5;
-          return {
-            ...device,
-            is_online: calculatedIsOnline, // Atualizar status calculado
-          };
-        }
-        return {
-          ...device,
-          is_online: false, // Sem last_seen = offline
-        };
-      });
-      
-      console.log(`✅ [DISPOSITIVOS] ${updatedDevices.length} dispositivos carregados e status recalculado`);
-      
-      // ✅ CORRIGIDO: NÃO adicionar Slaves à lista principal
-      // Slaves são "serventes" do Master e só aparecem no painel de controle do Master
-      // (quando você clica no Master, os Slaves aparecem na aba "Slaves ESP-NOW")
-      
-      // Filtrar apenas Masters (não incluir Slaves na lista principal)
-      const masterDevices = updatedDevices.filter(device => {
-        const deviceType = device.device_type?.toLowerCase() || '';
-        // Incluir apenas Masters (hydroponic, master) e excluir Slaves
-        return (deviceType.includes('hydroponic') || deviceType.includes('master')) 
-               && !deviceType.includes('slave');
-      });
-      
-      setDevices(masterDevices);
-    } catch (error) {
-      console.error('Erro ao carregar dispositivos:', error);
-      toast.error('Erro ao carregar dispositivos');
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (!selectedDevice) return;
+    const updated = devices.find((d) => d.device_id === selectedDevice.device_id);
+    if (updated) setSelectedDevice(updated);
+  }, [devices, selectedDevice?.device_id]);
 
   const handleDeviceClick = (device: DeviceStatus) => {
     setSelectedDevice(device);
@@ -256,7 +163,7 @@ export default function DispositivosPage() {
         }
         
         setIsAddModalOpen(false);
-        loadDevices(); // Recarregar lista
+        reload();
       } else {
         toast.error('Erro ao adicionar dispositivo');
       }
@@ -266,42 +173,7 @@ export default function DispositivosPage() {
     }
   };
 
-  // ✅ CORRIGIDO: Recalcular status baseado em last_seen (não apenas is_online)
-  const getDeviceStatus = (device: DeviceStatus): 'online' | 'offline' | 'warning' => {
-    if (!device.last_seen) {
-      return 'offline'; // Nunca conectado
-    }
-
-    const lastSeen = new Date(device.last_seen);
-    const now = Date.now();
-    const minutesAgo = (now - lastSeen.getTime()) / 60000;
-
-    // ✅ Lógica melhorada:
-    // - Online: última atualização < 5 minutos
-    // - Warning: última atualização entre 5-15 minutos
-    // - Offline: última atualização > 15 minutos
-    
-    if (minutesAgo < 5) {
-      return 'online';
-    } else if (minutesAgo < 15) {
-      return 'warning';
-    } else {
-      return 'offline';
-    }
-  };
-
-  const getLastSeenText = (device: DeviceStatus) => {
-    if (!device.last_seen) return 'Nunca conectado';
-    const lastSeen = new Date(device.last_seen);
-    const minutesAgo = Math.floor((Date.now() - lastSeen.getTime()) / 60000);
-    if (minutesAgo < 1) return 'Agora';
-    if (minutesAgo < 60) return `Há ${minutesAgo} min`;
-    const hoursAgo = Math.floor(minutesAgo / 60);
-    if (hoursAgo < 24) return `Há ${hoursAgo}h`;
-    return `Há ${Math.floor(hoursAgo / 24)} dias`;
-  };
-
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: DeviceDisplayStatus) => {
     switch (status) {
       case 'online':
         return <CheckCircleIcon className="w-6 h-6 text-green-500" />;
@@ -314,7 +186,7 @@ export default function DispositivosPage() {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: DeviceDisplayStatus) => {
     switch (status) {
       case 'online':
         return 'bg-aqua-500/20 text-aqua-400 border-aqua-500/30';
@@ -327,18 +199,7 @@ export default function DispositivosPage() {
     }
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'online':
-        return 'Online';
-      case 'offline':
-        return 'Offline';
-      case 'warning':
-        return 'Aviso';
-      default:
-        return 'Desconhecido';
-    }
-  };
+  const getStatusText = (status: DeviceDisplayStatus) => getDeviceStatusText(status);
 
   return (
     <div className="min-h-screen bg-dark-bg">
@@ -357,13 +218,13 @@ export default function DispositivosPage() {
             <div className="flex items-center space-x-2">
               <WifiIcon className="w-5 h-5 text-aqua-400" />
               <span className="text-sm text-dark-textSecondary">
-                {devices.filter(d => getDeviceStatus(d) === 'online').length} online
+                {devices.filter((d) => getDeviceDisplayStatus(d) === 'online').length} online
               </span>
             </div>
             <div className="flex items-center space-x-2">
               <SignalIcon className="w-5 h-5 text-aqua-400" />
               <span className="text-sm text-dark-textSecondary">
-                {devices.filter(d => getDeviceStatus(d) === 'offline').length} offline
+                {devices.filter((d) => getDeviceDisplayStatus(d) === 'offline').length} offline
               </span>
             </div>
           </div>
@@ -401,7 +262,7 @@ export default function DispositivosPage() {
                 return deviceEmail === userEmail;
               })
               .map((device) => {
-              const status = getDeviceStatus(device);
+              const status = getDeviceDisplayStatus(device);
               return (
                 <div
                   key={device.id}
@@ -430,7 +291,7 @@ export default function DispositivosPage() {
                     
                     <div className="flex justify-between text-sm">
                       <span className="text-dark-textSecondary">Última conexão:</span>
-                      <span className="text-dark-text">{getLastSeenText(device)}</span>
+                      <span className="text-dark-text">{getLastSeenText(device.last_seen)}</span>
                     </div>
                     
                     {/* ✅ Debug de Memória - Usando dados reais do banco de dados */}
@@ -521,19 +382,19 @@ export default function DispositivosPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-aqua-500/20 border border-aqua-500/30 p-4 rounded-lg">
               <p className="text-2xl font-bold text-aqua-400">
-                {devices.filter(d => getDeviceStatus(d) === 'online').length}
+                {devices.filter((d) => getDeviceDisplayStatus(d) === 'online').length}
               </p>
               <p className="text-sm text-aqua-300">Dispositivos Online</p>
             </div>
             <div className="bg-yellow-500/20 border border-yellow-500/30 p-4 rounded-lg">
               <p className="text-2xl font-bold text-yellow-400">
-                {devices.filter(d => getDeviceStatus(d) === 'warning').length}
+                {devices.filter((d) => getDeviceDisplayStatus(d) === 'warning').length}
               </p>
               <p className="text-sm text-yellow-300">Com Avisos</p>
             </div>
             <div className="bg-red-500/20 border border-red-500/30 p-4 rounded-lg">
               <p className="text-2xl font-bold text-red-400">
-                {devices.filter(d => getDeviceStatus(d) === 'offline').length}
+                {devices.filter((d) => getDeviceDisplayStatus(d) === 'offline').length}
               </p>
               <p className="text-sm text-red-300">Offline</p>
             </div>

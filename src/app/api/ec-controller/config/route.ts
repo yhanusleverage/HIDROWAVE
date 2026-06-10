@@ -64,6 +64,14 @@ export async function GET(request: Request) {
   }
 }
 
+/** Colunas geradas pelo Postgres — não podem ir no INSERT/upsert. */
+function stripEcConfigReadOnlyFields(
+  config: Record<string, unknown>
+): Record<string, unknown> {
+  const { id: _id, created_at: _createdAt, ...rest } = config;
+  return rest;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -75,13 +83,17 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    const writableConfig = stripEcConfigReadOnlyFields(
+      config as Record<string, unknown>
+    );
     
     // ✅ NOVA ARQUITETURA: Salvar em ec_config_view (view table)
     const { data, error } = await supabase
       .from('ec_config_view')
       .upsert({
         device_id,
-        ...config,
+        ...writableConfig,
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'device_id'

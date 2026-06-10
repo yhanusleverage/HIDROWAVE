@@ -213,9 +213,10 @@ Sistema completo de automação hidropônica com:
 - ✅ **Comparação com Setpoint**: Calcular erro (EC atual vs EC setpoint)
 - ✅ **Cálculo de Correção**: Usar controle proporcional para calcular ml de correção
 - ✅ **Dosagem**: Ativar relés de nutrientes pelo tempo calculado
-- ✅ **Recirculação**: Ativar bomba de recirculação por `tempo_recirculacao` ms
-- ⏳ **Registro de Métricas**: Registrar em `ec_controller_metrics` após cada ciclo
-- ⏳ **Registro de Dosagens**: Registrar em `nutrient_dosages` após cada dosagem
+- ✅ **Recirculação**: Estado `RECIRCULATING` + `tempo_recirculacao` (segundos) + badge UI
+- ⏳ **Registro de Métricas**: `ec_controller_metrics` (fase futura — gráficos)
+- ✅ **Registro de Dosagens (código)**: INSERT `nutrient_dosages` por nutriente — ver [`docs/HANDOFF_ULTIMA_DOSAGEM_E2E.md`](docs/HANDOFF_ULTIMA_DOSAGEM_E2E.md)
+- ⏳ **Registro de Dosagens (prod)**: SQL prod + flash + KPI bancada
 
 #### **2.4. Integração com Decision Engine**
 - ⏳ **Regras de EC**: Permitir que regras do Decision Engine ativem/desativem EC Controller

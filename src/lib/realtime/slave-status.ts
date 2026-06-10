@@ -1,7 +1,7 @@
 import { isSlaveDeviceType } from '@/lib/db-schema';
 import type { ESPNowSlave } from '@/lib/esp-now-slaves';
 import {
-  isOnlineFromLastSeen,
+  resolveDeviceOnline,
   type DeviceStatusRow,
 } from '@/lib/realtime/device-status';
 
@@ -26,7 +26,7 @@ export function patchSlaveFromDeviceStatus(
 ): { slaves: ESPNowSlave[]; matched: boolean } {
   if (!isSlaveDeviceRow(row)) return { slaves, matched: false };
 
-  const online = isOnlineFromLastSeen(row.last_seen);
+  const online = resolveDeviceOnline(row);
   let matched = false;
 
   const updated = slaves.map((slave) => {

@@ -92,3 +92,17 @@ export function normalizeRelayDuration(seconds?: number | null): number | null {
   if (seconds === null || seconds === undefined || seconds <= 0) return null;
   return seconds;
 }
+
+/** Supabase/PostgREST cuando la tabla no está en el schema (prod sin migrar). */
+export function isSupabaseMissingTableError(error: {
+  code?: string;
+  message?: string;
+}): boolean {
+  const msg = error.message?.toLowerCase() ?? '';
+  return (
+    error.code === 'PGRST205' ||
+    error.code === '42P01' ||
+    msg.includes('does not exist') ||
+    msg.includes('could not find the table')
+  );
+}

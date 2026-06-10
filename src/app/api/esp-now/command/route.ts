@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createRelayCommandProd } from '@/lib/automation';
+import { notifyDeviceRelayCommand } from '@/lib/mqtt-command-publish';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -77,6 +78,19 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
+
+    await notifyDeviceRelayCommand({
+      device_id: master_device_id,
+      id: command.id as number,
+      relay_index: relay_number,
+      action,
+      duration_s: duration_seconds ?? null,
+      target_device_id: targetId,
+      command_type: body.command_type ?? 'manual',
+      priority: typeof body.priority === 'number' ? body.priority : undefined,
+      triggered_by: body.triggered_by ?? 'web_interface',
+      rule_id: rule_id ?? null,
+    });
 
     return NextResponse.json({
       success: true,

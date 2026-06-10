@@ -25,17 +25,31 @@
 | `scripts/USERS_RLS_POLICIES.sql` | **Ya** — RLS en `public.users` |
 | `scripts/ENABLE_REALTIME_REPLICATION.sql` | **Ya** — WebSocket postgres_changes |
 | `scripts/CLEANUP_TEST_DEVICES.sql` | **Ya** — borrar ~1000 filas `TEST_*` |
-| `scripts/DROP_DEPRECATED_RELAY.sql` | Opcional — solo si existían tablas viejas |
+| `scripts/CRIAR_TABELA_NUTRIENT_DOSAGES.sql` | **Sendero Última dosagem** — `nutrient_dosages` + `relay_master.ec_operation_*` |
+| `scripts/VERIFICAR_NUTRIENT_DOSAGES_E2E.sql` | **Post-migración** — checklist SQL prod |
 
 ### Supabase Realtime (implementado en frontend)
 
 | Módulo | Archivo | Tablas |
 |--------|---------|--------|
 | Dispositivos online | `src/lib/realtime/device-status.ts` | `device_status` |
-| Relés en vivo | `src/lib/realtime/relay-states.ts` | `relay_master`, `relay_slaves` |
+| Relés en vivo | `src/lib/realtime/relay-states.ts` | `relay_master`, `relay_slaves` (+ `ec_operation_*`) |
+| Última dosagem Auto EC | `src/hooks/useLastDosage.ts` | `nutrient_dosages` (Realtime INSERT + poll 30s fallback) |
+| Detalle nutrientes | `src/components/NutrientDosageDetail.tsx` | `nutrient_dosages` (Realtime por sequence_id) |
+| Realtime dosagens | `src/lib/realtime/nutrient-dosages.ts` | INSERT → UI |
+| Estado operacional EC | `src/hooks/useEcOperationState.ts` | `relay_master.ec_operation_state` |
 | Sensores dashboard | `src/lib/realtime/sensor-measurements.ts` | `hydro_measurements`, `environment_data` |
 
 WebSocket: browser → Supabase (no Railway). Ver `docs/MQTT_INTEGRACAO_FRONTEND.md`.
+
+### Bridge MQTT — Auto EC UX (implementado)
+
+| Tópico | Bridge action |
+|--------|---------------|
+| `hidrowave/+/ec_operation` | PATCH `relay_master.ec_operation_*` |
+| `hidrowave/+/dose` | INSERT `nutrient_dosages` |
+
+Firmware: MQTT primario + HTTPS fallback (`HydroSystemCore::syncEcOperationStateToSupabase`, `handleNutrientDoseEvent`). Test: `infra/mqtt/bridge` → `npm run test:pub:ec-dose`.
 
 ### Schema prod (contrato fijo)
 

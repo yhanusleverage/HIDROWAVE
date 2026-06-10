@@ -17,6 +17,10 @@ Repositório ESP: `ESP-HIDROWAVE-main/docs/mqtt/README.md`
 |-------|----------------|
 | `device_status.last_seen` | Bridge atualiza ao receber `heartbeat` MQTT (mais frequente que só HTTPS 60 s) |
 | `is_online` | Pode refletir LWT mais rápido após bridge processar `.../status` |
+| `relay_master.ec_operation_*` | Bridge recebe `hidrowave/{id}/ec_operation` → badges Dosando/Recirc en `/automacao` |
+| `nutrient_dosages` | Bridge recebe `hidrowave/{id}/dose` → KPI Última dosagem ml |
+
+O frontend **não** subscreve MQTT — lê Supabase Realtime como sempre (`useEcOperationState`, `useLastDosage`).
 
 ## Supabase Realtime (WebSocket) — implementado
 
@@ -30,6 +34,7 @@ Repositório ESP: `ESP-HIDROWAVE-main/docs/mqtt/README.md`
 | `/dispositivos` | `device_status` |
 | `DeviceControlPanel` | `relay_master`, `relay_slaves` |
 | `/dashboard` tarjetas | `hydro_measurements`, `environment_data` (histórico sigue REST) |
+| `/automacao` Status EC | `relay_master` (`ec_operation_*`), `nutrient_dosages` |
 
 ## Melhorias opcionais (após bridge ativo)
 

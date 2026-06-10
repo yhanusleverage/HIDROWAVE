@@ -12,7 +12,8 @@ DECLARE
     'relay_slaves',
     'relay_commands',
     'hydro_measurements',
-    'environment_data'
+    'environment_data',
+    'nutrient_dosages'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP

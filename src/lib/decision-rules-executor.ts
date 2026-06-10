@@ -4,6 +4,7 @@
 
 import { Instruction } from '@/components/SequentialScriptEditor';
 import { createRelayCommandProd } from './automation';
+import { notifyDeviceRelayCommand } from './mqtt-command-publish';
 
 export interface GroupedRelayAction {
   slave_mac: string;
@@ -111,6 +112,20 @@ export async function executeDecisionRule(
 
           if (cmd) {
             commandsCreated++;
+            await notifyDeviceRelayCommand({
+              device_id: context.device_id,
+              id: cmd.id as number,
+              relay_index: group.relay_numbers[i],
+              action: group.actions[i],
+              duration_s: group.duration_seconds[i],
+              target_device_id: slaveMac,
+              command_type: 'rule',
+              priority: context.priority,
+              triggered_by: 'rule',
+              rule_id: context.rule_id,
+              rule_name: context.rule_name,
+              source: 'rule',
+            });
           } else {
             errors.push(`Erro ao criar comando relé ${group.relay_numbers[i]} slave ${slaveMac}`);
           }

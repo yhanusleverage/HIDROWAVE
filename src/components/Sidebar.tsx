@@ -11,6 +11,7 @@ import {
   WrenchScrewdriverIcon,
   BookOpenIcon,
   QuestionMarkCircleIcon,
+  BeakerIcon,
 } from '@heroicons/react/24/outline';
 import {
   HomeIcon as HomeIconSolid,
@@ -19,6 +20,7 @@ import {
   WrenchScrewdriverIcon as WrenchScrewdriverIconSolid,
   BookOpenIcon as BookOpenIconSolid,
   QuestionMarkCircleIcon as QuestionMarkCircleIconSolid,
+  BeakerIcon as BeakerIconSolid,
 } from '@heroicons/react/24/solid';
 
 interface MenuItem {
@@ -40,6 +42,12 @@ const menuItems: MenuItem[] = [
     href: '/automacao',
     icon: Cog6ToothIcon,
     iconSolid: Cog6ToothIconSolid,
+  },
+  {
+    name: 'Calibragem',
+    href: '/calibragem',
+    icon: BeakerIcon,
+    iconSolid: BeakerIconSolid,
   },
   {
     name: 'Dispositivos',

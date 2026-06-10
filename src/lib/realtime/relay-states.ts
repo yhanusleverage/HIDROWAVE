@@ -6,6 +6,9 @@ export type RelayMasterRow = {
   doser_relay_states?: boolean[];
   level_relay_states?: boolean[];
   reserved_relay_states?: boolean[];
+  ec_operation_state?: string;
+  ec_operation_remaining_sec?: number;
+  ec_next_check_in_sec?: number;
   last_update?: string;
 };
 

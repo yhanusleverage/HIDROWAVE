@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { isSupabaseMissingTableError } from '@/lib/db-schema';
 
 /**
  * API para gerenciar alarmes/recordatórios do calendário (crop_alarms)
@@ -58,6 +59,12 @@ export async function GET(request: Request) {
     const { data, error } = await query;
 
     if (error) {
+      if (isSupabaseMissingTableError(error)) {
+        console.warn(
+          '⚠️ crop_alarms no existe en prod — ejecutar scripts/CRIAR_TABELAS_CROP_CALENDAR.sql'
+        );
+        return NextResponse.json({ alarms: [], table_available: false });
+      }
       console.error('Erro ao buscar alarmes:', error);
       return NextResponse.json(
         { error: 'Erro ao buscar alarmes', details: error.message },
@@ -65,7 +72,7 @@ export async function GET(request: Request) {
       );
     }
 
-    return NextResponse.json({ alarms: data || [] });
+    return NextResponse.json({ alarms: data || [], table_available: true });
   } catch (error) {
     console.error('Erro na API de alarmes:', error);
     return NextResponse.json(
@@ -129,6 +136,15 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
+      if (isSupabaseMissingTableError(error)) {
+        return NextResponse.json(
+          {
+            error: 'Calendário de alarmes não disponível (tabela crop_alarms ausente)',
+            table_available: false,
+          },
+          { status: 503 }
+        );
+      }
       console.error('Erro ao criar alarme:', error);
       return NextResponse.json(
         { error: 'Erro ao criar alarme', details: error.message },
@@ -172,6 +188,15 @@ export async function PATCH(request: Request) {
       .single();
 
     if (error) {
+      if (isSupabaseMissingTableError(error)) {
+        return NextResponse.json(
+          {
+            error: 'Calendário de alarmes não disponível (tabela crop_alarms ausente)',
+            table_available: false,
+          },
+          { status: 503 }
+        );
+      }
       console.error('Erro ao atualizar alarme:', error);
       return NextResponse.json(
         { error: 'Erro ao atualizar alarme', details: error.message },
@@ -208,6 +233,15 @@ export async function DELETE(request: Request) {
       .eq('id', id);
 
     if (error) {
+      if (isSupabaseMissingTableError(error)) {
+        return NextResponse.json(
+          {
+            error: 'Calendário de alarmes não disponível (tabela crop_alarms ausente)',
+            table_available: false,
+          },
+          { status: 503 }
+        );
+      }
       console.error('Erro ao deletar alarme:', error);
       return NextResponse.json(
         { error: 'Erro ao deletar alarme', details: error.message },

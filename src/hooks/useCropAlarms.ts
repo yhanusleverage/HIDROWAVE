@@ -1,22 +1,22 @@
 /**
- * Hook personalizado para verificar e exibir alarmes do calendário de cultivo
- * 
- * Este hook:
- * 1. Busca alarmes pendentes periodicamente
- * 2. Verifica se há alarmes que devem ser disparados
- * 3. Exibe toasts quando encontrar alarmes
- * 4. Permite marcar alarmes como acknowledged
+ * Hook opcional — recordatorios crop_alarms (calendario humano).
+ * Si la tabla no existe en Supabase (503 / table_available:false), deja de hacer poll
+ * sin errores en UI ni spam en consola. No bloquea el dashboard.
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { CropAlarm } from '@/lib/crop-calendar';
+import { normalizeEmail } from '@/lib/db-schema';
+
+const MAX_NETWORK_FAILURES = 2;
+const FETCH_TIMEOUT_MS = 12_000;
 
 interface UseCropAlarmsOptions {
   deviceId: string;
   userEmail: string;
   enabled?: boolean;
-  checkInterval?: number; // Intervalo em milissegundos (padrão: 60 segundos)
+  checkInterval?: number;
 }
 
 interface UseCropAlarmsReturn {
@@ -24,147 +24,208 @@ interface UseCropAlarmsReturn {
   acknowledgedAlarms: Set<string>;
   acknowledgeAlarm: (alarmId: string) => Promise<void>;
   isLoading: boolean;
+  /** false cuando crop_alarms no está migrada o el feature se pausó */
+  available: boolean;
+}
+
+function canPoll(deviceId: string, userEmail: string, enabled: boolean): boolean {
+  if (!enabled || !deviceId?.trim()) return false;
+  const email = normalizeEmail(userEmail || '');
+  return email.includes('@') && email.length > 3;
+}
+
+function buildAlarmsUrl(deviceId: string, userEmail: string): string {
+  const params = new URLSearchParams({
+    device_id: deviceId.trim(),
+    user_email: normalizeEmail(userEmail),
+    triggered: 'true',
+    acknowledged: 'false',
+  });
+  return `/api/crop/alarms?${params.toString()}`;
 }
 
 export function useCropAlarms({
   deviceId,
   userEmail,
   enabled = true,
-  checkInterval = 60000, // 60 segundos por padrão
+  checkInterval = 60_000,
 }: UseCropAlarmsOptions): UseCropAlarmsReturn {
   const [alarms, setAlarms] = useState<CropAlarm[]>([]);
   const [acknowledgedAlarms, setAcknowledgedAlarms] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
-  const lastCheckedRef = useRef<Set<string>>(new Set()); // IDs de alarmes já exibidos
+  const [available, setAvailable] = useState(true);
 
-  // Función para buscar alarmes pendentes (memorizada con useCallback)
+  const lastShownRef = useRef<Set<string>>(new Set());
+  const networkFailuresRef = useRef(0);
+  const pausedRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const pauseFeature = useCallback((reason: 'schema' | 'network') => {
+    if (pausedRef.current) return;
+    pausedRef.current = true;
+    setAvailable(false);
+    setAlarms([]);
+    abortRef.current?.abort();
+    if (process.env.NODE_ENV === 'development') {
+      console.debug(
+        `[useCropAlarms] polling pausado (${reason === 'schema' ? 'crop_alarms ausente' : 'rede/API'})`
+      );
+    }
+  }, []);
+
   const fetchAlarms = useCallback(async () => {
-    if (!deviceId || !userEmail || !enabled) {
+    if (pausedRef.current || !canPoll(deviceId, userEmail, enabled)) {
       return;
     }
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
     try {
       setIsLoading(true);
-      
-      // Buscar alarmes que foram disparados (triggered = true) mas não foram acknowledged
-      const response = await fetch(
-        `/api/crop/alarms?device_id=${deviceId}&user_email=${userEmail}&triggered=true&acknowledged=false`
-      );
 
-      if (!response.ok) {
-        console.error('❌ Erro ao buscar alarmes:', response.statusText);
+      const response = await fetch(buildAlarmsUrl(deviceId, userEmail), {
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+
+      if (response.status === 503) {
+        pauseFeature('schema');
         return;
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 400) {
+          return;
+        }
+        networkFailuresRef.current += 1;
+        if (networkFailuresRef.current >= MAX_NETWORK_FAILURES) {
+          pauseFeature('network');
+        }
+        return;
+      }
+
+      networkFailuresRef.current = 0;
+
+      const data = await response.json().catch(() => null);
+      if (!data || data.table_available === false) {
+        pauseFeature('schema');
+        return;
+      }
+
       const triggeredAlarms: CropAlarm[] = data.alarms || [];
 
-      // Filtrar apenas alarmes que ainda não foram exibidos
       const newAlarms = triggeredAlarms.filter(
-        alarm => !lastCheckedRef.current.has(String(alarm.id))
+        (alarm) => !lastShownRef.current.has(String(alarm.id))
       );
 
-      // Exibir toasts para novos alarmes
       newAlarms.forEach((alarm) => {
         const alarmId = String(alarm.id);
-        
-        // Adicionar ao conjunto de alarmes já verificados
-        lastCheckedRef.current.add(alarmId);
+        lastShownRef.current.add(alarmId);
 
-        // Determinar tipo de toast baseado no alarm_type
         const toastOptions = {
-          id: `alarm-${alarmId}`, // ID único para evitar duplicatas
-          duration: alarm.alarm_type === 'alert' ? 10000 : 5000, // Alertas ficam mais tempo
+          id: `alarm-${alarmId}`,
+          duration: alarm.alarm_type === 'alert' ? 10_000 : 5_000,
         };
 
-        // Mensagem do toast
-        const message = alarm.description 
+        const message = alarm.description
           ? `${alarm.title}\n${alarm.description}`
           : alarm.title;
 
-        // Exibir toast baseado no tipo
         switch (alarm.alarm_type) {
           case 'alert':
-            toast.error(message, {
-              ...toastOptions,
-              icon: '⚠️',
-            });
+            toast.error(message, { ...toastOptions, icon: '⚠️' });
             break;
           case 'notification':
-            toast(message, {
-              ...toastOptions,
-              icon: 'ℹ️',
-            });
+            toast(message, { ...toastOptions, icon: 'ℹ️' });
             break;
           case 'reminder':
           default:
-            toast.success(message, {
-              ...toastOptions,
-              icon: '🔔',
-            });
+            toast.success(message, { ...toastOptions, icon: '🔔' });
             break;
         }
       });
 
-      // Atualizar estado com todos os alarmes disparados
       setAlarms(triggeredAlarms);
     } catch (error) {
-      console.error('❌ Erro ao buscar alarmes:', error);
+      if (controller.signal.aborted) {
+        networkFailuresRef.current += 1;
+        if (networkFailuresRef.current >= MAX_NETWORK_FAILURES) {
+          pauseFeature('network');
+        }
+        return;
+      }
+      networkFailuresRef.current += 1;
+      if (networkFailuresRef.current >= MAX_NETWORK_FAILURES) {
+        pauseFeature('network');
+      }
     } finally {
+      clearTimeout(timeoutId);
       setIsLoading(false);
     }
-  }, [deviceId, userEmail, enabled]); // ✅ Dependencias del useCallback
+  }, [deviceId, userEmail, enabled, pauseFeature]);
 
-  // Função para marcar alarme como acknowledged
-  const acknowledgeAlarm = async (alarmId: string) => {
-    try {
-      const response = await fetch('/api/crop/alarms', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: alarmId,
-          acknowledged: true,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Erro ao marcar alarme como acknowledged');
+  const acknowledgeAlarm = useCallback(
+    async (alarmId: string) => {
+      if (pausedRef.current || !available) {
+        return;
       }
 
-      // Adicionar ao conjunto de alarmes acknowledged
-      setAcknowledgedAlarms(prev => new Set(prev).add(alarmId));
-      
-      // Remover da lista de alarmes
-      setAlarms(prev => prev.filter(alarm => String(alarm.id) !== alarmId));
-      
-      toast.success('Alarme marcado como lido');
-    } catch (error) {
-      console.error('❌ Erro ao marcar alarme como acknowledged:', error);
-      toast.error('Erro ao marcar alarme como lido');
-    }
-  };
+      try {
+        const response = await fetch('/api/crop/alarms', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: alarmId, acknowledged: true }),
+        });
 
-  // Efeito para verificar alarmes periodicamente
+        if (response.status === 503) {
+          pauseFeature('schema');
+          return;
+        }
+
+        if (!response.ok) {
+          return;
+        }
+
+        setAcknowledgedAlarms((prev) => new Set(prev).add(alarmId));
+        setAlarms((prev) => prev.filter((alarm) => String(alarm.id) !== alarmId));
+        toast.success('Alarme marcado como lido');
+      } catch {
+        /* silencioso — calendário opcional */
+      }
+    },
+    [available, pauseFeature]
+  );
+
   useEffect(() => {
-    if (!deviceId || !userEmail || !enabled) {
+    pausedRef.current = false;
+    networkFailuresRef.current = 0;
+    lastShownRef.current = new Set();
+    setAvailable(true);
+    setAlarms([]);
+  }, [deviceId, userEmail]);
+
+  useEffect(() => {
+    if (!canPoll(deviceId, userEmail, enabled) || pausedRef.current) {
       return;
     }
 
-    // Verificar imediatamente ao montar
     fetchAlarms();
-
-    // Configurar intervalo de verificação
     const interval = setInterval(fetchAlarms, checkInterval);
 
     return () => {
       clearInterval(interval);
+      abortRef.current?.abort();
     };
-  }, [deviceId, userEmail, enabled, checkInterval, fetchAlarms]); // ✅ Incluir fetchAlarms
+  }, [deviceId, userEmail, enabled, checkInterval, fetchAlarms]);
 
   return {
     alarms,
     acknowledgedAlarms,
     acknowledgeAlarm,
     isLoading,
+    available,
   };
-}
+};
