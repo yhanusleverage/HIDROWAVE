@@ -22,15 +22,29 @@ export interface FundamentosTranslations {
     ph: string;
     solution: string;
   }>;
+  colorLegend: {
+    title: string;
+    green: string;
+    yellow: string;
+    red: string;
+    ecFootnote: string;
+  };
   notes: {
     title: string;
     note1: {
       title: string;
+      intro?: string;
+      sections?: Array<{ title: string; body: string }>;
       content: string;
     };
     note2: {
       title: string;
       content: string;
+    };
+    vpd: {
+      title: string;
+      intro: string;
+      sections: Array<{ title: string; body: string }>;
     };
   };
   tips: {
@@ -45,7 +59,7 @@ export interface FundamentosTranslations {
 export const fundamentosTranslations: Record<string, FundamentosTranslations> = {
   'pt-BR': {
     title: 'Guia de Condições Hidropônicas',
-    subtitle: 'Soluções para Mudanças em Nível de Água, EC e pH',
+    subtitle: 'Soluções para mudanças em nível de água, EC, pH — e complemento com VPD (ambiente)',
     table: {
       waterLevel: 'NÍVEL DE ÁGUA',
       ec: 'EC',
@@ -74,7 +88,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'ESTÁTICO',
         ec: 'ESTÁTICO',
         ph: 'DESCENDO',
-        solution: 'Causa usual disso é quando o meio foi enxaguado em um pH mais baixo do que você requer. A outra possibilidade é que muito CO₂ foi bombeado na água. Veja Nota 1. Troque seu reservatório e observe o volume de ar bombeado, além de verificar sua fonte de ar.',
+        solution: 'Causa usual: enxágue prévio em pH baixo ou acidificação pela rizosfera (Nota 1). Troque o reservatório se o pH continuar a cair sem consumo aparente de água.',
       },
       {
         waterLevel: 'ESTÁTICO',
@@ -92,7 +106,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'ESTÁTICO',
         ec: 'SUBINDO',
         ph: 'DESCENDO',
-        solution: 'Como acima, mas esteja ciente do efeito de chuva ácida mencionado na nota 1. Troca de reservatório, além de aumento na EC.',
+        solution: 'Como acima, mas considere acidificação pela rizosfera (Nota 1). Troca de reservatório, além de aumento na EC.',
       },
       {
         waterLevel: 'ESTÁTICO',
@@ -110,7 +124,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'ESTÁTICO',
         ec: 'DESCENDO',
         ph: 'DESCENDO',
-        solution: 'pH caindo junto com EC caindo, mas sem queda no nível de água sugere uma troca de reservatório. Também pode ser um efeito de chuva ácida conforme nota 1. Dependendo de outros sintomas, reduzir EC após troca de reservatório.',
+        solution: 'pH caindo junto com EC caindo, mas sem queda no nível de água sugere troca de reservatório ou acidificação pela rizosfera (Nota 1). Dependendo de outros sintomas, reduzir EC após troca de reservatório.',
       },
       {
         waterLevel: 'DESCENDO',
@@ -128,7 +142,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'DESCENDO',
         ec: 'ESTÁTICO',
         ph: 'DESCENDO',
-        solution: 'Troca de reservatório além de uma mudança na EC. Reduza a EC se estiver acima de 1,4, aumente a EC se estiver abaixo de 1,0.',
+        solution: 'Troca de reservatório além de ajuste na EC. Reduza a EC se estiver acima de 1,4; aumente se estiver abaixo de 1,0. Provável desequilíbrio químico: nutrição proporcional desbalanceada ou solução saturada por uso contínuo — troca de reservatório recomendada.',
       },
       {
         waterLevel: 'DESCENDO',
@@ -146,7 +160,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'DESCENDO',
         ec: 'SUBINDO',
         ph: 'DESCENDO',
-        solution: 'Planta está bebendo mais do que comendo, reduza a EC. Além disso, troca de reservatório devido a possível problema de chuva ácida.',
+        solution: 'Planta está bebendo mais do que comendo, reduza a EC. Se o pH cair de forma persistente, troque o reservatório (Nota 1 — rizosfera).',
       },
       {
         waterLevel: 'DESCENDO',
@@ -164,24 +178,82 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'DESCENDO',
         ec: 'DESCENDO',
         ph: 'DESCENDO',
-        solution: 'Troca de reservatório. Possível problema de chuva ácida, mas a planta ainda está comendo e bebendo. Aumente a EC no novo reservatório.',
+        solution: 'Troca de reservatório. Queda de pH pode refletir atividade da rizosfera (Nota 1), mas a planta ainda está comendo e bebendo. Aumente a EC no novo reservatório.',
       },
     ],
+    colorLegend: {
+      title: 'Legenda de cores',
+      green:
+        'Normal ou excelente — a planta consome água (nível DESCENDO) e EC/pH estão estáveis ou num padrão saudável da fase.',
+      yellow:
+        'Atenção moderada — troca de reservatório, ajuste de EC ou investigar queda de pH / desequilíbrio químico provável.',
+      red:
+        'Investigar — combinação atípica de nível, EC e pH; revise nutrição, calibração, VPD (Nota 3) e sintomas visuais da planta.',
+      ecFootnote:
+        'Referências EC 1,0 e 1,4 assumem mS/cm em escala genérica — ajuste sempre aos valores-alvo da sua cultura, fase e medidor.',
+    },
     notes: {
       title: 'Notas Importantes',
       note1: {
-        title: 'Nota 1 - Efeito de Chuva Ácida',
-        content: 'Quando muito CO₂ é bombeado na água ou quando há uma fonte de ar contaminada, pode ocorrer um efeito de "chuva ácida" que causa queda no pH. Verifique o volume de ar bombeado e a qualidade da fonte de ar. Considere trocar o reservatório se o problema persistir.',
+        title: 'Nota 1 — pH, rizosfera e correção química',
+        intro:
+          'Queda de pH com nível de água estável costuma refletir processos biológicos e químicos na zona radicular. Compreender o equilíbrio ácido-base — e as ferramentas simples para corrigi-lo — transforma leituras da tabela em ação consciente.',
+        sections: [
+          {
+            title: 'Rizosfera e equilíbrio gasoso',
+            body:
+              'Junto às raízes existe uma zona viva — a rizosfera — onde planta, água e micro-organismos trocam gases e substâncias o tempo todo. A respiração radicular libera CO₂; dissolvido na solução, torna-a ligeiramente mais ácida, como um sopro contínuo e invisível.\n\nA forma como a planta come também move o pH: preferência por amônio puxa a solução para o ácido; preferência por nitrato puxa para o básico. Por isso o pH nunca é só “número do medidor” — é o retrato químico do que acontece na raiz.',
+          },
+          {
+            title: 'Sistema carbonato — ferramenta simples e poderosa',
+            body:
+              'Imagine a água do reservatório como um equilíbrio delicado entre “mais ácida” e “mais básica”. Quando CO₂ da respiração das raízes — ou do ar em contacto com a solução — se dissolve, a água fica ligeiramente mais ácida. É o mesmo princípio de uma bebida gaseificada, mas contínuo e invisível.\n\nSoluções nutritivas de hidroponia são diluídas de propósito: a planta se alimenta bem, mas a água quase não tem colchão químico. Pequenas entradas de acidez (exsudatos radiculares, matéria orgânica, CO₂) deslocam o pH depressa. O medidor reage — não é falha do sensor, é a natureza frágil do meio.\n\nAqui entra o sistema carbonato, uma das ferramentas mais acessíveis e baratas do cultivador: carbonato ou bicarbonato de potássio. Não enchem o tanque “de sal” à toa — consomem acidez, podem libertar CO₂ (por vezes visível em bolhas finas) e devolvem potássio útil à nutrição.\n\nCompreender este ciclo — acidez que entra, base que negocia, gás que vai e volta — dá ao cultivador um controlo manual poderoso, com produtos comuns, sem depender só de equipamento caro. É química acessível: simples de entender, profunda no efeito, quando usada com paciência e doses pequenas.',
+          },
+          {
+            title: 'Ácido fosfórico e carbonato de potássio — dois conceitos de correção',
+            body:
+              'Corrigir pH não é “jogar sal na água”. É restaurar um equilíbrio dinâmico entre água, íons, nutrientes e a biologia das raízes.\n\nO ácido fosfórico (pH−) encarna a ideia de entregar acidez — doar prótons à solução. A água torna-se mais ácida e, simultaneamente, o fósforo entra no ciclo nutritivo. Não é um aditivo neutro: altera a química viva do reservatório.\n\nO carbonato de potássio (pH+) encarna o caminho oposto: absorver acidez e devolver potássio, com liberação de CO₂ — o mesmo elemento presente na respiração radicular, aqui usado para empurrar o pH para cima de forma controlada.\n\nCompreender esses dois polos evita tratar pH+ e pH− como botões mágicos. Cada correção é uma conversa química: pequena, pausada, com tempo para a solução misturar e “respirar” antes de nova leitura. Soluções comerciais já diluídas existem justamente para tornar essa conversa mais suave e segura para as raízes.',
+          },
+        ],
+        content: '',
       },
       note2: {
-        title: 'Nota 2 - Lixiviação de Nutrientes',
-        content: 'Quando a EC está subindo enquanto o nível de água permanece estático, isso indica que a planta está liberando nutrientes de volta para a solução. Isso geralmente significa que a concentração de nutrientes está muito alta e a planta não consegue absorvê-los adequadamente. Aumentar a EC pode parecer contraproducente, mas pode ajudar a reequilibrar a solução.',
+        title: 'Nota 2 — Lixiviação de nutrientes',
+        content:
+          'Quando o nível de água fica ESTÁTICO mas a EC sobe, a planta não está bebendo — está devolvendo nutrientes para a solução. É como um caldo concentrado demais: o organismo rejeita em vez de absorver. Reduza a EC ou troque o reservatório para recuperar o equilíbrio. Subir a EC só faz sentido se confirmar que a concentração estava baixa demais para a fase, não alta.',
+      },
+      vpd: {
+        title: 'Nota 3 — VPD (déficit de pressão de vapor)',
+        intro:
+          'EC e pH descrevem a química da solução no reservatório. O VPD descreve o “clima de secagem” ao redor da folha — e explica por que a planta bebe mais ou menos, mesmo quando a tabela parece correta. Os dois olhares se complementam: solução + ambiente.',
+        sections: [
+          {
+            title: 'O que é, em linguagem simples',
+            body:
+              'VPD mede o quanto o ar ainda “puxa” umidade das folhas. Ar quente e seco → VPD alto → a planta transpira forte e puxa mais água da raiz (nível DESCENDO acelerado). Ar frio e úmido → VPD baixo → transpiração fraca; a solução muda devagar e o nível pode parecer ESTÁTICO mesmo com metabolismo ativo.',
+          },
+          {
+            title: 'Ligação com a tabela EC / pH / água',
+            body:
+              'DESCENDO + EC DESCENDO + pH estável costuma ser fome nutricional — e VPD moderado a alto favorece essa “sede”. DESCENDO + EC SUBINDO sugere beber mais que comer — comum com VPD elevado ou EC inicial baixa. ESTÁTICO + EC SUBINDO (Nota 2) pode aparecer com VPD baixo: pouca transpiração, acúmulo relativo de sais na solução.',
+          },
+          {
+            title: 'Faixas orientativas (kPa)',
+            body:
+              'Valores de referência, não dogma: plântula/muda ~0,4–0,8 · vegetativo ~0,8–1,2 · flora ~1,0–1,6. Acima disso aumenta estresse hídrico; abaixo disso reduz transpiração e transporte de nutrientes. Ajuste temperatura, humidade relativa ou ventilação antes de forçar EC/pH.',
+          },
+          {
+            title: 'Como usar no dia a dia',
+            body:
+              'Com temperatura e humidade do ambiente calcula-se o VPD (apps ou tabelas). Se a tabela está verde mas a planta murcha → olhe VPD alto. Se bebe pouco e EC sobe com nível ESTÁTICO → olhe VPD baixo + Nota 2. HIDROWAVE trata solução; o cultivador equilibra o ar — os dois juntos fecham o ciclo da planta.',
+          },
+        ],
       },
     },
     tips: {
       title: 'Dicas Gerais',
       items: [
-        'Monitore regularmente os níveis de água, EC e pH',
+        'Monitore regularmente nível de água, EC, pH e ambiente (temperatura + UR → VPD)',
         'Faça trocas de reservatório regularmente conforme necessário',
         'Ajuste a EC gradualmente - mudanças bruscas podem estressar as plantas',
         'Verifique a calibração dos medidores periodicamente',
@@ -194,7 +266,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
   },
   'en-US': {
     title: 'Hydroponic Conditions Guide',
-    subtitle: 'Solutions for Changes in Water Level, EC and pH',
+    subtitle: 'Solutions for water level, EC, pH changes — plus VPD (environment) context',
     table: {
       waterLevel: 'WATER LEVEL',
       ec: 'EC',
@@ -223,7 +295,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'STATIC',
         ec: 'STATIC',
         ph: 'FALLING',
-        solution: 'The usual cause for this is when the medium was flushed at a lower pH than you require. The other possibility is that too much CO₂ was pumped into the water. See Note 1. Change your reservoir and observe the volume of air pumped, in addition to checking your air source.',
+        solution: 'Usual cause: prior flush at low pH or rhizosphere acidification (Note 1). Change the reservoir if pH keeps falling without apparent water uptake.',
       },
       {
         waterLevel: 'STATIC',
@@ -241,7 +313,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'STATIC',
         ec: 'RISING',
         ph: 'FALLING',
-        solution: 'As above, but be aware of the acid rain effect mentioned in note 1. Reservoir change, in addition to increasing EC.',
+        solution: 'As above, but consider rhizosphere acidification (Note 1). Reservoir change, in addition to increasing EC.',
       },
       {
         waterLevel: 'STATIC',
@@ -259,7 +331,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'STATIC',
         ec: 'FALLING',
         ph: 'FALLING',
-        solution: 'pH falling along with EC falling, but without a drop in water level suggests a reservoir change. It can also be an acid rain effect as per note 1. Depending on other symptoms, reduce EC after reservoir change.',
+        solution: 'pH falling along with EC falling, but without a drop in water level suggests a reservoir change or rhizosphere acidification (Note 1). Depending on other symptoms, reduce EC after reservoir change.',
       },
       {
         waterLevel: 'FALLING',
@@ -277,7 +349,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'FALLING',
         ec: 'STATIC',
         ph: 'FALLING',
-        solution: 'Reservoir change in addition to an EC change. Reduce EC if it is above 1.4, increase EC if it is below 1.0.',
+        solution: 'Reservoir change plus EC adjustment. Reduce EC if above 1.4; increase if below 1.0. Likely chemical imbalance: unbalanced proportional nutrition or solution saturated from continuous use — reservoir change recommended.',
       },
       {
         waterLevel: 'FALLING',
@@ -295,7 +367,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'FALLING',
         ec: 'RISING',
         ph: 'FALLING',
-        solution: 'Plant is drinking more than eating, reduce the EC. Also, reservoir change due to possible acid rain problem.',
+        solution: 'Plant is drinking more than eating, reduce the EC. If pH keeps dropping, change the reservoir (Note 1 — rhizosphere).',
       },
       {
         waterLevel: 'FALLING',
@@ -313,24 +385,82 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'FALLING',
         ec: 'FALLING',
         ph: 'FALLING',
-        solution: 'Reservoir change. Possible acid rain problem, but the plant is still eating and drinking. Increase the EC in the new reservoir.',
+        solution: 'Reservoir change. Falling pH may reflect rhizosphere activity (Note 1), but the plant is still eating and drinking. Increase the EC in the new reservoir.',
       },
     ],
+    colorLegend: {
+      title: 'Color legend',
+      green:
+        'Normal or excellent — the plant is using water (FALLING level) and EC/pH are stable or in a healthy pattern for the stage.',
+      yellow:
+        'Moderate attention — reservoir change, EC adjustment, or investigate falling pH / likely chemical imbalance.',
+      red:
+        'Investigate — atypical combination of level, EC, and pH; review nutrition, calibration, VPD (Note 3), and visible plant symptoms.',
+      ecFootnote:
+        'EC references 1.0 and 1.4 assume generic mS/cm scale — always adjust to your crop targets, stage, and meter.',
+    },
     notes: {
       title: 'Important Notes',
       note1: {
-        title: 'Note 1 - Acid Rain Effect',
-        content: 'When too much CO₂ is pumped into the water or when there is a contaminated air source, an "acid rain" effect can occur, causing a drop in pH. Check the volume of air pumped and the quality of the air source. Consider changing the reservoir if the problem persists.',
+        title: 'Note 1 — pH, rhizosphere, and chemical correction',
+        intro:
+          'Falling pH with a static water level usually reflects biological and chemical processes at the root zone. Understanding acid–base balance—and the simple tools to correct it—turns table readings into conscious action.',
+        sections: [
+          {
+            title: 'Rhizosphere and gas exchange',
+            body:
+              'At the roots lies a living zone—the rhizosphere—where plant, water, and microbes exchange gases and substances all the time. Root respiration releases CO₂; dissolved in the solution, it makes the water slightly more acidic, like a continuous invisible breath.\n\nHow the plant feeds also moves pH: preference for ammonium pulls the solution toward acid; preference for nitrate pulls toward basic. So pH is never just a “meter number”—it is the chemical portrait of what happens at the root.',
+          },
+          {
+            title: 'Carbonate system — simple, powerful tool',
+            body:
+              'Picture reservoir water as a delicate balance between “more acidic” and “more basic.” When CO₂ from root respiration—or from air in contact with the solution—dissolves, the water becomes slightly more acidic. Same idea as a carbonated drink, but continuous and invisible.\n\nHydroponic nutrient solutions are diluted on purpose: plants feed well, but the water has almost no chemical cushion. Small inputs of acidity (root exudates, organic matter, CO₂) shift pH quickly. The meter reacts—not a sensor fault, but the fragile nature of the medium.\n\nHere enters the carbonate system, one of the grower’s most accessible, low-cost tools: potassium carbonate or bicarbonate. They do not “fill the tank with salt” for no reason—they consume acidity, may release CO₂ (sometimes visible as fine bubbles), and return useful potassium to nutrition.\n\nUnderstanding this cycle—acidity entering, base negotiating, gas coming and going—gives the grower powerful manual control with common products, without relying only on expensive gear. Accessible chemistry: easy to grasp, deep in effect, when used with patience and small doses.',
+          },
+          {
+            title: 'Phosphoric acid and potassium carbonate — two correction concepts',
+            body:
+              'Correcting pH is not “throwing salt in water.” It is restoring a dynamic balance among water, ions, nutrients, and root biology.\n\nPhosphoric acid (pH−) embodies delivering acidity—donating protons to the solution. The water becomes more acidic while phosphorus enters the nutrient cycle. It is not a neutral additive: it changes the living chemistry of the tank.\n\nPotassium carbonate (pH+) embodies the opposite path: absorbing acidity and returning potassium, with CO₂ release—the same element from root respiration, now used in a controlled way to push pH upward.\n\nUnderstanding these two poles avoids treating pH+ and pH− as magic buttons. Each correction is a chemical conversation: small, paused, with time for the solution to mix and “breathe” before the next reading. Commercial diluted solutions exist precisely to keep that conversation gentle and safe for roots.',
+          },
+        ],
+        content: '',
       },
       note2: {
-        title: 'Note 2 - Nutrient Leaching',
-        content: 'When the EC is rising while the water level remains static, this indicates that the plant is releasing nutrients back into the solution. This generally means that the nutrient concentration is too high and the plant cannot absorb them adequately. Increasing the EC may seem counterproductive, but it can help rebalance the solution.',
+        title: 'Note 2 — Nutrient leaching',
+        content:
+          'When the water level stays STATIC but EC rises, the plant is not drinking—it is returning nutrients to the solution. Like a broth that is too concentrated: the organism rejects instead of absorbing. Lower EC or change the reservoir to restore balance. Raising EC only makes sense if you confirm concentration was too low for the stage, not too high.',
+      },
+      vpd: {
+        title: 'Note 3 — VPD (vapor pressure deficit)',
+        intro:
+          'EC and pH describe solution chemistry in the reservoir. VPD describes the “drying climate” around the leaf—and explains why the plant drinks more or less even when the table looks correct. Both views complement each other: solution + environment.',
+        sections: [
+          {
+            title: 'What it is, in plain language',
+            body:
+              'VPD measures how much the air still “pulls” moisture from leaves. Hot, dry air → high VPD → strong transpiration and more water uptake from roots (faster FALLING level). Cool, humid air → low VPD → weak transpiration; the solution changes slowly and the level may look STATIC even with active metabolism.',
+          },
+          {
+            title: 'Link to the EC / pH / water table',
+            body:
+              'FALLING + EC FALLING + stable pH often means nutritional hunger—and moderate to high VPD favors that “thirst.” FALLING + EC RISING suggests drinking more than eating—common with high VPD or low initial EC. STATIC + EC RISING (Note 2) can appear with low VPD: little transpiration, relative salt buildup in the solution.',
+          },
+          {
+            title: 'Guideline ranges (kPa)',
+            body:
+              'Reference values, not dogma: seedling/clone ~0.4–0.8 · vegetative ~0.8–1.2 · flower ~1.0–1.6. Above that increases water stress; below that reduces transpiration and nutrient transport. Adjust temperature, relative humidity, or airflow before forcing EC/pH changes.',
+          },
+          {
+            title: 'Daily use',
+            body:
+              'With ambient temperature and humidity you calculate VPD (apps or charts). If the table is green but the plant wilts → check high VPD. If it drinks little and EC rises with STATIC level → check low VPD + Note 2. HIDROWAVE manages the solution; the grower balances the air—together they close the plant’s cycle.',
+          },
+        ],
       },
     },
     tips: {
       title: 'General Tips',
       items: [
-        'Regularly monitor water, EC, and pH levels',
+        'Regularly monitor water level, EC, pH, and environment (temperature + RH → VPD)',
         'Change reservoirs regularly as needed',
         'Adjust EC gradually - sudden changes can stress plants',
         'Periodically check the calibration of meters',
@@ -343,7 +473,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
   },
   'es-ES': {
     title: 'Guía de Condiciones Hidropónicas',
-    subtitle: 'Soluciones para Cambios en Nivel de Agua, EC y pH',
+    subtitle: 'Soluciones para cambios en nivel de agua, EC, pH — y complemento con VPD (ambiente)',
     table: {
       waterLevel: 'NIVEL DE AGUA',
       ec: 'EC',
@@ -372,7 +502,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'ESTÁTICO',
         ec: 'ESTÁTICO',
         ph: 'BAJANDO',
-        solution: 'La causa usual de esto es cuando el medio se enjuagó a un pH más bajo del que requiere. La otra posibilidad es que se bombeó demasiado CO₂ en el agua. Ver Nota 1. Cambie su reservorio y observe el volumen de aire bombeado, además de verificar su fuente de aire.',
+        solution: 'Causa habitual: enjuague previo a pH bajo o acidificación por rizosfera (Nota 1). Cambie el reservorio si el pH sigue bajando sin consumo aparente de agua.',
       },
       {
         waterLevel: 'ESTÁTICO',
@@ -390,7 +520,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'ESTÁTICO',
         ec: 'SUBIENDO',
         ph: 'BAJANDO',
-        solution: 'Como arriba, pero esté consciente del efecto de lluvia ácida mencionado en la nota 1. Cambio de reservorio, además de aumentar la EC.',
+        solution: 'Como arriba, pero considere acidificación por rizosfera (Nota 1). Cambio de reservorio, además de aumentar la EC.',
       },
       {
         waterLevel: 'ESTÁTICO',
@@ -408,7 +538,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'ESTÁTICO',
         ec: 'BAJANDO',
         ph: 'BAJANDO',
-        solution: 'pH bajando junto con EC bajando, pero sin caída en el nivel de agua sugiere un cambio de reservorio. También puede ser un efecto de lluvia ácida según la nota 1. Dependiendo de otros síntomas, reducir EC después del cambio de reservorio.',
+        solution: 'pH bajando junto con EC bajando, pero sin caída en el nivel de agua sugiere cambio de reservorio o acidificación por rizosfera (Nota 1). Dependiendo de otros síntomas, reducir EC después del cambio de reservorio.',
       },
       {
         waterLevel: 'BAJANDO',
@@ -426,7 +556,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'BAJANDO',
         ec: 'ESTÁTICO',
         ph: 'BAJANDO',
-        solution: 'Cambio de reservorio además de un cambio en la EC. Reduzca la EC si está por encima de 1,4, aumente la EC si está por debajo de 1,0.',
+        solution: 'Cambio de reservorio además de ajuste de EC. Reduzca la EC si está por encima de 1,4; aumente si está por debajo de 1,0. Probable desequilibrio químico: nutrición proporcional desbalanceada o solución saturada por uso continuo — cambio de reservorio recomendado.',
       },
       {
         waterLevel: 'BAJANDO',
@@ -444,7 +574,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'BAJANDO',
         ec: 'SUBIENDO',
         ph: 'BAJANDO',
-        solution: 'La planta está bebiendo más de lo que está comiendo, reduzca la EC. Además, cambio de reservorio debido a posible problema de lluvia ácida.',
+        solution: 'La planta está bebiendo más de lo que come, reduzca la EC. Si el pH baja de forma persistente, cambie el reservorio (Nota 1 — rizosfera).',
       },
       {
         waterLevel: 'BAJANDO',
@@ -462,24 +592,82 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         waterLevel: 'BAJANDO',
         ec: 'BAJANDO',
         ph: 'BAJANDO',
-        solution: 'Cambio de reservorio. Posible problema de lluvia ácida, pero la planta todavía está comiendo y bebiendo. Aumente la EC en el nuevo reservorio.',
+        solution: 'Cambio de reservorio. La caída de pH puede reflejar actividad de la rizosfera (Nota 1), pero la planta sigue comiendo y bebiendo. Aumente la EC en el nuevo reservorio.',
       },
     ],
+    colorLegend: {
+      title: 'Leyenda de colores',
+      green:
+        'Normal o excelente — la planta consume agua (nivel BAJANDO) y EC/pH estables o en un patrón saludable de la fase.',
+      yellow:
+        'Atención moderada — cambio de reservorio, ajuste de EC o investigar caída de pH / probable desequilibrio químico.',
+      red:
+        'Investigar — combinación atípica de nivel, EC y pH; revise nutrición, calibración, VPD (Nota 3) y síntomas visuales.',
+      ecFootnote:
+        'Las referencias EC 1,0 y 1,4 asumen mS/cm en escala genérica — ajuste siempre a los objetivos de su cultivo, fase y medidor.',
+    },
     notes: {
       title: 'Notas Importantes',
       note1: {
-        title: 'Nota 1 - Efecto de Lluvia Ácida',
-        content: 'Cuando se bombea demasiado CO₂ en el agua o cuando hay una fuente de aire contaminada, puede ocurrir un efecto de "lluvia ácida" que causa una caída en el pH. Verifique el volumen de aire bombeado y la calidad de la fuente de aire. Considere cambiar el reservorio si el problema persiste.',
+        title: 'Nota 1 — pH, rizosfera y corrección química',
+        intro:
+          'La caída de pH con nivel de agua estático suele reflejar procesos biológicos y químicos en la zona radicular. Comprender el equilibrio ácido-base — y las herramientas simples para corregirlo — convierte las lecturas de la tabla en acción consciente.',
+        sections: [
+          {
+            title: 'Rizosfera e intercambio gaseoso',
+            body:
+              'Junto a las raíces existe una zona viva — la rizosfera — donde planta, agua y micro-organismos intercambian gases y sustancias todo el tiempo. La respiración radicular libera CO₂; disuelto en la solución, la vuelve ligeramente más ácida, como un soplo continuo e invisible.\n\nLa forma en que la planta se alimenta también mueve el pH: preferencia por amonio tira hacia el ácido; preferencia por nitrato hacia lo básico. Por eso el pH nunca es solo “número del medidor” — es el retrato químico de lo que ocurre en la raíz.',
+          },
+          {
+            title: 'Sistema carbonato — herramienta simple y poderosa',
+            body:
+              'Imagine el agua del reservorio como un equilibrio delicado entre “más ácida” y “más básica”. Cuando el CO₂ de la respiración radicular — o del aire en contacto con la solución — se disuelve, el agua se vuelve ligeramente más ácida. Es el mismo principio de una bebida gaseosa, pero continuo e invisible.\n\nLas soluciones nutritivas de hidroponía están diluidas a propósito: la planta se alimenta bien, pero el agua casi no tiene colchón químico. Pequeñas entradas de acidez (exudados radiculares, materia orgánica, CO₂) desplazan el pH con rapidez. El medidor reacciona — no es fallo del sensor, es la naturaleza frágil del medio.\n\nAquí entra el sistema carbonato, una de las herramientas más accesibles y baratas del cultivador: carbonato o bicarbonato de potasio. No llenan el tanque “de sal” sin motivo — consumen acidez, pueden liberar CO₂ (a veces visible en burbujas finas) y devuelven potasio útil a la nutrición.\n\nComprender este ciclo — acidez que entra, base que negocia, gas que va y vuelve — da al cultivador un control manual poderoso, con productos comunes, sin depender solo de equipos caros. Química accesible: simple de entender, profunda en efecto, cuando se usa con paciencia y dosis pequeñas.',
+          },
+          {
+            title: 'Ácido fosfórico y carbonato de potasio — dos conceptos de corrección',
+            body:
+              'Corregir el pH no es “echar sal al agua”. Es restaurar un equilibrio dinámico entre agua, iones, nutrientes y la biología de las raíces.\n\nEl ácido fosfórico (pH−) encarna la idea de entregar acidez — donar protones a la solución. El agua se vuelve más ácida y, al mismo tiempo, el fósforo entra en el ciclo nutritivo. No es un aditivo neutro: altera la química viva del tanque.\n\nEl carbonato de potasio (pH+) encarna el camino opuesto: absorber acidez y devolver potasio, con liberación de CO₂ — el mismo elemento de la respiración radicular, aquí usado de forma controlada para empujar el pH hacia arriba.\n\nComprender estos dos polos evita tratar pH+ y pH− como botones mágicos. Cada corrección es una conversación química: pequeña, pausada, con tiempo para que la solución se mezcle y “respire” antes de una nueva lectura. Las soluciones comerciales diluidas existen justamente para hacer esa conversación más suave y segura para las raíces.',
+          },
+        ],
+        content: '',
       },
       note2: {
-        title: 'Nota 2 - Lixiviación de Nutrientes',
-        content: 'Cuando la EC está subiendo mientras el nivel de agua permanece estático, esto indica que la planta está liberando nutrientes de vuelta a la solución. Esto generalmente significa que la concentración de nutrientes es demasiado alta y la planta no puede absorberlos adecuadamente. Aumentar la EC puede parecer contraproducente, pero puede ayudar a reequilibrar la solución.',
+        title: 'Nota 2 — Lixiviación de nutrientes',
+        content:
+          'Cuando el nivel de agua queda ESTÁTICO pero la EC sube, la planta no está bebiendo — está devolviendo nutrientes a la solución. Como un caldo demasiado concentrado: el organismo rechaza en lugar de absorber. Reduzca la EC o cambie el reservorio. Subir la EC solo tiene sentido si confirma que la concentración era demasiado baja para la fase, no alta.',
+      },
+      vpd: {
+        title: 'Nota 3 — VPD (déficit de presión de vapor)',
+        intro:
+          'EC y pH describen la química de la solución en el reservorio. El VPD describe el “clima de secado” alrededor de la hoja — y explica por qué la planta bebe más o menos aunque la tabla parezca correcta. Ambas miradas se complementan: solución + ambiente.',
+        sections: [
+          {
+            title: 'Qué es, en lenguaje simple',
+            body:
+              'El VPD mide cuánto el aire aún “tira” humedad de las hojas. Aire caliente y seco → VPD alto → transpiración fuerte y más consumo de agua (nivel BAJANDO acelerado). Aire frío y húmedo → VPD bajo → poca transpiración; la solución cambia lento y el nivel puede parecer ESTÁTICO con metabolismo activo.',
+          },
+          {
+            title: 'Vínculo con la tabla EC / pH / agua',
+            body:
+              'BAJANDO + EC BAJANDO + pH estable suele ser hambre nutricional — y VPD moderado a alto favorece esa “sed”. BAJANDO + EC SUBIENDO sugiere beber más que comer — común con VPD elevado o EC inicial baja. ESTÁTICO + EC SUBIENDO (Nota 2) puede aparecer con VPD bajo: poca transpiración, acumulación relativa de sales.',
+          },
+          {
+            title: 'Rangos orientativos (kPa)',
+            body:
+              'Valores de referencia, no dogma: plántula/esqueje ~0,4–0,8 · vegetativo ~0,8–1,2 · flor ~1,0–1,6. Por encima aumenta el estrés hídrico; por debajo reduce transpiración y transporte de nutrientes. Ajuste temperatura, humedad relativa o ventilación antes de forzar EC/pH.',
+          },
+          {
+            title: 'Uso diario',
+            body:
+              'Con temperatura y humedad del ambiente se calcula el VPD (apps o tablas). Si la tabla está verde pero la planta se marchita → revise VPD alto. Si bebe poco y la EC sube con nivel ESTÁTICO → revise VPD bajo + Nota 2. HIDROWAVE cuida la solución; el cultivador equilibra el aire — juntos cierran el ciclo de la planta.',
+          },
+        ],
       },
     },
     tips: {
       title: 'Consejos Generales',
       items: [
-        'Monitoree regularmente los niveles de agua, EC y pH',
+        'Monitoree nivel de agua, EC, pH y ambiente (temperatura + HR → VPD)',
         'Haga cambios de reservorio regularmente según sea necesario',
         'Ajuste la EC gradualmente - cambios bruscos pueden estresar las plantas',
         'Verifique la calibración de los medidores periódicamente',

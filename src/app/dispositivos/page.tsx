@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Toaster, toast } from 'react-hot-toast';
+import { toast } from 'react-hot-toast';
 import {
   WifiIcon,
   SignalIcon,
@@ -203,7 +203,6 @@ export default function DispositivosPage() {
 
   return (
     <div className="min-h-screen bg-dark-bg">
-      <Toaster position="top-right" />
       
       <header className="bg-dark-card border-b border-dark-border shadow-lg">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">

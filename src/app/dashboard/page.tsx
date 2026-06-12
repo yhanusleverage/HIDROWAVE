@@ -4,8 +4,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import SensorCard from '@/components/SensorCard';
 import RelayControl from '@/components/RelayControl';
 import SensorChart from '@/components/SensorChart';
-import CropCalendar, { CropTask } from '@/components/CropCalendar';
-import { Toaster, toast } from 'react-hot-toast';
+import CropCalendar from '@/components/CropCalendar';
+import { EcAutoStatusCard } from '@/components/EcAutoStatusCard';
+import { toast } from 'react-hot-toast';
 import { HydroMeasurement, EnvironmentMeasurement } from '@/lib/supabase';
 import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
 import {
@@ -17,7 +18,6 @@ import { getPollingInterval, loadSettings, saveSettings, type Settings } from '@
 import { formatSensorValue } from '@/lib/format-sensor-value';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
-import { useCropAlarms } from '@/hooks/useCropAlarms';
 import { 
   AdjustmentsHorizontalIcon,
   XMarkIcon
@@ -38,9 +38,6 @@ export default function DashboardPage() {
   const [loadingCharts, setLoadingCharts] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Estado para tarefas do calendário
-  const [calendarTasks, setCalendarTasks] = useState<CropTask[]>([]);
-  
   // ✅ Estados para configuração de umbrales de EC
   const [ecThresholds, setEcThresholds] = useState({
     dangerMin: 250,
@@ -54,14 +51,6 @@ export default function DashboardPage() {
   // ✅ Estados para configuração de umbrales de otros sensores
   const [showTempConfig, setShowTempConfig] = useState(false);
   const [showPHConfig, setShowPHConfig] = useState(false);
-
-  // ✅ Hook para verificar alarmes do calendário
-  const { alarms, acknowledgeAlarm } = useCropAlarms({
-    deviceId: selectedDeviceId,
-    userEmail: userEmail || '',
-    enabled: !!selectedDeviceId && !!userEmail,
-    checkInterval: 60000, // Verificar a cada 60 segundos
-  });
 
   useEffect(() => {
     if (devices.length > 0 && !selectedDeviceId) {
@@ -481,7 +470,6 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-dark-bg">
-      <Toaster position="top-right" />
       
       {/* Header do Dashboard */}
       <div className="bg-dark-card border-b border-dark-border shadow-lg sticky top-0 z-30">
@@ -676,6 +664,10 @@ export default function DashboardPage() {
                 </div>
               )}
             </section>
+
+            {selectedDeviceId && (
+              <EcAutoStatusCard deviceId={selectedDeviceId} />
+            )}
             
             {/* ✅ Seção de Gráficos - Carga independiente */}
             <section className="mb-8">
@@ -705,20 +697,8 @@ export default function DashboardPage() {
             {/* Seção de Calendário de Cultivo */}
             <section className="mb-8">
               <CropCalendar
-                tasks={calendarTasks}
                 deviceId={selectedDeviceId}
                 userEmail={userEmail || ''}
-                onTaskAdd={(task) => {
-                  setCalendarTasks([...calendarTasks, task]);
-                }}
-                onTaskComplete={(taskId) => {
-                  setCalendarTasks(calendarTasks.map(task =>
-                    task.id === taskId ? { ...task, completed: true } : task
-                  ));
-                }}
-                onTaskDelete={(taskId) => {
-                  setCalendarTasks(calendarTasks.filter(task => task.id !== taskId));
-                }}
               />
             </section>
       </main>

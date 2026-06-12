@@ -16,41 +16,56 @@
 BEGIN;
 
 -- =====================================================
--- ETAPA 1: VERIFICAR E ADAPTAR TABELA crop_tasks
+-- ETAPA 1: CRIAR crop_tasks (novo) + migrar legado
 -- =====================================================
--- 
--- A tabela crop_tasks pode já existir com estrutura diferente.
--- Este script adiciona as colunas necessárias se não existirem.
+-- Ordem: CREATE IF NOT EXISTS primeiro; ALTER só se a tabela já existia incompleta.
 
--- Verificar se a tabela existe e adicionar colunas necessárias
+CREATE TABLE IF NOT EXISTS public.crop_tasks (
+  id BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+  device_id TEXT,
+  user_email TEXT,
+  title TEXT NOT NULL,
+  description TEXT,
+  task_type TEXT CHECK (task_type IN ('dosagem', 'manutencao', 'monitoramento', 'colheita', 'plantio')),
+  priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+  task_date DATE,
+  task_time TIME,
+  duration_minutes INTEGER DEFAULT 30,
+  nutrients JSONB DEFAULT '[]'::jsonb,
+  completed BOOLEAN DEFAULT false,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  created_by TEXT DEFAULT 'web_interface'::text,
+  CONSTRAINT crop_tasks_pkey PRIMARY KEY (id)
+);
+
+-- Colunas extras em instalações legadas (ignorado se CREATE acima já criou tudo)
 DO $$
 BEGIN
-  -- Adicionar user_email se não existir
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-      AND table_name = 'crop_tasks' 
-      AND column_name = 'user_email'
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'crop_tasks'
+  ) THEN
+    RETURN;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'user_email'
   ) THEN
     ALTER TABLE public.crop_tasks ADD COLUMN user_email TEXT;
   END IF;
 
-  -- Adicionar task_type se não existir (ou renomear 'type' se existir)
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-      AND table_name = 'crop_tasks' 
-      AND column_name = 'task_type'
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'task_type'
   ) THEN
-    -- Se 'type' existe, podemos mantê-lo ou adicionar task_type
     IF EXISTS (
-      SELECT 1 FROM information_schema.columns 
-      WHERE table_schema = 'public' 
-        AND table_name = 'crop_tasks' 
-        AND column_name = 'type'
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'type'
     ) THEN
-      -- Adicionar task_type como coluna separada
-      ALTER TABLE public.crop_tasks ADD COLUMN task_type TEXT 
+      ALTER TABLE public.crop_tasks ADD COLUMN task_type TEXT
         CHECK (task_type IN ('dosagem', 'manutencao', 'monitoramento', 'colheita', 'plantio'));
     ELSE
       ALTER TABLE public.crop_tasks ADD COLUMN task_type TEXT NOT NULL DEFAULT 'dosagem'
@@ -58,126 +73,69 @@ BEGIN
     END IF;
   END IF;
 
-  -- Adicionar task_date se não existir (ou usar due_date se existir)
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-      AND table_name = 'crop_tasks' 
-      AND column_name = 'task_date'
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'task_date'
   ) THEN
     ALTER TABLE public.crop_tasks ADD COLUMN task_date DATE;
-    -- Se due_date existe, copiar valores
     IF EXISTS (
-      SELECT 1 FROM information_schema.columns 
-      WHERE table_schema = 'public' 
-        AND table_name = 'crop_tasks' 
-        AND column_name = 'due_date'
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'due_date'
     ) THEN
-      UPDATE public.crop_tasks 
-      SET task_date = due_date::DATE 
+      UPDATE public.crop_tasks
+      SET task_date = due_date::DATE
       WHERE task_date IS NULL AND due_date IS NOT NULL;
     END IF;
   END IF;
 
-  -- Adicionar task_time se não existir
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-      AND table_name = 'crop_tasks' 
-      AND column_name = 'task_time'
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'task_time'
   ) THEN
     ALTER TABLE public.crop_tasks ADD COLUMN task_time TIME;
   END IF;
 
-  -- Adicionar duration_minutes se não existir
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-      AND table_name = 'crop_tasks' 
-      AND column_name = 'duration_minutes'
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'duration_minutes'
   ) THEN
     ALTER TABLE public.crop_tasks ADD COLUMN duration_minutes INTEGER DEFAULT 30;
   END IF;
 
-  -- Adicionar nutrients se não existir
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-      AND table_name = 'crop_tasks' 
-      AND column_name = 'nutrients'
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'nutrients'
   ) THEN
     ALTER TABLE public.crop_tasks ADD COLUMN nutrients JSONB DEFAULT '[]'::jsonb;
   END IF;
 
-  -- Adicionar completed se não existir (ou converter de status)
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-      AND table_name = 'crop_tasks' 
-      AND column_name = 'completed'
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'completed'
   ) THEN
     ALTER TABLE public.crop_tasks ADD COLUMN completed BOOLEAN DEFAULT false;
-    -- Se status existe, converter valores
     IF EXISTS (
-      SELECT 1 FROM information_schema.columns 
-      WHERE table_schema = 'public' 
-        AND table_name = 'crop_tasks' 
-        AND column_name = 'status'
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'status'
     ) THEN
-      UPDATE public.crop_tasks 
+      UPDATE public.crop_tasks
       SET completed = (status = 'completed')
       WHERE completed IS NULL;
     END IF;
   END IF;
 
-  -- Adicionar updated_at se não existir
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-      AND table_name = 'crop_tasks' 
-      AND column_name = 'updated_at'
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'updated_at'
   ) THEN
     ALTER TABLE public.crop_tasks ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();
   END IF;
 
-  -- Adicionar created_by se não existir
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-      AND table_name = 'crop_tasks' 
-      AND column_name = 'created_by'
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'crop_tasks' AND column_name = 'created_by'
   ) THEN
     ALTER TABLE public.crop_tasks ADD COLUMN created_by TEXT DEFAULT 'web_interface'::text;
-  END IF;
-END $$;
-
--- Criar tabela apenas se não existir
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.tables 
-    WHERE table_schema = 'public' 
-      AND table_name = 'crop_tasks'
-  ) THEN
-    CREATE TABLE public.crop_tasks (
-      id BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
-      device_id TEXT,
-      user_email TEXT,
-      title TEXT NOT NULL,
-      description TEXT,
-      task_type TEXT CHECK (task_type IN ('dosagem', 'manutencao', 'monitoramento', 'colheita', 'plantio')),
-      priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
-      task_date DATE,
-      task_time TIME,
-      duration_minutes INTEGER DEFAULT 30,
-      nutrients JSONB DEFAULT '[]'::jsonb,
-      completed BOOLEAN DEFAULT false,
-      completed_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ DEFAULT now(),
-      updated_at TIMESTAMPTZ DEFAULT now(),
-      created_by TEXT DEFAULT 'web_interface'::text,
-      CONSTRAINT crop_tasks_pkey PRIMARY KEY (id)
-    );
   END IF;
 END $$;
 
@@ -560,7 +518,7 @@ BEGIN
     AND (
       (alarm_date = CURRENT_DATE AND alarm_time <= CURRENT_TIME)
       OR
-      (days_before > 0 AND alarm_date = CURRENT_DATE + (a.days_before || ' days')::INTERVAL)
+      (days_before > 0 AND alarm_date = CURRENT_DATE + (days_before || ' days')::INTERVAL)
     );
 END;
 $$ LANGUAGE plpgsql;

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { Toaster, toast } from 'react-hot-toast';
+import { toast } from 'react-hot-toast';
 import { loadSettings, saveSettings, type Settings } from '@/lib/settings';
 import {
   Cog6ToothIcon,
@@ -159,7 +159,6 @@ export default function ConfiguracaoPage() {
 
   return (
     <div className="min-h-screen bg-dark-bg">
-      <Toaster position="top-right" />
       
       <header className="bg-dark-card border-b border-dark-border shadow-lg">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">

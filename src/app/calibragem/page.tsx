@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Toaster, toast } from 'react-hot-toast';
+import { toast } from 'react-hot-toast';
 import {
   BeakerIcon,
   CheckCircleIcon,
@@ -16,6 +16,8 @@ import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import {
   calculateFlowRateMlPerSecond,
   calculateDoseDurationSeconds,
+  doseDurationSecondsForRelay,
+  formatDoseDurationSeconds,
   formatFlowRate,
   formatFlowRateMlPerMin,
   CALIBRATION_TEST_DURATIONS_SEC,
@@ -159,10 +161,12 @@ export default function CalibragemPage() {
   const runValidationDose = async () => {
     if (!selectedDeviceId || flowRate <= 0) return;
     const duration = calculateDoseDurationSeconds(testVolumeMl, flowRate);
-    if (duration === null || duration < 1) {
+    if (duration === null || duration <= 0) {
       toast.error('Volume ou vazão inválidos para teste');
       return;
     }
+    const relaySeconds = doseDurationSecondsForRelay(duration);
+    const durationLabel = formatDoseDurationSeconds(duration);
     setTestingRelay(true);
     try {
       const res = await fetch('/api/esp-now/command', {
@@ -172,7 +176,7 @@ export default function CalibragemPage() {
           master_device_id: selectedDeviceId,
           relay_number: testRelayNumber,
           action: 'on',
-          duration_seconds: Math.ceil(duration),
+          duration_seconds: relaySeconds,
         }),
       });
       if (!res.ok) {
@@ -180,7 +184,7 @@ export default function CalibragemPage() {
         throw new Error(err.error || 'Falha ao enviar teste');
       }
       toast.success(
-        `Teste enviado: ~${testVolumeMl} ml por ${Math.ceil(duration)} s — meça na proveta`
+        `Teste enviado: ~${testVolumeMl} ml por ${durationLabel} s — meça na proveta`
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro no teste');
@@ -193,8 +197,6 @@ export default function CalibragemPage() {
 
   return (
     <div className="min-h-screen bg-dark-bg">
-      <Toaster position="top-right" />
-
       <header className="bg-dark-card border-b border-dark-border shadow-lg">
         <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -356,7 +358,7 @@ export default function CalibragemPage() {
                     id="flowRate"
                     type="number"
                     min={0.001}
-                    step={0.001}
+                    step={0.0001}
                     value={flowRate}
                     onChange={(e) => setFlowRate(parseFloat(e.target.value) || 0)}
                     className="w-full p-3 bg-dark-surface border border-dark-border rounded-md text-dark-text text-lg font-mono"

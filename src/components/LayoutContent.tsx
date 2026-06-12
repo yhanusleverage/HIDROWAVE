@@ -2,7 +2,9 @@
 
 import React from 'react';
 import { usePathname } from 'next/navigation';
+import { Toaster } from 'react-hot-toast';
 import Sidebar from '@/components/Sidebar';
+import CropAlarmsNotifier from '@/components/CropAlarmsNotifier';
 import { useSidebar } from '@/contexts/SidebarContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
@@ -10,7 +12,7 @@ export default function LayoutContent({ children }: { children: React.ReactNode 
   const { isExpanded } = useSidebar();
   const pathname = usePathname();
   
-  // ✅ Rotas públicas (não precisam de autenticação)
+  // Rotas sem sidebar/alarmes (login). Demais rotas autenticadas recebem CropAlarmsNotifier.
   const publicRoutes = ['/login'];
   const isPublicRoute = publicRoutes.includes(pathname || '');
 
@@ -22,6 +24,13 @@ export default function LayoutContent({ children }: { children: React.ReactNode 
   // ✅ Rotas protegidas: requerem autenticação
   return (
     <ProtectedRoute>
+      <CropAlarmsNotifier />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: { maxWidth: '22rem' },
+        }}
+      />
       <div className="flex min-h-screen">
         <Sidebar />
         <main 

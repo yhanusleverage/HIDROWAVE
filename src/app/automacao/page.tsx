@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { Toaster, toast, type Toast } from 'react-hot-toast';
+import { toast, type Toast } from 'react-hot-toast';
 import {
   ClockIcon,
   CheckCircleIcon,
@@ -35,6 +35,8 @@ import {
 } from '@/lib/realtime/relay-apply';
 import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
 import { resolveEcForDisplay, HYDRO_EC_FALLBACK_MS } from '@/lib/realtime/hydro-ec';
+import { resolvePhForDisplay } from '@/lib/realtime/hydro-ph';
+import PhControllerPanel from '@/components/PhControllerPanel';
 import { useLastDosage } from '@/hooks/useLastDosage';
 import { useEcOperationState } from '@/hooks/useEcOperationState';
 import { NutrientDosageDetail } from '@/components/NutrientDosageDetail';
@@ -225,6 +227,7 @@ export default function AutomacaoPage() {
   // ✅ EC Controller - Parâmetros Básicos
   const [baseDose, setBaseDose] = useState<number>(1525.0); // EC base em µS/cm
   const [ecSetpoint, setEcSetpoint] = useState<number>(1500.0); // EC Setpoint em µS/cm
+  const [ecTolerance, setEcTolerance] = useState<number>(50); // Banda muerta µS/cm
   const [intervaloAutoEC, setIntervaloAutoEC] = useState<number>(300); // Intervalo entre verificações (segundos)
   const [tempoRecirculacao, setTempoRecirculacao] = useState<string>('00:02'); // Tempo de recirculação (formato HH:MM)
   const [tempoRecirculacaoHours, setTempoRecirculacaoHours] = useState<number>(0);
@@ -267,6 +270,7 @@ export default function AutomacaoPage() {
   // ✅ EC Controller - Status e Monitoramento
   const [ecError, setEcError] = useState<number>(0); // Erro atual (µS/cm)
   const [ecAtual, setEcAtual] = useState<number | null>(null); // EC atual do sensor (null = inválido)
+  const [phAtual, setPhAtual] = useState<number | null>(null);
   // ✅ REMOVIDO: Nutrientes hardcodeados - agora inicia vazio e carrega apenas do Supabase
   const [nutrientsState, setNutrientsState] = useState<Array<{name: string, relayNumber: number, mlPerLiter: number}>>([]);
   const [isLoadingNutrients, setIsLoadingNutrients] = useState<Record<number, boolean>>({});
@@ -414,6 +418,7 @@ export default function AutomacaoPage() {
       // ✅ Carregar parâmetros do EC Controller
       if (config.base_dose !== undefined && !isNaN(config.base_dose)) setBaseDose(config.base_dose);
       if (config.ec_setpoint !== undefined && !isNaN(config.ec_setpoint)) setEcSetpoint(config.ec_setpoint);
+      if (config.tolerance !== undefined && !isNaN(config.tolerance)) setEcTolerance(config.tolerance);
       if (config.intervalo_auto_ec !== undefined && !isNaN(config.intervalo_auto_ec)) setIntervaloAutoEC(config.intervalo_auto_ec);
       if (config.tempo_recirculacao !== undefined && config.tempo_recirculacao !== null) {
         // ✅ BD/firmware: tempo_recirculacao em SEGUNDOS (integer)
@@ -586,8 +591,9 @@ export default function AutomacaoPage() {
         volume: number;
         total_ml: number;
         kp: number;
-        ec_setpoint: number;
-        auto_enabled: boolean;
+      ec_setpoint: number;
+      tolerance: number;
+      auto_enabled: boolean;
         nutrients: Array<{ name: string; relay: number; mlPerLiter: number }>;
         intervalo_auto_ec?: number;
         tempo_recirculacao?: number;
@@ -605,6 +611,7 @@ export default function AutomacaoPage() {
         total_ml: totalMl,
         kp: 1.0, // ✅ Ganho proporcional (default: 1.0)
         ec_setpoint: ecSetpoint,
+        tolerance: ecTolerance,
         auto_enabled: overrideAutoEnabled !== undefined ? overrideAutoEnabled : autoEnabled,
         nutrients: nutrientsJson, // ✅ Se necesita para que ESP32 sepa qué relé usar
       };
@@ -660,6 +667,7 @@ export default function AutomacaoPage() {
         total_ml: totalMl,
         kp: 1.0,
         ec_setpoint: ecSetpoint,
+        tolerance: ecTolerance,
         auto_enabled: autoEnabled,
         intervalo_auto_ec: intervaloAutoEC,
         tempo_recirculacao: tempoRecirculacaoSegundos,
@@ -744,7 +752,7 @@ export default function AutomacaoPage() {
       toast.error(`Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`);
       return false;
     }
-  }, [selectedDeviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, intervaloAutoEC, tempoRecirculacao, autoEnabled, availableRelays]);
+  }, [selectedDeviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, availableRelays]);
   
   // ✅ Cleanup: Limpiar timeout al desmontar componente
   useEffect(() => {
@@ -769,6 +777,7 @@ export default function AutomacaoPage() {
     }));
     
     const totalMl = activeNutrients.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
+    const kFactor = totalMl > 0 ? baseDose / totalMl : 0;
     
     interface ECConfigJSON {
       device_id: string;
@@ -778,6 +787,7 @@ export default function AutomacaoPage() {
       total_ml: number;
       kp: number;
       ec_setpoint: number;
+      tolerance?: number;
       auto_enabled: boolean;
       nutrients: Array<{ name: string; relay: number; mlPerLiter: number }>;
       intervalo_auto_ec?: number;
@@ -795,6 +805,7 @@ export default function AutomacaoPage() {
       total_ml: totalMl,
       kp: 1.0, // ✅ Ganho proporcional (default: 1.0)
       ec_setpoint: ecSetpoint,
+      tolerance: ecTolerance,
       auto_enabled: autoEnabled,
       nutrients: nutrientsJson,
     };
@@ -826,13 +837,16 @@ export default function AutomacaoPage() {
       base_dose_us_per_cm: baseDose,
       total_ml_per_liter: totalMl,
       nutrients_count: nutrientsJson.length,
-      k_factor: totalMl > 0 ? (baseDose / totalMl).toFixed(3) : '0.000',
-      equation: `u(t) = (${totalVolume} / ${(baseDose / totalMl).toFixed(3)} × ${pumpFlowRate}) × e`,
+      k_factor: kFactor > 0 ? kFactor.toFixed(3) : '—',
+      equation: kFactor > 0
+        ? `u(t) = (${totalVolume} / ${kFactor.toFixed(3)} × ${pumpFlowRate}) × e`
+        : 'Configure nutrientes com ml/L > 0 para calcular k',
+      tolerance_us_cm: ecTolerance,
       note: '✅ JSON optimizado: Sin distribution (se calcula en ESP32), tempo_recirculacao en SEGUNDOS',
     };
     
     return ecConfigJson;
-  }, [selectedDeviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, intervaloAutoEC, tempoRecirculacao, autoEnabled, availableRelays]);
+  }, [selectedDeviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, availableRelays]);
   
   // ✅ NOVO: Salvar mapeamento nutriente → relé
   const handleRelayChange = useCallback(async (nutrientIndex: number, newRelayNumber: number) => {
@@ -914,6 +928,21 @@ export default function AutomacaoPage() {
     });
   }, [ecAtual, ecSetpoint]);
 
+  const ecWithinTolerance = useMemo(() => {
+    if (ecAtual === null) return null;
+    return Math.abs(ecAtual - ecSetpoint) <= ecTolerance;
+  }, [ecAtual, ecSetpoint, ecTolerance]);
+
+  const totalMlPerLiter = useMemo(
+    () => nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0),
+    [nutrientsState]
+  );
+
+  const canActivateAutoEc = useMemo(() => {
+    const activeCount = nutrientsState.filter((n) => n.mlPerLiter >= MIN_NUTRIENT_ML_PER_LITER).length;
+    return activeCount > 0 && totalMlPerLiter > 0;
+  }, [nutrientsState, totalMlPerLiter]);
+
   // Carregar regras do Supabase quando selectedDeviceId mudar
   useEffect(() => {
     if (selectedDeviceId && selectedDeviceId !== 'default_device') {
@@ -950,6 +979,7 @@ export default function AutomacaoPage() {
         if (row.device_id && row.device_id !== selectedDeviceId) return;
         const ec = resolveEcForDisplay(row);
         setEcAtual(ec);
+        setPhAtual(resolvePhForDisplay(row));
       },
     });
 
@@ -1903,7 +1933,6 @@ export default function AutomacaoPage() {
   
   return (
     <div className="min-h-screen bg-dark-bg" data-testid="automacao-page">
-      <Toaster position="top-right" />
       
       <header className="bg-dark-card border-b border-dark-border shadow-lg">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
@@ -3100,9 +3129,23 @@ export default function AutomacaoPage() {
               {/* ===== SEÇÃO: CONFIGURAÇÃO EC CONTROLLER ===== */}
               <div>
                 <h2 className="text-lg sm:text-xl font-bold text-dark-text mb-3 sm:mb-4">🎯 Controle Automático de EC</h2>
-                <p className="text-xs sm:text-sm text-dark-textSecondary mb-4 sm:mb-6">
+                <p className="text-xs sm:text-sm text-dark-textSecondary mb-4">
                   Configure o sistema adaptativo proporcional para controle automático da condutividade elétrica.
                 </p>
+
+                <details className="mb-6 rounded-lg border border-aqua-500/30 bg-aqua-500/5 p-4 group">
+                  <summary className="cursor-pointer text-sm font-semibold text-aqua-300 select-none list-none flex items-center gap-2">
+                    <span className="group-open:rotate-90 transition-transform">▶</span>
+                    ℹ️ Informação — como usar o Auto EC
+                  </summary>
+                  <div className="mt-3 space-y-2 text-xs sm:text-sm text-dark-textSecondary leading-relaxed">
+                    <p><strong className="text-dark-text">1. Plano nutricional</strong> — Adicione nutrientes, associe cada um a um relé e defina ml/L (mín. {MIN_NUTRIENT_ML_PER_LITER}). Calibre a bomba em Calibragem.</p>
+                    <p><strong className="text-dark-text">2. Parâmetros hidropônicos</strong> — Base de dose (EC da solução stock), setpoint desejado e <strong>tolerância (banda morta)</strong>. O firmware só dosifica se |EC − setpoint| &gt; tolerância.</p>
+                    <p><strong className="text-dark-text">3. Parâmetros de ciclo</strong> — Intervalo entre <em>verificações</em> de EC (não confundir com pausa entre nutrientes no firmware, ~3 s). Tempo de recirculação após cada dose.</p>
+                    <p><strong className="text-dark-text">4. Salvar → Ativar</strong> — Salve os parâmetros, depois Ativar Auto EC. O ESP32 recebe a config via RPC <code className="text-aqua-400">activate_auto_ec</code>.</p>
+                    <p className="text-dark-textSecondary/80">Guia completo: menu <Link href="/informacao" className="text-aqua-400 hover:underline">Informação</Link>.</p>
+                  </div>
+                </details>
                 
                 {/* ===== TABELA DE NUTRIÇÃO (PRIMEIRO) ===== */}
                 <div className="mb-6 sm:mb-8 pb-6 sm:pb-8 border-b border-dark-border">
@@ -3329,7 +3372,12 @@ export default function AutomacaoPage() {
                   </div>
                 </div>
                 
-                {/* Parâmetros Básicos do EC Controller */}
+                {/* Parâmetros hidropônicos */}
+                <div className="mb-8">
+                  <h3 className="text-base sm:text-lg font-bold text-dark-text mb-1">Parâmetros hidropônicos</h3>
+                  <p className="text-xs text-dark-textSecondary mb-4">
+                    Setpoint, banda morta e calibração da solução nutriente — fecham o loop de controle visível no status.
+                  </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                   <div>
                     <label htmlFor="base-dose" className="block text-sm font-medium text-dark-textSecondary mb-1">
@@ -3365,7 +3413,7 @@ export default function AutomacaoPage() {
                       type="number"
                       min="0"
                       step="0.1"
-                      value={nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0).toFixed(1)}
+                      value={totalMlPerLiter.toFixed(1)}
                       readOnly
                       className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none opacity-75"
                     />
@@ -3395,17 +3443,51 @@ export default function AutomacaoPage() {
                       placeholder="Ex: 1500"
                     />
                   </div>
-                  
+
+                  <div>
+                    <label htmlFor="ec-tolerance" className="block text-sm font-medium text-dark-textSecondary mb-1">
+                      Tolerância / banda morta (µS/cm):
+                    </label>
+                    <input
+                      id="ec-tolerance"
+                      type="number"
+                      min="1"
+                      step="5"
+                      value={isNaN(ecTolerance) ? '' : ecTolerance}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value);
+                        setEcTolerance(isNaN(value) || value <= 0 ? 50 : value);
+                      }}
+                      disabled={ecControllerLocked}
+                      className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
+                        ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                      placeholder="Ex: 50"
+                    />
+                    <small className="text-xs text-aqua-400 mt-1 block">
+                      Sem dosagem enquanto |EC − setpoint| ≤ {ecTolerance} µS/cm
+                    </small>
+                  </div>
+                </div>
+                </div>
+
+                {/* Parâmetros de ciclo */}
+                <div className="mb-8 pb-6 border-b border-dark-border">
+                  <h3 className="text-base sm:text-lg font-bold text-dark-text mb-1">Parâmetros de ciclo</h3>
+                  <p className="text-xs text-dark-textSecondary mb-4">
+                    Quando o firmware verifica a EC e quanto tempo aguarda a recirculação antes da próxima decisão.
+                  </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="intervalo-auto-ec" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                      Intervalo entre doses (segundos):
+                      Intervalo entre verificações de EC (segundos):
                     </label>
                     <input
                       id="intervalo-auto-ec"
                       type="number"
-                      min="1"
-                      max="60"
-                      step="1"
+                      min="30"
+                      max="86400"
+                      step="30"
                       value={isNaN(intervaloAutoEC) ? '' : intervaloAutoEC}
                       onChange={(e) => {
                         const value = parseInt(e.target.value, 10);
@@ -3417,8 +3499,8 @@ export default function AutomacaoPage() {
                       }`}
                       placeholder="Ex: 300"
                     />
-                    <small className="text-xs text-orange-400 mt-1 block">
-                      ⚠️ Tempo de espera entre nutrientes para evitar precipitações químicas
+                    <small className="text-xs text-dark-textSecondary mt-1 block">
+                      Periodicidade do ciclo automático (ex.: 300 = a cada 5 min). Distinto da pausa ~3 s entre nutrientes na mesma dose.
                     </small>
                   </div>
                   
@@ -3497,6 +3579,7 @@ export default function AutomacaoPage() {
                     </small>
                   </div>
                 </div>
+                </div>
                 
                 {/* Controles e Status */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -3562,11 +3645,35 @@ export default function AutomacaoPage() {
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-base text-dark-textSecondary">Erro atual:</span>
+                        <span className="text-base text-dark-textSecondary">Setpoint:</span>
+                        <span className="text-base font-medium text-dark-text">
+                          {formatSensorValue(ecSetpoint, 0)} µS/cm ± {ecTolerance}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-base text-dark-textSecondary">Erro (|EC − SP|):</span>
                         <span className="text-base font-medium text-dark-text">
                           {ecAtual !== null
                             ? `${formatSensorValue(Math.abs(ecError), 1)} µS/cm`
                             : '-- µS/cm'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-base text-dark-textSecondary">Banda morta:</span>
+                        <span
+                          className={`text-base font-medium ${
+                            ecWithinTolerance === true
+                              ? 'text-green-400'
+                              : ecWithinTolerance === false
+                                ? 'text-amber-400'
+                                : 'text-dark-text'
+                          }`}
+                        >
+                          {ecWithinTolerance === null
+                            ? '--'
+                            : ecWithinTolerance
+                              ? '✓ Dentro da tolerância'
+                              : '⚡ Ajuste necessário'}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -3603,9 +3710,9 @@ export default function AutomacaoPage() {
                       <div className="flex justify-between">
                         <span className="text-dark-textSecondary">k (EC base / ml por L):</span>
                         <span className="text-dark-text font-medium">
-                          {nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0) > 0 
-                            ? (baseDose / nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0)).toFixed(3)
-                            : '0.000'}
+                          {totalMlPerLiter > 0 
+                            ? (baseDose / totalMlPerLiter).toFixed(3)
+                            : '—'}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -3641,9 +3748,23 @@ export default function AutomacaoPage() {
                       
                       try {
                         if (newValue) {
-                          const saved = await saveECControllerConfig(true);
+                          if (!canActivateAutoEc) {
+                            toast.error(
+                              'Configure pelo menos um nutriente com ml/L > 0 (total_ml > 0) antes de ativar o Auto EC'
+                            );
+                            return;
+                          }
+                          const saved = await saveECControllerConfig(true, true);
                           if (!saved) {
                             toast.error('Salve os parâmetros antes de ativar Auto EC');
+                            return;
+                          }
+                          const { error: rpcError } = await supabase.rpc('activate_auto_ec', {
+                            p_device_id: selectedDeviceId,
+                          });
+                          if (rpcError) {
+                            console.error('❌ [EC Controller] RPC activate_auto_ec:', rpcError);
+                            toast.error(`Erro ao ativar via RPC: ${rpcError.message}`);
                             return;
                           }
                         }
@@ -3702,15 +3823,23 @@ export default function AutomacaoPage() {
                         toast.error(`Erro: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
                       }
                     }}
-                    disabled={ecControllerLocked}
+                    disabled={ecControllerLocked || (!autoEnabled && !canActivateAutoEc)}
                     className={`px-4 py-2 rounded-lg transition-all shadow-lg ${
                       autoEnabled
                         ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'
                         : 'bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white'
                     } ${
-                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                      ecControllerLocked || (!autoEnabled && !canActivateAutoEc) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
-                    title={ecControllerLocked ? 'Controles bloqueados' : autoEnabled ? 'Desativar Auto EC' : 'Ativar Auto EC'}
+                    title={
+                      ecControllerLocked
+                        ? 'Controles bloqueados'
+                        : !autoEnabled && !canActivateAutoEc
+                          ? 'Adicione nutrientes com ml/L > 0 antes de ativar'
+                          : autoEnabled
+                            ? 'Desativar Auto EC'
+                            : 'Ativar Auto EC'
+                    }
                   >
                     {autoEnabled ? '⏹️ Desativar Auto EC' : '🤖 Ativar Auto EC'}
                   </button>
@@ -3730,6 +3859,7 @@ export default function AutomacaoPage() {
                     onClick={() => {
                       setBaseDose(0);
                       setEcSetpoint(0);
+                      setEcTolerance(50);
                       setIntervaloAutoEC(300);
                       setTempoRecirculacao('00:02');
                       setTempoRecirculacaoHours(0);
@@ -3791,6 +3921,14 @@ export default function AutomacaoPage() {
             </div>
           )}
         </div>
+
+        {selectedDeviceId && selectedDeviceId !== 'default_device' && (
+          <PhControllerPanel
+            deviceId={selectedDeviceId}
+            currentPh={phAtual}
+            availableRelays={availableRelays}
+          />
+        )}
 
       {/* Modal Adicionar/Editar Nutriente */}
       {isNutrientModalOpen && (
@@ -4061,11 +4199,12 @@ export default function AutomacaoPage() {
                   <p><strong className="text-purple-300">volume:</strong> Volume total do reservatório (L)</p>
                   <p><strong className="text-purple-300">total_ml:</strong> Soma de ml/L de todos os nutrientes</p>
                   <p><strong className="text-purple-300">ec_setpoint:</strong> Setpoint desejado de EC (µS/cm)</p>
+                  <p><strong className="text-purple-300">tolerance:</strong> Banda morta em µS/cm — firmware usa needsAdjustment se |erro| &gt; tolerance</p>
                   <p><strong className="text-purple-300">auto_enabled:</strong> Controle automático ativado?</p>
                   <p><strong className="text-purple-300">nutrients:</strong> Array de nutrientes com relés e ml/L</p>
-                  <p><strong className="text-purple-300">intervalo_auto_ec:</strong> Intervalo entre verificações (segundos)</p>
-                  <p><strong className="text-purple-300">tempo_recirculacao:</strong> Tempo de recirculação em milisegundos (ex: 60000 = 1 minuto). No JSON de debug também mostra formato HH:MM:SS</p>
-                  <p className="mt-2 text-purple-300"><strong>_debug:</strong> Informações calculadas adicionais para debug</p>
+                  <p><strong className="text-purple-300">intervalo_auto_ec:</strong> Intervalo entre verificações de EC (segundos)</p>
+                  <p><strong className="text-purple-300">tempo_recirculacao:</strong> Tempo de recirculação em segundos (integer)</p>
+                  <p className="mt-2 text-purple-300"><strong>_debug:</strong> Informação calculada adicional (preview)</p>
                 </div>
               </div>
             </div>

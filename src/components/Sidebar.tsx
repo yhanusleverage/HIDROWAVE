@@ -68,8 +68,8 @@ const menuItems: MenuItem[] = [
     iconSolid: BookOpenIconSolid,
   },
   {
-    name: 'Ajuda',
-    href: '/ajuda',
+    name: 'Informação',
+    href: '/informacao',
     icon: QuestionMarkCircleIcon,
     iconSolid: QuestionMarkCircleIconSolid,
   },

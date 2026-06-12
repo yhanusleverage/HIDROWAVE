@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { isSupabaseMissingTableError } from '@/lib/db-schema';
+import { isSupabaseMissingTableError, normalizeEmail } from '@/lib/db-schema';
 
 /**
  * API para gerenciar alarmes/recordatórios do calendário (crop_alarms)
@@ -29,22 +29,24 @@ export async function GET(request: Request) {
       );
     }
 
+    const email = normalizeEmail(userEmail);
+
     let query = supabase
       .from('crop_alarms')
       .select('*')
-      .eq('device_id', deviceId)
-      .eq('user_email', userEmail)
+      .eq('device_id', deviceId.trim())
+      .eq('user_email', email)
       .order('alarm_date', { ascending: true })
       .order('alarm_time', { ascending: true });
 
     // Filtros opcionais
-    if (enabled !== null) {
+    if (enabled != null && enabled !== '') {
       query = query.eq('enabled', enabled === 'true');
     }
-    if (triggered !== null) {
+    if (triggered != null && triggered !== '') {
       query = query.eq('triggered', triggered === 'true');
     }
-    if (acknowledged !== null) {
+    if (acknowledged != null && acknowledged !== '') {
       query = query.eq('acknowledged', acknowledged === 'true');
     }
     if (upcoming) {
@@ -115,11 +117,14 @@ export async function POST(request: Request) {
       );
     }
 
+    const deviceId = String(device_id).trim();
+    const email = normalizeEmail(String(user_email));
+
     const { data, error } = await supabase
       .from('crop_alarms')
       .insert({
-        device_id,
-        user_email,
+        device_id: deviceId,
+        user_email: email,
         title,
         description: description || null,
         alarm_type: alarm_type || 'reminder',

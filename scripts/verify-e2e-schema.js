@@ -90,6 +90,44 @@ async function main() {
     count.error ? count.error.message : `${count.count ?? 0} rows`
   );
 
+  const cropTables = ['crop_tasks', 'crop_day_notes', 'crop_alarms', 'crop_events'];
+  for (const table of cropTables) {
+    const res = await supabase.from(table).select('id').limit(1);
+    record(
+      `${table} table`,
+      !res.error,
+      res.error ? res.error.message : `accessible (${res.data?.length ?? 0} sample rows)`
+    );
+  }
+
+  const phConfig = await supabase.from('ph_config_view').select('device_id').limit(1);
+  record(
+    'ph_config_view table',
+    !phConfig.error,
+    phConfig.error ? phConfig.error.message : 'accessible'
+  );
+
+  const phRelay = await supabase
+    .from('relay_master')
+    .select('device_id,ph_operation_state,ph_operation_remaining_sec,ph_next_check_in_sec')
+    .eq('device_id', DEVICE_ID)
+    .maybeSingle();
+
+  const hasPhCols =
+    !phRelay.error &&
+    phRelay.data &&
+    'ph_operation_state' in phRelay.data;
+
+  record(
+    'relay_master ph_operation_* columns',
+    hasPhCols,
+    phRelay.error
+      ? phRelay.error.message
+      : phRelay.data
+        ? `state=${phRelay.data.ph_operation_state}`
+        : 'no row for device'
+  );
+
   console.log('\n' + (results.ok ? 'SCHEMA OK' : 'SCHEMA INCOMPLETE — ejecutar scripts SQL en Supabase'));
   process.exit(results.ok ? 0 : 2);
 }

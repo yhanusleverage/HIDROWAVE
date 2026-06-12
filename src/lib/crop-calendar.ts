@@ -66,16 +66,89 @@ function validateTaskType(value: string): TaskType {
   return 'monitoramento';
 }
 
-// ✅ Función para convertir número de prioridad a string
-function validateTaskPriority(value: number | undefined): TaskPriority {
-  // Si no hay valor, usar 'medium' por defecto
-  if (value === undefined || value === null) {
-    return 'medium';
+/** Data local YYYY-MM-DD (evita deslocamento UTC em toISOString). */
+export function formatCropCalendarDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** @deprecated Use formatCropCalendarDate */
+export const formatCropNoteDate = formatCropCalendarDate;
+
+/**
+ * Converte 'YYYY-MM-DD' (Supabase DATE) para Date em hora local.
+ * new Date('2026-05-11') = UTC midnight → dia anterior em UTC-3.
+ */
+export function parseCropCalendarDate(dateStr: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr).trim());
+  if (!m) return new Date();
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+}
+
+export function isSameCalendarDay(a: Date, b: Date): boolean {
+  return formatCropCalendarDate(a) === formatCropCalendarDate(b);
+}
+
+export interface CropFetchResult<T> {
+  data: T;
+  tableAvailable: boolean;
+  error?: string;
+}
+
+// ✅ Prioridad: API guarda 'low'|'medium'|'high' (TEXT) o legado numérico
+function validateTaskPriority(value: unknown): TaskPriority {
+  if (value === 'low' || value === 'medium' || value === 'high') return value;
+  if (value === undefined || value === null) return 'medium';
+  if (typeof value === 'number') {
+    if (value <= 3) return 'low';
+    if (value <= 7) return 'medium';
+    return 'high';
   }
-  // Convertir número a prioridad: 1-3 = low, 4-7 = medium, 8-10 = high
-  if (value <= 3) return 'low';
-  if (value <= 7) return 'medium';
-  return 'high';
+  return 'medium';
+}
+
+function mapTaskFromAPI(task: TaskFromAPI): CropTask {
+  return {
+    id: String(task.id),
+    date: parseCropCalendarDate(task.task_date),
+    type: validateTaskType(task.task_type),
+    title: task.title,
+    description: task.description,
+    completed: task.completed,
+    priority: validateTaskPriority(task.priority),
+  };
+}
+
+async function parseCropApiResponse<T>(
+  response: Response,
+  emptyData: T
+): Promise<CropFetchResult<T>> {
+  let body: Record<string, unknown> = {};
+  try {
+    body = await response.json();
+  } catch {
+    /* ignore */
+  }
+
+  if (response.status === 503 && body.table_available === false) {
+    return {
+      data: emptyData,
+      tableAvailable: false,
+      error: String(body.error ?? 'Tabela crop indisponível'),
+    };
+  }
+
+  if (!response.ok) {
+    return {
+      data: emptyData,
+      tableAvailable: true,
+      error: String(body.error ?? response.statusText),
+    };
+  }
+
+  return { data: body as T, tableAvailable: true };
 }
 
 interface TaskFromAPI {
@@ -85,7 +158,7 @@ interface TaskFromAPI {
   title: string;
   description?: string;
   completed: boolean;
-  priority?: number; // Viene de la API como número
+  priority?: string | number;
 }
 
 interface NoteFromAPI {
@@ -131,7 +204,7 @@ export async function getCropTasks(
     endDate?: string;
     completed?: boolean;
   }
-): Promise<CropTask[]> {
+): Promise<CropFetchResult<CropTask[]>> {
   try {
     const params = new URLSearchParams({
       device_id: deviceId,
@@ -143,23 +216,22 @@ export async function getCropTasks(
     if (options?.completed !== undefined) params.append('completed', String(options.completed));
 
     const response = await fetch(`/api/crop/tasks?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error(`Erro ao buscar tarefas: ${response.statusText}`);
+    const parsed = await parseCropApiResponse<{ tasks?: TaskFromAPI[] }>(response, {});
+
+    if (parsed.error && parsed.tableAvailable) {
+      console.error('Erro ao buscar tarefas:', parsed.error);
+      return { data: [], tableAvailable: true, error: parsed.error };
     }
 
-    const data = await response.json();
-    return (data.tasks as TaskFromAPI[]).map((task: TaskFromAPI) => ({
-      id: task.id,
-      date: new Date(task.task_date),
-      type: validateTaskType(task.task_type), // ✅ Validar que sea un tipo válido
-      title: task.title,
-      description: task.description,
-      completed: task.completed,
-      priority: validateTaskPriority(task.priority), // ✅ Convertir número a 'low'|'medium'|'high'
-    }));
+    const tasks = (parsed.data.tasks ?? []).map(mapTaskFromAPI);
+    return { data: tasks, tableAvailable: parsed.tableAvailable, error: parsed.error };
   } catch (error) {
     console.error('Erro ao buscar tarefas:', error);
-    return [];
+    return {
+      data: [],
+      tableAvailable: true,
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+    };
   }
 }
 
@@ -179,26 +251,24 @@ export async function createCropTask(
         description: task.description,
         task_type: task.type,
         priority: task.priority,
-        task_date: task.date.toISOString().split('T')[0],
+        task_date: formatCropCalendarDate(task.date),
         task_time: task.date.toTimeString().split(' ')[0].slice(0, 5),
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Erro ao criar tarefa: ${response.statusText}`);
+      let details = response.statusText;
+      try {
+        const errBody = await response.json();
+        details = (errBody.details as string) || (errBody.error as string) || details;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`Erro ao criar tarefa: ${details}`);
     }
 
     const data = await response.json();
-    const createdTask = data.task;
-    return {
-      id: createdTask.id,
-      date: new Date(createdTask.task_date),
-      type: createdTask.task_type,
-      title: createdTask.title,
-      description: createdTask.description,
-      completed: createdTask.completed,
-      priority: createdTask.priority,
-    };
+    return mapTaskFromAPI(data.task as TaskFromAPI);
   } catch (error) {
     console.error('Erro ao criar tarefa:', error);
     return null;
@@ -218,7 +288,7 @@ export async function updateCropTask(
     if (updates.priority !== undefined) body.priority = updates.priority;
     if (updates.completed !== undefined) body.completed = updates.completed;
     if (updates.date !== undefined) {
-      body.task_date = updates.date.toISOString().split('T')[0];
+      body.task_date = formatCropCalendarDate(updates.date);
       body.task_time = updates.date.toTimeString().split(' ')[0].slice(0, 5);
     }
 
@@ -233,16 +303,7 @@ export async function updateCropTask(
     }
 
     const data = await response.json();
-    const updatedTask = data.task;
-    return {
-      id: updatedTask.id,
-      date: new Date(updatedTask.task_date),
-      type: updatedTask.task_type,
-      title: updatedTask.title,
-      description: updatedTask.description,
-      completed: updatedTask.completed,
-      priority: updatedTask.priority,
-    };
+    return mapTaskFromAPI(data.task as TaskFromAPI);
   } catch (error) {
     console.error('Erro ao atualizar tarefa:', error);
     return null;
@@ -278,7 +339,7 @@ export async function getCropDayNotes(
     endDate?: string;
     noteDate?: string;
   }
-): Promise<DayNote[]> {
+): Promise<CropFetchResult<DayNote[]>> {
   try {
     const params = new URLSearchParams({
       device_id: deviceId,
@@ -293,18 +354,25 @@ export async function getCropDayNotes(
     }
 
     const response = await fetch(`/api/crop/notes?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error(`Erro ao buscar anotações: ${response.statusText}`);
+    const parsed = await parseCropApiResponse<{ notes?: NoteFromAPI[] }>(response, {});
+
+    if (parsed.error && parsed.tableAvailable) {
+      console.error('Erro ao buscar anotações:', parsed.error);
+      return { data: [], tableAvailable: true, error: parsed.error };
     }
 
-    const data = await response.json();
-    return (data.notes as NoteFromAPI[]).map((note: NoteFromAPI) => ({
-      date: new Date(note.note_date),
+    const notes = (parsed.data.notes ?? []).map((note: NoteFromAPI) => ({
+      date: parseCropCalendarDate(note.note_date),
       notes: note.notes || '',
     }));
+    return { data: notes, tableAvailable: parsed.tableAvailable, error: parsed.error };
   } catch (error) {
     console.error('Erro ao buscar anotações:', error);
-    return [];
+    return {
+      data: [],
+      tableAvailable: true,
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+    };
   }
 }
 
@@ -320,18 +388,25 @@ export async function saveCropDayNote(
       body: JSON.stringify({
         device_id: deviceId,
         user_email: userEmail,
-        note_date: note.date.toISOString().split('T')[0],
+        note_date: formatCropNoteDate(note.date),
         notes: note.notes,
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Erro ao salvar anotação: ${response.statusText}`);
+      let details = response.statusText;
+      try {
+        const errBody = await response.json();
+        details = (errBody.details as string) || (errBody.error as string) || details;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`Erro ao salvar anotação: ${details}`);
     }
 
     const data = await response.json();
     return {
-      date: new Date(data.note.note_date),
+      date: parseCropCalendarDate(data.note.note_date),
       notes: data.note.notes || '',
     };
   } catch (error) {
@@ -349,7 +424,7 @@ export async function deleteCropDayNote(
     const params = new URLSearchParams({
       device_id: deviceId,
       user_email: userEmail,
-      note_date: noteDate.toISOString().split('T')[0],
+      note_date: formatCropNoteDate(noteDate),
     });
 
     const response = await fetch(`/api/crop/notes?${params.toString()}`, {
@@ -370,6 +445,37 @@ export async function deleteCropDayNote(
 // =====================================================
 // ALARMES (crop_alarms)
 // =====================================================
+
+/** Momento local em que o alarme deve disparar (inclui days_before). */
+export function getCropAlarmTriggerAt(
+  alarm: Pick<CropAlarm, 'alarm_date' | 'alarm_time' | 'days_before'>
+): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(alarm.alarm_date).trim());
+  if (!m) return new Date(0);
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10) - 1;
+  const day = parseInt(m[3], 10);
+  const timeParts = String(alarm.alarm_time || '09:00').split(':');
+  const hh = parseInt(timeParts[0], 10) || 0;
+  const mm = parseInt(timeParts[1], 10) || 0;
+  const triggerAt = new Date(y, mo, day, hh, mm, 0, 0);
+  const daysBefore = alarm.days_before || 0;
+  if (daysBefore > 0) {
+    triggerAt.setDate(triggerAt.getDate() - daysBefore);
+  }
+  return triggerAt;
+}
+
+export function isCropAlarmDue(
+  alarm: Pick<
+    CropAlarm,
+    'alarm_date' | 'alarm_time' | 'days_before' | 'enabled' | 'acknowledged'
+  >,
+  now = new Date()
+): boolean {
+  if (alarm.acknowledged || alarm.enabled === false) return false;
+  return getCropAlarmTriggerAt(alarm).getTime() <= now.getTime();
+}
 
 export async function getCropAlarms(
   deviceId: string,

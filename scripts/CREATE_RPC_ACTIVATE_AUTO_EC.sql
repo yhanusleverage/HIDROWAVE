@@ -46,10 +46,10 @@ DECLARE
 BEGIN
   -- Buscar e bloquear configuração da view (FOR UPDATE SKIP LOCKED)
   -- Isso garante que apenas um ESP32 processe a config por vez
-  SELECT * INTO config_record
-  FROM public.ec_config_view
-  WHERE device_id = p_device_id
-  FOR UPDATE SKIP LOCKED;
+  SELECT ec.* INTO config_record
+  FROM public.ec_config_view AS ec
+  WHERE ec.device_id = p_device_id
+  FOR UPDATE OF ec SKIP LOCKED;
   
   -- Se não encontrou, retornar erro
   IF NOT FOUND THEN
@@ -57,10 +57,10 @@ BEGIN
   END IF;
   
   -- Atualizar auto_enabled para true na view
-  UPDATE public.ec_config_view
+  UPDATE public.ec_config_view AS ec
   SET auto_enabled = true,
       updated_at = now()
-  WHERE device_id = p_device_id;
+  WHERE ec.device_id = p_device_id;
   
   -- Retornar configuração completa
   RETURN QUERY

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   ChevronLeftIcon, 
   ChevronRightIcon,
@@ -17,6 +17,36 @@ import {
   BellIcon
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import {
+  getCropTasks,
+  updateCropTask,
+  deleteCropTask,
+  getCropDayNotes,
+  saveCropDayNote,
+  deleteCropDayNote,
+  formatCropCalendarDate,
+  parseCropCalendarDate,
+} from '@/lib/crop-calendar';
+
+function getViewDateRange(
+  currentDate: Date,
+  viewMode: 'week' | 'month'
+): { startDate: string; endDate: string } {
+  if (viewMode === 'week') {
+    const start = new Date(currentDate);
+    start.setDate(start.getDate() - start.getDay());
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    return { startDate: formatCropCalendarDate(start), endDate: formatCropCalendarDate(end) };
+  }
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const gridStart = new Date(year, month, 1);
+  gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+  const gridEnd = new Date(gridStart);
+  gridEnd.setDate(gridEnd.getDate() + 41);
+  return { startDate: formatCropCalendarDate(gridStart), endDate: formatCropCalendarDate(gridEnd) };
+}
 
 export interface CropTask {
   id: string;
@@ -69,6 +99,71 @@ export default function CropCalendar({
   const [alarmType, setAlarmType] = useState<'reminder' | 'alert' | 'notification'>('reminder');
   const [daysBefore, setDaysBefore] = useState(0);
   const [showAlarmConfig, setShowAlarmConfig] = useState(false);
+  const [loadedTasks, setLoadedTasks] = useState<CropTask[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [tablesUnavailable, setTablesUnavailable] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTaskTitle, setEditTaskTitle] = useState('');
+  const [editTaskType, setEditTaskType] = useState<CropTask['type']>('dosagem');
+  const [editTaskPriority, setEditTaskPriority] = useState<CropTask['priority']>('medium');
+  const [editTaskDescription, setEditTaskDescription] = useState('');
+
+  const persistEnabled = Boolean(deviceId?.trim() && userEmail?.includes('@'));
+  const displayedTasks = persistEnabled ? loadedTasks : tasks;
+
+  const loadCalendarData = useCallback(async () => {
+    if (!persistEnabled) return;
+
+    setIsLoading(true);
+    setLoadError(null);
+
+    const { startDate, endDate } = getViewDateRange(currentDate, viewMode);
+
+    try {
+      const [tasksResult, notesResult] = await Promise.all([
+        getCropTasks(deviceId, userEmail, { startDate, endDate }),
+        getCropDayNotes(deviceId, userEmail, { startDate, endDate }),
+      ]);
+
+      const unavailable =
+        !tasksResult.tableAvailable || !notesResult.tableAvailable;
+      setTablesUnavailable(unavailable);
+
+      if (unavailable) {
+        setLoadError(
+          tasksResult.error ??
+            notesResult.error ??
+            'Execute scripts/CRIAR_TABELAS_CROP_CALENDAR.sql no Supabase'
+        );
+        setLoadedTasks([]);
+        setDayNotes(new Map());
+        return;
+      }
+
+      const err = tasksResult.error ?? notesResult.error;
+      if (err) {
+        setLoadError(err);
+      }
+
+      setLoadedTasks(tasksResult.data);
+
+      const notesMap = new Map<string, string>();
+      notesResult.data.forEach((note) => {
+        notesMap.set(formatCropCalendarDate(note.date), note.notes);
+      });
+      setDayNotes(notesMap);
+    } catch (error) {
+      console.error('Erro ao carregar calendário:', error);
+      setLoadError(error instanceof Error ? error.message : 'Erro ao carregar calendário');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [persistEnabled, deviceId, userEmail, currentDate, viewMode]);
+
+  useEffect(() => {
+    loadCalendarData();
+  }, [loadCalendarData]);
 
   // Navegação de datas
   const goToPrevious = () => {
@@ -139,14 +234,10 @@ export default function CropCalendar({
 
   // Obter tarefas de uma data
   const getTasksForDate = (date: Date) => {
-    return tasks.filter(task => {
-      const taskDate = new Date(task.date);
-      return (
-        taskDate.getDate() === date.getDate() &&
-        taskDate.getMonth() === date.getMonth() &&
-        taskDate.getFullYear() === date.getFullYear()
-      );
-    });
+    const dayKey = formatCropCalendarDate(date);
+    return displayedTasks.filter(
+      (task) => formatCropCalendarDate(task.date) === dayKey
+    );
   };
 
   // Verificar se é hoje
@@ -166,13 +257,115 @@ export default function CropCalendar({
 
   // Abrir modal do dia (removido - agora está mais abaixo com lógica de alarme)
 
-  // Salvar anotação do dia
-  const handleSaveNote = () => {
-    if (selectedDate) {
-      const dateKey = selectedDate.toISOString().split('T')[0];
-      const newNotes = new Map(dayNotes);
-      newNotes.set(dateKey, dayNote);
-      setDayNotes(newNotes);
+  const handleSaveNote = async () => {
+    if (!selectedDate) return;
+
+    const dateKey = formatCropCalendarDate(selectedDate);
+    const trimmed = dayNote.trim();
+    const prevNotes = dayNotes;
+
+    const optimisticNotes = new Map(dayNotes);
+    if (trimmed) {
+      optimisticNotes.set(dateKey, trimmed);
+    } else {
+      optimisticNotes.delete(dateKey);
+    }
+    setDayNotes(optimisticNotes);
+
+    if (persistEnabled) {
+      try {
+        if (trimmed) {
+          const saved = await saveCropDayNote(deviceId, userEmail, {
+            date: selectedDate,
+            notes: trimmed,
+          });
+          if (!saved) throw new Error('Erro ao salvar anotação');
+        } else if (prevNotes.has(dateKey)) {
+          const ok = await deleteCropDayNote(deviceId, userEmail, selectedDate);
+          if (!ok) throw new Error('Erro ao remover anotação');
+        }
+      } catch (error) {
+        console.error('Erro ao persistir anotação:', error);
+        setDayNotes(prevNotes);
+        toast.error('Erro ao salvar anotação');
+      }
+    }
+  };
+
+  const handleTaskComplete = async (taskId: string) => {
+    const prev = loadedTasks;
+    setLoadedTasks((current) =>
+      current.map((t) => (t.id === taskId ? { ...t, completed: true } : t))
+    );
+
+    if (persistEnabled) {
+      try {
+        const updated = await updateCropTask(taskId, { completed: true });
+        if (!updated) throw new Error('Falha ao concluir');
+      } catch {
+        setLoadedTasks(prev);
+        toast.error('Erro ao concluir tarefa');
+        return;
+      }
+    }
+    onTaskComplete?.(taskId);
+  };
+
+  const handleTaskDelete = async (taskId: string) => {
+    const prev = loadedTasks;
+    setLoadedTasks((current) => current.filter((t) => t.id !== taskId));
+
+    if (persistEnabled) {
+      try {
+        const ok = await deleteCropTask(taskId);
+        if (!ok) throw new Error('Falha ao remover');
+      } catch {
+        setLoadedTasks(prev);
+        toast.error('Erro ao remover tarefa');
+        return;
+      }
+    }
+    onTaskDelete?.(taskId);
+  };
+
+  const startEditTask = (task: CropTask) => {
+    setEditingTaskId(task.id);
+    setEditTaskTitle(task.title);
+    setEditTaskType(task.type);
+    setEditTaskPriority(task.priority);
+    setEditTaskDescription(task.description ?? '');
+  };
+
+  const cancelEditTask = () => {
+    setEditingTaskId(null);
+    setEditTaskTitle('');
+    setEditTaskDescription('');
+  };
+
+  const handleSaveEditTask = async (task: CropTask) => {
+    if (!editTaskTitle.trim()) return;
+
+    const prev = loadedTasks;
+    const updates: Partial<CropTask> = {
+      title: editTaskTitle.trim(),
+      type: editTaskType,
+      priority: editTaskPriority,
+      description: editTaskDescription.trim() || undefined,
+    };
+
+    setLoadedTasks((current) =>
+      current.map((t) => (t.id === task.id ? { ...t, ...updates } : t))
+    );
+    cancelEditTask();
+
+    if (persistEnabled) {
+      try {
+        const updated = await updateCropTask(task.id, updates);
+        if (!updated) throw new Error('Falha ao atualizar');
+      } catch {
+        setLoadedTasks(prev);
+        toast.error('Erro ao atualizar tarefa');
+      }
     }
   };
 
@@ -180,8 +373,9 @@ export default function CropCalendar({
   const handleAddTask = async () => {
     if (!selectedDate || !newTaskTitle.trim()) return;
 
-    const newTask: CropTask = {
-      id: Date.now().toString(),
+    const tempId = `temp-${Date.now()}`;
+    let newTask: CropTask = {
+      id: tempId,
       date: new Date(selectedDate),
       type: newTaskType,
       title: newTaskTitle,
@@ -190,12 +384,14 @@ export default function CropCalendar({
       priority: newTaskPriority,
     };
 
-    // ✅ Criar tarefa via API se deviceId e userEmail estiverem disponíveis
-    if (deviceId && userEmail) {
+    const prevTasks = loadedTasks;
+    setLoadedTasks((current) => [...current, newTask]);
+
+    if (persistEnabled) {
       try {
-        const taskDate = selectedDate.toISOString().split('T')[0];
+        const taskDate = formatCropCalendarDate(selectedDate);
         const taskTime = new Date(selectedDate).toTimeString().split(' ')[0].slice(0, 5);
-        
+
         const taskResponse = await fetch('/api/crop/tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -212,13 +408,34 @@ export default function CropCalendar({
         });
 
         if (!taskResponse.ok) {
-          throw new Error('Erro ao criar tarefa');
+          let details = taskResponse.statusText;
+          try {
+            const errBody = await taskResponse.json();
+            details = (errBody.details as string) || (errBody.error as string) || details;
+          } catch {
+            /* ignore */
+          }
+          throw new Error(details);
         }
 
         const taskData = await taskResponse.json();
-        const createdTaskId = taskData.task.id;
+        const created = taskData.task;
+        const createdTaskId = String(created.id);
 
-        // ✅ Criar alarme associado se configurado
+        newTask = {
+          id: createdTaskId,
+          date: parseCropCalendarDate(created.task_date),
+          type: newTaskType,
+          title: created.title,
+          description: created.description ?? undefined,
+          completed: false,
+          priority: newTaskPriority,
+        };
+
+        setLoadedTasks((current) =>
+          current.map((t) => (t.id === tempId ? newTask : t))
+        );
+
         if (hasAlarm && alarmDate && alarmTime) {
           try {
             const alarmResponse = await fetch('/api/crop/alarms', {
@@ -252,14 +469,16 @@ export default function CropCalendar({
         }
       } catch (error) {
         console.error('Erro ao criar tarefa:', error);
-        toast.error('Erro ao criar tarefa');
+        setLoadedTasks(prevTasks);
+        const msg = error instanceof Error ? error.message : 'Erro ao criar tarefa';
+        toast.error(msg.startsWith('Erro') ? msg : `Erro ao criar tarefa: ${msg}`);
         return;
       }
+    } else if (hasAlarm) {
+      toast.success('Tarefa criada com sucesso!');
     }
 
-    if (onTaskAdd) {
-      onTaskAdd(newTask);
-    }
+    onTaskAdd?.(newTask);
 
     // Limpar formulário
     setNewTaskTitle('');
@@ -277,14 +496,14 @@ export default function CropCalendar({
 
   // Obter anotação do dia
   const getDayNote = (date: Date): string => {
-    const dateKey = date.toISOString().split('T')[0];
+    const dateKey = formatCropCalendarDate(date);
     return dayNotes.get(dateKey) || '';
   };
 
   // ✅ Handler para abrir modal com data selecionada
   const handleDayClick = (day: Date) => {
     setSelectedDate(day);
-    const dateKey = day.toISOString().split('T')[0];
+    const dateKey = formatCropCalendarDate(day);
     setDayNote(dayNotes.get(dateKey) || '');
     // ✅ Preencher data do alarme com a data selecionada
     setAlarmDate(dateKey);
@@ -481,6 +700,28 @@ export default function CropCalendar({
         </h3>
       </div>
 
+      {tablesUnavailable && (
+        <div className="mb-4 p-3 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200 text-sm">
+          Calendário indisponível — execute{' '}
+          <code className="text-xs bg-dark-surface px-1 py-0.5 rounded">scripts/CRIAR_TABELAS_CROP_CALENDAR.sql</code>{' '}
+          no Supabase SQL Editor.
+          {loadError && <span className="block mt-1 text-amber-300/80">{loadError}</span>}
+        </div>
+      )}
+
+      {!tablesUnavailable && loadError && (
+        <div className="mb-4 p-3 rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 text-sm">
+          {loadError}
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="mb-4 flex items-center gap-2 text-sm text-dark-textSecondary">
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-aqua-500 border-t-transparent" />
+          Carregando calendário…
+        </div>
+      )}
+
       {/* Calendário */}
       <div className="overflow-x-auto">
         {viewMode === 'month' ? (
@@ -503,6 +744,7 @@ export default function CropCalendar({
                 const dayTasks = getTasksForDate(day);
                 const isCurrentMonthDay = isCurrentMonth(day);
                 const isTodayDay = isToday(day);
+                const hasNote = Boolean(getDayNote(day));
                 
                 return (
                   <div
@@ -516,10 +758,15 @@ export default function CropCalendar({
                         : 'bg-dark-surface'
                     }`}
                   >
-                    <div className={`text-sm font-medium mb-1 ${
-                      isTodayDay ? 'text-aqua-400' : 'text-dark-text'
-                    }`}>
-                      {day.getDate()}
+                    <div className="flex items-center justify-between mb-1">
+                      <div className={`text-sm font-medium ${
+                        isTodayDay ? 'text-aqua-400' : 'text-dark-text'
+                      }`}>
+                        {day.getDate()}
+                      </div>
+                      {hasNote && (
+                        <PencilIcon className="h-3.5 w-3.5 text-aqua-400 shrink-0" title="Dia com anotação" />
+                      )}
                     </div>
                     
                     <div className="space-y-1">
@@ -527,12 +774,32 @@ export default function CropCalendar({
                         <div
                           key={task.id}
                           onClick={(e) => e.stopPropagation()}
-                          className={`text-xs px-1.5 py-0.5 rounded border flex items-center gap-1 ${getTaskColor(task.type)} ${
+                          className={`text-xs px-1.5 py-0.5 rounded border ${getTaskColor(task.type)} ${
                             task.completed ? 'opacity-60 line-through' : ''
                           }`}
                         >
-                          {getTaskIcon(task.type)}
-                          <span className="truncate">{task.title}</span>
+                          <div className="flex items-center gap-1">
+                            {getTaskIcon(task.type)}
+                            <span className="truncate flex-1">{task.title}</span>
+                          </div>
+                          <div className="flex gap-0.5 mt-1">
+                            {!task.completed && (onTaskComplete || persistEnabled) && (
+                              <button
+                                onClick={() => handleTaskComplete(task.id)}
+                                className="px-1 py-0.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded text-[10px]"
+                              >
+                                ✓
+                              </button>
+                            )}
+                            {(onTaskDelete || persistEnabled) && (
+                              <button
+                                onClick={() => handleTaskDelete(task.id)}
+                                className="px-1 py-0.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded text-[10px]"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
                       {dayTasks.length > 2 && (
@@ -553,6 +820,7 @@ export default function CropCalendar({
               {days.map((day, index) => {
                 const dayTasks = getTasksForDate(day);
                 const isTodayDay = isToday(day);
+                const hasNote = Boolean(getDayNote(day));
                 
                 return (
                   <div
@@ -564,10 +832,15 @@ export default function CropCalendar({
                         : 'bg-dark-surface'
                     }`}
                   >
-                    <div className={`text-sm font-semibold mb-2 ${
-                      isTodayDay ? 'text-aqua-400' : 'text-dark-text'
-                    }`}>
-                      {weekDays[day.getDay()]}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={`text-sm font-semibold ${
+                        isTodayDay ? 'text-aqua-400' : 'text-dark-text'
+                      }`}>
+                        {weekDays[day.getDay()]}
+                      </div>
+                      {hasNote && (
+                        <PencilIcon className="h-3.5 w-3.5 text-aqua-400 shrink-0" title="Dia com anotação" />
+                      )}
                     </div>
                     <div className={`text-xs mb-3 ${
                       isTodayDay ? 'text-aqua-300' : 'text-dark-textSecondary'
@@ -603,17 +876,17 @@ export default function CropCalendar({
                             </span>
                           </div>
                           <div className="flex gap-1 mt-2">
-                            {!task.completed && onTaskComplete && (
+                            {!task.completed && (onTaskComplete || persistEnabled) && (
                               <button
-                                onClick={() => onTaskComplete(task.id)}
+                                onClick={() => handleTaskComplete(task.id)}
                                 className="flex-1 px-2 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded text-xs transition-all"
                               >
                                 Concluir
                               </button>
                             )}
-                            {onTaskDelete && (
+                            {(onTaskDelete || persistEnabled) && (
                               <button
-                                onClick={() => onTaskDelete(task.id)}
+                                onClick={() => handleTaskDelete(task.id)}
                                 className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded text-xs transition-all"
                               >
                                 Remover
@@ -741,6 +1014,58 @@ export default function CropCalendar({
                         task.completed ? 'opacity-60' : ''
                       }`}
                     >
+                      {editingTaskId === task.id ? (
+                        <div className="space-y-3">
+                          <input
+                            type="text"
+                            value={editTaskTitle}
+                            onChange={(e) => setEditTaskTitle(e.target.value)}
+                            className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text text-sm"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <select
+                              value={editTaskType}
+                              onChange={(e) => setEditTaskType(e.target.value as CropTask['type'])}
+                              className="p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text text-sm"
+                            >
+                              <option value="dosagem">Dosagem</option>
+                              <option value="manutencao">Manutenção</option>
+                              <option value="monitoramento">Monitoramento</option>
+                              <option value="colheita">Colheita</option>
+                              <option value="plantio">Plantio</option>
+                            </select>
+                            <select
+                              value={editTaskPriority}
+                              onChange={(e) => setEditTaskPriority(e.target.value as CropTask['priority'])}
+                              className="p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text text-sm"
+                            >
+                              <option value="low">Baixa</option>
+                              <option value="medium">Média</option>
+                              <option value="high">Alta</option>
+                            </select>
+                          </div>
+                          <textarea
+                            value={editTaskDescription}
+                            onChange={(e) => setEditTaskDescription(e.target.value)}
+                            placeholder="Descrição"
+                            className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text text-sm min-h-[60px]"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleSaveEditTask(task)}
+                              className="flex-1 px-3 py-1.5 bg-aqua-500/20 hover:bg-aqua-500/30 text-aqua-400 rounded text-sm"
+                            >
+                              Salvar
+                            </button>
+                            <button
+                              onClick={cancelEditTask}
+                              className="px-3 py-1.5 bg-dark-surface border border-dark-border rounded text-sm text-dark-textSecondary"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
@@ -759,18 +1084,27 @@ export default function CropCalendar({
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {!task.completed && onTaskComplete && (
+                          {!task.completed && persistEnabled && (
                             <button
-                              onClick={() => onTaskComplete(task.id)}
+                              onClick={() => startEditTask(task)}
+                              className="p-1.5 bg-aqua-500/20 hover:bg-aqua-500/30 text-aqua-400 rounded transition-all"
+                              title="Editar"
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                          )}
+                          {!task.completed && (onTaskComplete || persistEnabled) && (
+                            <button
+                              onClick={() => handleTaskComplete(task.id)}
                               className="p-1.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded transition-all"
                               title="Concluir"
                             >
                               <CheckCircleIcon className="h-4 w-4" />
                             </button>
                           )}
-                          {onTaskDelete && (
+                          {(onTaskDelete || persistEnabled) && (
                             <button
-                              onClick={() => onTaskDelete(task.id)}
+                              onClick={() => handleTaskDelete(task.id)}
                               className="p-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded transition-all"
                               title="Remover"
                             >
@@ -779,6 +1113,7 @@ export default function CropCalendar({
                           )}
                         </div>
                       </div>
+                      )}
                     </div>
                   ))}
                   {getTasksForDate(selectedDate).length === 0 && (

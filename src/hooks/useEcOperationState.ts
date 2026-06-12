@@ -178,6 +178,15 @@ export interface UseEcOperationStateOptions {
   /** intervalo_auto_ec do formulário — fallback e teto de reset de ciclo */
   intervalCeilingSec?: number;
   autoEnabled?: boolean;
+  /** Dashboard: mostrar estado real de relay_master mesmo se auto_enabled mudou no form */
+  mirrorFirmware?: boolean;
+}
+
+function capNextCheckToCeiling(incoming: number, ceiling: number): number {
+  if (ceiling > 0 && incoming > ceiling) {
+    return ceiling;
+  }
+  return incoming;
 }
 
 export function useEcOperationState(
@@ -192,9 +201,11 @@ export function useEcOperationState(
   const zeroRemainingSinceRef = useRef<number | null>(null);
   const intervalCeilingRef = useRef(options.intervalCeilingSec ?? 0);
   const autoEnabledRef = useRef(options.autoEnabled ?? false);
+  const mirrorFirmwareRef = useRef(options.mirrorFirmware ?? false);
   deviceIdRef.current = deviceId;
   intervalCeilingRef.current = options.intervalCeilingSec ?? 0;
   autoEnabledRef.current = options.autoEnabled ?? false;
+  mirrorFirmwareRef.current = options.mirrorFirmware ?? false;
 
   const applyIdleSnapshot = useCallback(() => {
     const idle: EcOperationSnapshot = {
@@ -218,9 +229,18 @@ export function useEcOperationState(
     const now = Date.now();
     const current = snapshotRef.current;
 
-    if (!autoEnabledRef.current && extracted.state !== 'idle') {
+    if (
+      !mirrorFirmwareRef.current &&
+      !autoEnabledRef.current &&
+      extracted.state !== 'idle'
+    ) {
       return;
     }
+
+    const cappedNextCheck = capNextCheckToCeiling(
+      extracted.nextCheckInSec,
+      intervalCeilingRef.current
+    );
 
     if (
       isStaleRemainingUpdate(
@@ -233,11 +253,14 @@ export function useEcOperationState(
       return;
     }
 
-    let nextCheckInSec = extracted.nextCheckInSec;
+    let nextCheckInSec = cappedNextCheck;
     let syncedAt = now;
 
+    const displayAuto =
+      mirrorFirmwareRef.current || autoEnabledRef.current;
+
     if (
-      isStaleNextCheckUpdate(current, extracted.state, extracted.nextCheckInSec, now)
+      isStaleNextCheckUpdate(current, extracted.state, cappedNextCheck, now)
     ) {
       const merged = mergeNextCheckMonotonic(
         current,
@@ -245,7 +268,7 @@ export function useEcOperationState(
         tickNextCheck(current, now),
         now,
         intervalCeilingRef.current,
-        autoEnabledRef.current
+        displayAuto
       );
       nextCheckInSec = merged.nextCheckInSec;
       syncedAt = merged.syncedAt;
@@ -253,10 +276,10 @@ export function useEcOperationState(
       const merged = mergeNextCheckMonotonic(
         current,
         extracted.state,
-        extracted.nextCheckInSec,
+        cappedNextCheck,
         now,
         intervalCeilingRef.current,
-        autoEnabledRef.current
+        displayAuto
       );
       nextCheckInSec = merged.nextCheckInSec;
       syncedAt = merged.syncedAt;
@@ -322,10 +345,26 @@ export function useEcOperationState(
     const was = prevAutoEnabledRef.current;
     const now = options.autoEnabled ?? false;
     prevAutoEnabledRef.current = now;
-    if (was && !now) {
+    if (!options.mirrorFirmware && was && !now) {
       applyIdleSnapshot();
     }
-  }, [options.autoEnabled, applyIdleSnapshot]);
+  }, [options.autoEnabled, options.mirrorFirmware, applyIdleSnapshot]);
+
+  useEffect(() => {
+    const ceiling = options.intervalCeilingSec ?? 0;
+    if (ceiling <= 0) return;
+
+    setSnapshot((prev) => {
+      if (prev.nextCheckInSec <= ceiling) return prev;
+      const next: EcOperationSnapshot = {
+        ...prev,
+        nextCheckInSec: ceiling,
+        syncedAt: Date.now(),
+      };
+      snapshotRef.current = next;
+      return next;
+    });
+  }, [options.intervalCeilingSec]);
 
   useEffect(() => {
     const needsTick =
@@ -369,7 +408,8 @@ export function useEcOperationState(
   const isAguardandoRecirculacao =
     snapshot.state === 'recirculating' && operationRemainingSec > 0;
 
-  const autoOn = options.autoEnabled ?? false;
+  const autoOn =
+    (options.mirrorFirmware ?? false) || (options.autoEnabled ?? false);
 
   return {
     state: autoOn ? snapshot.state : 'idle',

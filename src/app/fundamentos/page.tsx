@@ -74,8 +74,14 @@ export default function FundamentosPage() {
       return 'bg-green-900/30 border-green-700/50 hover:bg-green-900/40';
     }
     
-    // Amarillo: DESCENDO DESCENDO DESCENDO - Precisa troca de reservatório
+    // Amarillo: troca de reservatório / atenção moderada
+    // DESCENDO DESCENDO DESCENDO
     if (isFalling(condition.waterLevel) && isFalling(condition.ec) && isFalling(condition.ph)) {
+      return 'bg-yellow-900/30 border-yellow-700/50 hover:bg-yellow-900/40';
+    }
+
+    // DESCENDO ESTÁTICO DESCENDO — pH caindo com consumo normal de água
+    if (isFalling(condition.waterLevel) && isStatic(condition.ec) && isFalling(condition.ph)) {
       return 'bg-yellow-900/30 border-yellow-700/50 hover:bg-yellow-900/40';
     }
     
@@ -108,6 +114,28 @@ export default function FundamentosPage() {
       </header>
 
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        {/* Legenda de cores */}
+        <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-4 sm:p-5 mb-6">
+          <h2 className="text-sm font-semibold text-dark-text mb-3">{translations.colorLegend.title}</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            <div className="flex gap-2 items-start rounded-lg bg-green-900/30 border border-green-700/50 p-3">
+              <span className="shrink-0 w-3 h-3 mt-0.5 rounded-full bg-green-500" aria-hidden />
+              <p className="text-xs text-dark-textSecondary leading-relaxed">{translations.colorLegend.green}</p>
+            </div>
+            <div className="flex gap-2 items-start rounded-lg bg-yellow-900/30 border border-yellow-700/50 p-3">
+              <span className="shrink-0 w-3 h-3 mt-0.5 rounded-full bg-yellow-500" aria-hidden />
+              <p className="text-xs text-dark-textSecondary leading-relaxed">{translations.colorLegend.yellow}</p>
+            </div>
+            <div className="flex gap-2 items-start rounded-lg bg-red-900/20 border border-red-700/30 p-3">
+              <span className="shrink-0 w-3 h-3 mt-0.5 rounded-full bg-red-500" aria-hidden />
+              <p className="text-xs text-dark-textSecondary leading-relaxed">{translations.colorLegend.red}</p>
+            </div>
+          </div>
+          <p className="text-xs text-dark-textSecondary/80 italic border-t border-dark-border pt-3">
+            {translations.colorLegend.ecFootnote}
+          </p>
+        </div>
+
         {/* Tabla de Condiciones */}
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6 mb-6 overflow-x-auto">
           <div className="min-w-full">
@@ -164,18 +192,53 @@ export default function FundamentosPage() {
           </div>
 
           <div className="space-y-4">
-            <div className="bg-dark-surface/50 rounded-lg p-4 border border-yellow-700/30">
+            <div id="nota-1" className="bg-dark-surface/50 rounded-lg p-4 border border-yellow-700/30 scroll-mt-24">
               <h3 className="font-semibold text-yellow-400 mb-2">{translations.notes.note1.title}</h3>
-              <p className="text-sm text-dark-textSecondary leading-relaxed">
-                {translations.notes.note1.content}
-              </p>
+              {translations.notes.note1.intro && (
+                <p className="text-sm text-dark-textSecondary leading-relaxed mb-4">
+                  {translations.notes.note1.intro}
+                </p>
+              )}
+              {translations.notes.note1.sections && translations.notes.note1.sections.length > 0 ? (
+                <div className="space-y-4">
+                  {translations.notes.note1.sections.map((section, idx) => (
+                    <div key={idx} className="border-l-2 border-yellow-500/50 pl-3">
+                      <h4 className="text-sm font-semibold text-dark-text mb-1">{section.title}</h4>
+                      <p className="text-sm text-dark-textSecondary leading-relaxed whitespace-pre-line">
+                        {section.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-dark-textSecondary leading-relaxed">
+                  {translations.notes.note1.content}
+                </p>
+              )}
             </div>
 
-            <div className="bg-dark-surface/50 rounded-lg p-4 border border-yellow-700/30">
+            <div id="nota-2" className="bg-dark-surface/50 rounded-lg p-4 border border-yellow-700/30 scroll-mt-24">
               <h3 className="font-semibold text-yellow-400 mb-2">{translations.notes.note2.title}</h3>
               <p className="text-sm text-dark-textSecondary leading-relaxed">
                 {translations.notes.note2.content}
               </p>
+            </div>
+
+            <div id="nota-3" className="bg-dark-surface/50 rounded-lg p-4 border border-cyan-600/40 scroll-mt-24">
+              <h3 className="font-semibold text-cyan-400 mb-2">{translations.notes.vpd.title}</h3>
+              <p className="text-sm text-dark-textSecondary leading-relaxed mb-4">
+                {translations.notes.vpd.intro}
+              </p>
+              <div className="space-y-4">
+                {translations.notes.vpd.sections.map((section, idx) => (
+                  <div key={idx} className="border-l-2 border-cyan-500/50 pl-3">
+                    <h4 className="text-sm font-semibold text-dark-text mb-1">{section.title}</h4>
+                    <p className="text-sm text-dark-textSecondary leading-relaxed whitespace-pre-line">
+                      {section.body}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

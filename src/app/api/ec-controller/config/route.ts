@@ -42,6 +42,7 @@ export async function GET(request: Request) {
         total_ml: 0,
         kp: 1.0,
         ec_setpoint: 0,
+        tolerance: 50,
         auto_enabled: false,
       });
     }
