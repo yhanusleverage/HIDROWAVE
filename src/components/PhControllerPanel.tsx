@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import {
@@ -8,10 +8,12 @@ import {
   ChevronDownIcon,
   LockClosedIcon,
   LockOpenIcon,
+  ClockIcon,
 } from '@heroicons/react/24/outline';
 import { supabase } from '@/lib/supabase';
 import { usePhOperationState } from '@/hooks/usePhOperationState';
 import { formatFlowRate } from '@/lib/pump-calibration';
+import { formatSensorValue } from '@/lib/format-sensor-value';
 
 interface RelayOption {
   number: number;
@@ -206,7 +208,21 @@ export default function PhControllerPanel({
   };
 
   const phError =
-    currentPh != null ? phSetpoint - currentPh : null;
+    currentPh != null ? currentPh - phSetpoint : null;
+
+  const phWithinTolerance = useMemo(() => {
+    if (currentPh === null) return null;
+    return Math.abs(currentPh - phSetpoint) <= phTolerance;
+  }, [currentPh, phSetpoint, phTolerance]);
+
+  const formatCountdown = (totalSec: number): string => {
+    const minutes = Math.floor(totalSec / 60);
+    const seconds = totalSec % 60;
+    if (minutes > 0) {
+      return `${minutes}:${String(seconds).padStart(2, '0')}`;
+    }
+    return `${seconds}s`;
+  };
 
   const disabled = locked;
 
@@ -273,17 +289,6 @@ export default function PhControllerPanel({
                 onChange={(e) => setPhTolerance(parseFloat(e.target.value) || 0.2)}
                 className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text disabled:opacity-50"
               />
-            </div>
-            <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">pH atual</label>
-              <div className="p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text">
-                {currentPh != null ? currentPh.toFixed(2) : '—'}
-                {phError != null && (
-                  <span className="ml-2 text-xs text-dark-textSecondary">
-                    (erro {phError > 0 ? '+' : ''}{phError.toFixed(2)})
-                  </span>
-                )}
-              </div>
             </div>
             <div>
               <label className="block text-sm text-dark-textSecondary mb-1">Relé pH+</label>
@@ -378,26 +383,126 @@ export default function PhControllerPanel({
             </div>
           </div>
 
-          <div className="mb-6 p-4 bg-dark-surface border border-dark-border rounded-lg" aria-live="polite">
-            <h4 className="text-sm font-semibold text-dark-text mb-2">Status</h4>
-            {autoEnabled ? (
-              <div className="space-y-1 text-sm text-dark-textSecondary">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div className="bg-dark-surface border border-dark-border rounded-lg p-4" aria-live="polite">
+              <h4 className="text-base font-semibold text-dark-text mb-3">📊 Status do Controle</h4>
+              <div className="space-y-2.5">
                 {phOp.isDosando && (
-                  <p className="text-violet-400 animate-pulse">Dosando pH… ({phOp.operationRemainingSec}s)</p>
+                  <div className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-lg bg-violet-500/15 border border-violet-500/40">
+                    <span className="text-base font-semibold text-violet-400 tracking-wide animate-pulse">
+                      Dosando pH ({phOp.operationRemainingSec}s)
+                    </span>
+                  </div>
                 )}
-                {phOp.isAguardandoRecirculacao && (
-                  <p>Recirculando… ({phOp.operationRemainingSec}s)</p>
+                {!phOp.isDosando &&
+                  autoEnabled &&
+                  phOp.isAguardandoRecirculacao &&
+                  phOp.operationRemainingSec > 0 && (
+                  <div className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-lg bg-cyan-500/15 border border-cyan-500/40">
+                    <ClockIcon className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
+                    <span className="text-base font-semibold text-cyan-400 tracking-wide">
+                      Aguardando recirculação
+                    </span>
+                    <span className="text-sm font-mono tabular-nums text-cyan-300/90 bg-cyan-500/10 px-2 py-0.5 rounded">
+                      {formatCountdown(phOp.operationRemainingSec)}
+                    </span>
+                  </div>
                 )}
-                {phOp.isPhCheckPending && phOp.nextCheckInSec > 0 && (
-                  <p>Próxima verificação em {phOp.nextCheckInSec}s</p>
+                {!phOp.isDosando &&
+                  !phOp.isAguardandoRecirculacao &&
+                  autoEnabled &&
+                  phOp.isPhCheckPending &&
+                  phOp.nextCheckInSec > 0 && (
+                  <div className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-lg bg-violet-500/15 border border-violet-500/40">
+                    <ClockIcon className="w-4 h-4 text-violet-400 shrink-0" />
+                    <span className="text-base font-semibold text-violet-400 tracking-wide">
+                      Próxima verificação pH
+                    </span>
+                    <span className="text-sm font-mono tabular-nums text-violet-300/90 bg-violet-500/10 px-2 py-0.5 rounded">
+                      {formatCountdown(phOp.nextCheckInSec)}
+                    </span>
+                  </div>
                 )}
-                {phOp.state === 'idle' && !phOp.isDosando && phOp.nextCheckInSec <= 0 && (
-                  <p>Aguardando próximo ciclo</p>
-                )}
+                <div className="flex justify-between">
+                  <span className="text-base text-dark-textSecondary">Status:</span>
+                  <span className={`text-base font-medium ${autoEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                    {autoEnabled ? '✅ Ativado' : '❌ Desativado'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-base text-dark-textSecondary">Setpoint:</span>
+                  <span className="text-base font-medium text-dark-text">
+                    {formatSensorValue(phSetpoint, 2)} ± {formatSensorValue(phTolerance, 2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-base text-dark-textSecondary">Erro (|pH − SP|):</span>
+                  <span className="text-base font-medium text-dark-text">
+                    {currentPh !== null && phError !== null
+                      ? formatSensorValue(Math.abs(phError), 2)
+                      : '--'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-base text-dark-textSecondary">Banda morta:</span>
+                  <span
+                    className={`text-base font-medium ${
+                      phWithinTolerance === true
+                        ? 'text-green-400'
+                        : phWithinTolerance === false
+                          ? 'text-amber-400'
+                          : 'text-dark-text'
+                    }`}
+                  >
+                    {phWithinTolerance === null
+                      ? '--'
+                      : phWithinTolerance
+                        ? '✓ Dentro da tolerância'
+                        : '⚡ Ajuste necessário'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-base text-dark-textSecondary">pH Atual:</span>
+                  <span className="text-base font-medium text-dark-text tabular-nums">
+                    {currentPh !== null ? formatSensorValue(currentPh, 2) : '--'}
+                  </span>
+                </div>
               </div>
-            ) : (
-              <p className="text-sm text-dark-textSecondary">Auto pH desativado</p>
-            )}
+            </div>
+
+            <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
+              <h4 className="text-base font-semibold text-dark-text mb-3">🧮 Controle Bidirecional</h4>
+              <div className="space-y-2.5 text-base">
+                <div className="flex justify-between">
+                  <span className="text-dark-textSecondary">Direção:</span>
+                  <span className="text-dark-text font-medium">
+                    {currentPh === null || phError === null
+                      ? '--'
+                      : phError > phTolerance
+                        ? 'pH- (baixar)'
+                        : phError < -phTolerance
+                          ? 'pH+ (subir)'
+                          : 'Neutro'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-dark-textSecondary">Relé pH+:</span>
+                  <span className="text-dark-text font-medium">
+                    {availableRelays.find((r) => r.number === relayPhUp)?.name ?? `Relé ${relayPhUp}`}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-dark-textSecondary">Relé pH-:</span>
+                  <span className="text-dark-text font-medium">
+                    {availableRelays.find((r) => r.number === relayPhDown)?.name ?? `Relé ${relayPhDown}`}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-dark-textSecondary">ml/unidade pH:</span>
+                  <span className="text-dark-text font-medium">{mlPerPhUnit}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">

@@ -37,32 +37,21 @@ export function resolveEcPlausible(
   return isPlausibleEc(ec) ? ec : null;
 }
 
-/** Aceita EC=0; rejeita denormais do bridge (ex. 8e-29 µS/cm). */
-function isDisplayableEc(n: number): boolean {
-  if (Number.isNaN(n) || !Number.isFinite(n)) return false;
-  if (n === 0) return true;
-  return Math.abs(n) >= 1;
-}
-
 /**
  * EC para display na UI — alinhado ao dashboard `calculateEC`.
- * Aceita EC=0; rejeita NaN/Inf e floats denormalizados.
+ * Prioridade: coluna `ec`, depois TDS × 2. Aceita 0 como valor válido.
  */
 export function resolveEcForDisplay(
   row: { ec?: number | null; tds?: number | null } | null | undefined
 ): number | null {
   if (!row) return null;
 
-  if (row.ec != null && row.ec !== undefined) {
-    const n = Number(row.ec);
-    if (isDisplayableEc(n)) {
-      return n;
-    }
+  if (row.ec !== null && row.ec !== undefined && !Number.isNaN(Number(row.ec))) {
+    return Number(row.ec);
   }
 
-  const fromTds = ecFromTds(row.tds);
-  if (fromTds != null && isDisplayableEc(fromTds)) {
-    return fromTds;
+  if (row.tds !== null && row.tds !== undefined && !Number.isNaN(Number(row.tds))) {
+    return Number(row.tds) * 2;
   }
 
   return null;

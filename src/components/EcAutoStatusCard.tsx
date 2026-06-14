@@ -125,10 +125,15 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
             </p>
           </div>
           <div>
-            <p className="text-dark-textSecondary mb-0.5">Intervalo / tolerância</p>
+            <p className="text-dark-textSecondary mb-0.5">Banda morta / intervalo</p>
             <p className="text-lg font-semibold text-dark-text tabular-nums">
-              {ecConfig.intervalo_auto_ec}s · ±{ecConfig.tolerance} µS/cm
+              {ecConfig.tolerance} µS/cm · {ecConfig.intervalo_auto_ec}s
             </p>
+            {ecConfig.ec_setpoint > 0 && (
+              <p className="text-xs text-dark-textSecondary mt-0.5">
+                Limite: {ecConfig.ec_setpoint - ecConfig.tolerance} µS/cm
+              </p>
+            )}
           </div>
         </div>
       </div>

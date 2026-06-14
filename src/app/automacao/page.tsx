@@ -33,12 +33,10 @@ import {
   mergeRelayStatesMap,
   RELAY_REST_FALLBACK_MS,
 } from '@/lib/realtime/relay-apply';
-import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
-import { resolveEcForDisplay, HYDRO_EC_FALLBACK_MS } from '@/lib/realtime/hydro-ec';
-import { resolvePhForDisplay } from '@/lib/realtime/hydro-ph';
 import PhControllerPanel from '@/components/PhControllerPanel';
 import { useLastDosage } from '@/hooks/useLastDosage';
 import { useEcOperationState } from '@/hooks/useEcOperationState';
+import { useHydroEcReading } from '@/hooks/useHydroEcReading';
 import { NutrientDosageDetail } from '@/components/NutrientDosageDetail';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import {
@@ -269,8 +267,6 @@ export default function AutomacaoPage() {
   
   // ✅ EC Controller - Status e Monitoramento
   const [ecError, setEcError] = useState<number>(0); // Erro atual (µS/cm)
-  const [ecAtual, setEcAtual] = useState<number | null>(null); // EC atual do sensor (null = inválido)
-  const [phAtual, setPhAtual] = useState<number | null>(null);
   // ✅ REMOVIDO: Nutrientes hardcodeados - agora inicia vazio e carrega apenas do Supabase
   const [nutrientsState, setNutrientsState] = useState<Array<{name: string, relayNumber: number, mlPerLiter: number}>>([]);
   const [isLoadingNutrients, setIsLoadingNutrients] = useState<Record<number, boolean>>({});
@@ -307,6 +303,29 @@ export default function AutomacaoPage() {
   const ecDeviceActive = Boolean(
     selectedDeviceId && selectedDeviceId !== 'default_device'
   );
+
+  const { ec: ecAtual, ph: phAtual } = useHydroEcReading(
+    selectedDeviceId,
+    ecDeviceActive
+  );
+
+  useEffect(() => {
+    if (ecAtual === null) {
+      setEcError(0);
+      return;
+    }
+    setEcError(ecSetpoint - ecAtual);
+  }, [ecAtual, ecSetpoint]);
+
+  const ecDoseThreshold = useMemo(
+    () => ecSetpoint - ecTolerance,
+    [ecSetpoint, ecTolerance]
+  );
+
+  const ecWithinDeadBand = useMemo(() => {
+    if (ecAtual === null || isNaN(ecAtual)) return null;
+    return ecAtual >= ecDoseThreshold;
+  }, [ecAtual, ecDoseThreshold]);
 
   const {
     totalMl: lastDosageMl,
@@ -487,9 +506,8 @@ export default function AutomacaoPage() {
     // Calcular k = baseDose / totalMlPerLiter
     const k = baseDose / totalMlPerLiter;
     
-    // Calcular u(t) = (V / (k × q)) × e
-    // Usar erro absoluto para garantir dosagem positiva
-    const error = Math.abs(ecError);
+    // u(t) = (V / (k × q)) × e — e = SP − EC (só déficit, alinhado ao firmware)
+    const error = Math.max(0, ecError);
     const totalUt = (totalVolume / (k * pumpFlowRate)) * error;
     
     // Se u(t) é muito pequeno ou zero, retornar null
@@ -870,69 +888,6 @@ export default function AutomacaoPage() {
     }
   }, [selectedDeviceId, nutrientsState, loadLocalRelayNames, saveECControllerConfig]);
   
-  // ✅ NOVO: Função para obter EC atual desde Supabase (hydro_measurements)
-  const fetchCurrentEC = useCallback(async () => {
-    if (!selectedDeviceId || selectedDeviceId === 'default_device') {
-      setEcAtual(null);
-      return;
-    }
-    
-    try {
-      const { data, error } = await supabase
-        .from('hydro_measurements')
-        .select('tds, ec, device_id, created_at')
-        .eq('device_id', selectedDeviceId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      if (error) {
-        console.warn('⚠️ [EC Controller] Erro ao buscar TDS:', error);
-        return;
-      }
-      
-      if (data) {
-        const ecValue = resolveEcForDisplay(data);
-
-        if (ecValue !== null) {
-          setEcAtual(ecValue);
-          console.log('✅ [EC Controller] EC atualizado:', {
-            tds: data.tds,
-            ec: ecValue,
-            setpoint: ecSetpoint,
-            error: ecValue - ecSetpoint,
-          });
-        } else {
-          setEcAtual(null);
-        }
-      } else {
-        console.warn('⚠️ [EC Controller] Nenhum dado TDS encontrado para device:', selectedDeviceId);
-      }
-    } catch (err) {
-      console.error('❌ [EC Controller] Erro ao buscar EC atual:', err);
-    }
-  }, [selectedDeviceId, ecSetpoint]);
-  
-  // ✅ SEMPRE recalcular o erro quando ecAtual ou ecSetpoint mudarem
-  useEffect(() => {
-    if (ecAtual === null) {
-      setEcError(0);
-      return;
-    }
-    const error = ecAtual - ecSetpoint;
-    setEcError(error);
-    console.log('📊 [EC Controller] Erro recalculado:', {
-      ecAtual: ecAtual.toFixed(1),
-      ecSetpoint: ecSetpoint.toFixed(1),
-      error: error.toFixed(1),
-    });
-  }, [ecAtual, ecSetpoint]);
-
-  const ecWithinTolerance = useMemo(() => {
-    if (ecAtual === null) return null;
-    return Math.abs(ecAtual - ecSetpoint) <= ecTolerance;
-  }, [ecAtual, ecSetpoint, ecTolerance]);
-
   const totalMlPerLiter = useMemo(
     () => nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0),
     [nutrientsState]
@@ -967,29 +922,6 @@ export default function AutomacaoPage() {
     window.addEventListener('flowRateUpdated', onFlowRateUpdated);
     return () => window.removeEventListener('flowRateUpdated', onFlowRateUpdated);
   }, [selectedDeviceId]);
-  
-  // EC Controller — WSS hydro_measurements + REST fallback lento
-  useEffect(() => {
-    if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
-
-    fetchCurrentEC();
-
-    const unsubscribe = subscribeSensorMeasurements(selectedDeviceId, {
-      onHydro: (row) => {
-        if (row.device_id && row.device_id !== selectedDeviceId) return;
-        const ec = resolveEcForDisplay(row);
-        setEcAtual(ec);
-        setPhAtual(resolvePhForDisplay(row));
-      },
-    });
-
-    const clearFallback = setVisibleInterval(fetchCurrentEC, HYDRO_EC_FALLBACK_MS);
-
-    return () => {
-      unsubscribe();
-      clearFallback();
-    };
-  }, [selectedDeviceId, fetchCurrentEC]);
 
   // ✅ Auto-expandir seção e slave quando há apenas 1 slave
   useEffect(() => {
@@ -3140,7 +3072,7 @@ export default function AutomacaoPage() {
                   </summary>
                   <div className="mt-3 space-y-2 text-xs sm:text-sm text-dark-textSecondary leading-relaxed">
                     <p><strong className="text-dark-text">1. Plano nutricional</strong> — Adicione nutrientes, associe cada um a um relé e defina ml/L (mín. {MIN_NUTRIENT_ML_PER_LITER}). Calibre a bomba em Calibragem.</p>
-                    <p><strong className="text-dark-text">2. Parâmetros hidropônicos</strong> — Base de dose (EC da solução stock), setpoint desejado e <strong>tolerância (banda morta)</strong>. O firmware só dosifica se |EC − setpoint| &gt; tolerância.</p>
+                    <p><strong className="text-dark-text">2. Parâmetros hidropônicos</strong> — Base de dose (EC da solução stock), setpoint desejado e <strong>banda morta</strong>. O firmware só dosifica se EC &lt; setpoint − banda (só por baixo do SP).</p>
                     <p><strong className="text-dark-text">3. Parâmetros de ciclo</strong> — Intervalo entre <em>verificações</em> de EC (não confundir com pausa entre nutrientes no firmware, ~3 s). Tempo de recirculação após cada dose.</p>
                     <p><strong className="text-dark-text">4. Salvar → Ativar</strong> — Salve os parâmetros, depois Ativar Auto EC. O ESP32 recebe a config via RPC <code className="text-aqua-400">activate_auto_ec</code>.</p>
                     <p className="text-dark-textSecondary/80">Guia completo: menu <Link href="/informacao" className="text-aqua-400 hover:underline">Informação</Link>.</p>
@@ -3465,7 +3397,7 @@ export default function AutomacaoPage() {
                       placeholder="Ex: 50"
                     />
                     <small className="text-xs text-aqua-400 mt-1 block">
-                      Sem dosagem enquanto |EC − setpoint| ≤ {ecTolerance} µS/cm
+                      Sem dosagem se EC ≥ setpoint − {ecTolerance} µS/cm (banda só por baixo do SP)
                     </small>
                   </div>
                 </div>
@@ -3646,34 +3578,40 @@ export default function AutomacaoPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-base text-dark-textSecondary">Setpoint:</span>
-                        <span className="text-base font-medium text-dark-text">
-                          {formatSensorValue(ecSetpoint, 0)} µS/cm ± {ecTolerance}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-base text-dark-textSecondary">Erro (|EC − SP|):</span>
-                        <span className="text-base font-medium text-dark-text">
-                          {ecAtual !== null
-                            ? `${formatSensorValue(Math.abs(ecError), 1)} µS/cm`
-                            : '-- µS/cm'}
+                        <span className="text-base font-medium text-dark-text tabular-nums">
+                          {formatSensorValue(ecSetpoint, 0)} µS/cm
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-base text-dark-textSecondary">Banda morta:</span>
+                        <span className="text-base font-medium text-dark-text tabular-nums">
+                          ± {formatSensorValue(ecTolerance, 0)} µS/cm
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-base text-dark-textSecondary">Erro (SP − EC):</span>
+                        <span className="text-base font-medium text-dark-text tabular-nums">
+                          {ecAtual !== null
+                            ? `${formatSensorValue(Math.max(0, ecError), 1)} µS/cm`
+                            : '-- µS/cm'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-base text-dark-textSecondary">Zona de controle:</span>
                         <span
                           className={`text-base font-medium ${
-                            ecWithinTolerance === true
+                            ecWithinDeadBand === true
                               ? 'text-green-400'
-                              : ecWithinTolerance === false
+                              : ecWithinDeadBand === false
                                 ? 'text-amber-400'
                                 : 'text-dark-text'
                           }`}
                         >
-                          {ecWithinTolerance === null
+                          {ecWithinDeadBand === null
                             ? '--'
-                            : ecWithinTolerance
-                              ? '✓ Dentro da tolerância'
-                              : '⚡ Ajuste necessário'}
+                            : ecWithinDeadBand
+                              ? '✓ Sem dosagem (EC ≥ limite)'
+                              : '⚡ Ajuste Kp (EC abaixo da banda)'}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -3720,8 +3658,12 @@ export default function AutomacaoPage() {
                         <span className="text-dark-text font-medium">{pumpFlowRate.toFixed(3)} ml/s</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-dark-textSecondary">e (Erro EC):</span>
-                        <span className="text-dark-text font-medium">{formatSensorValue(Math.abs(ecError), 1)} µS/cm</span>
+                        <span className="text-dark-textSecondary">e (SP − EC):</span>
+                        <span className="text-dark-text font-medium">
+                          {ecAtual !== null
+                            ? `${formatSensorValue(Math.max(0, ecError), 1)} µS/cm`
+                            : '--'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -4199,7 +4141,7 @@ export default function AutomacaoPage() {
                   <p><strong className="text-purple-300">volume:</strong> Volume total do reservatório (L)</p>
                   <p><strong className="text-purple-300">total_ml:</strong> Soma de ml/L de todos os nutrientes</p>
                   <p><strong className="text-purple-300">ec_setpoint:</strong> Setpoint desejado de EC (µS/cm)</p>
-                  <p><strong className="text-purple-300">tolerance:</strong> Banda morta em µS/cm — firmware usa needsAdjustment se |erro| &gt; tolerance</p>
+                  <p><strong className="text-purple-300">tolerance:</strong> Banda morta em µS/cm — needsAdjustment se (SP − EC) &gt; tolerance</p>
                   <p><strong className="text-purple-300">auto_enabled:</strong> Controle automático ativado?</p>
                   <p><strong className="text-purple-300">nutrients:</strong> Array de nutrientes com relés e ml/L</p>
                   <p><strong className="text-purple-300">intervalo_auto_ec:</strong> Intervalo entre verificações de EC (segundos)</p>

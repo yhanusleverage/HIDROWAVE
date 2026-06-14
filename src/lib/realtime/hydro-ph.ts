@@ -27,11 +27,16 @@ export function resolvePhPlausible(
   return isPlausiblePh(ph) ? ph : null;
 }
 
+/**
+ * pH para display na UI — alinhado ao dashboard (aceita qualquer pH numérico finito).
+ */
 export function resolvePhForDisplay(
   row: { ph?: number | null } | null | undefined
 ): number | null {
-  const ph = resolvePh(row);
-  if (ph === null) return null;
-  if (!Number.isFinite(ph)) return null;
-  return ph;
+  if (!row) return null;
+  if (row.ph !== null && row.ph !== undefined && !Number.isNaN(Number(row.ph))) {
+    const n = Number(row.ph);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
