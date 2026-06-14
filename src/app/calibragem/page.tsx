@@ -22,6 +22,7 @@ import {
   formatFlowRateMlPerMin,
   CALIBRATION_TEST_DURATIONS_SEC,
 } from '@/lib/pump-calibration';
+import { PhCalibrationSection } from '@/components/PhCalibrationSection';
 
 const STEPS = [
   {
@@ -65,6 +66,7 @@ export default function CalibragemPage() {
   const [testRelayNumber, setTestRelayNumber] = useState(0);
   const [testVolumeMl, setTestVolumeMl] = useState(5);
   const [relayOptions, setRelayOptions] = useState<Array<{ number: number; name: string }>>([]);
+  const [activeTab, setActiveTab] = useState<'vazao' | 'ph'>('vazao');
 
   const calculatedRate = calculateFlowRateMlPerSecond(measuredVolumeMl, measuredDurationSec);
 
@@ -206,7 +208,7 @@ export default function CalibragemPage() {
                 Calibragem
               </h1>
               <p className="text-dark-textSecondary mt-1 text-sm">
-                Vazão das bombas peristálticas (ml/s) — usada na dosagem automática de nutrientes
+                Vazão das bombas (ml/s) e calibragem química pH+/pH−
               </p>
             </div>
             {devices.length > 0 && (
@@ -227,6 +229,39 @@ export default function CalibragemPage() {
       </header>
 
       <main className="max-w-4xl mx-auto py-8 px-4 sm:px-6 space-y-8">
+        <div className="flex gap-2 border-b border-dark-border pb-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('vazao')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              activeTab === 'vazao'
+                ? 'bg-dark-card text-aqua-400 border border-dark-border border-b-transparent -mb-px'
+                : 'text-dark-textSecondary hover:text-dark-text'
+            }`}
+          >
+            Vazão EC / bombas
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('ph')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              activeTab === 'ph'
+                ? 'bg-dark-card text-violet-400 border border-dark-border border-b-transparent -mb-px'
+                : 'text-dark-textSecondary hover:text-dark-text'
+            }`}
+          >
+            Calibragem química pH
+          </button>
+        </div>
+
+        {activeTab === 'ph' ? (
+          selectedDeviceId ? (
+            <PhCalibrationSection deviceId={selectedDeviceId} relayOptions={relayOptions} />
+          ) : (
+            <p className="text-dark-textSecondary text-sm">Selecione um dispositivo.</p>
+          )
+        ) : (
+          <>
         {/* Explicação */}
         <section className="bg-gradient-to-br from-aqua-500/10 to-primary-500/10 border border-aqua-500/30 rounded-xl p-5">
           <div className="flex gap-3">
@@ -456,9 +491,11 @@ export default function CalibragemPage() {
               ← Voltar para Automação
             </Link>
             {' · '}
-            A vazão calibrada é usada automaticamente no controle de EC e na tabela de nutrição.
+            A vazão calibrada é usada no controle de EC, nutrição e bombas pH (se calibradas na aba pH).
           </p>
         </section>
+          </>
+        )}
       </main>
     </div>
   );

@@ -14,6 +14,14 @@ import { supabase } from '@/lib/supabase';
 import { usePhOperationState } from '@/hooks/usePhOperationState';
 import { formatFlowRate } from '@/lib/pump-calibration';
 import { formatSensorValue } from '@/lib/format-sensor-value';
+import { PhDosageDetail } from '@/components/PhDosageDetail';
+import { isPlausiblePh } from '@/lib/realtime/hydro-ph';
+import {
+  formatPhCalibrationLine,
+  mlPerLiterPerPhUnit,
+  formatMlPerPhUnit,
+  formatMlPerLiterPerPhUnit,
+} from '@/lib/ph-calibration';
 
 interface RelayOption {
   number: number;
@@ -95,12 +103,14 @@ export default function PhControllerPanel({
   const [flowRatePhUp, setFlowRatePhUp] = useState(1.0);
   const [flowRatePhDown, setFlowRatePhDown] = useState(1.0);
   const [volume, setVolume] = useState(100);
-  const [mlPerPhUnit, setMlPerPhUnit] = useState(2.0);
+  const [mlPerPhUnitAcid, setMlPerPhUnitAcid] = useState(2.0);
+  const [mlPerPhUnitBase, setMlPerPhUnitBase] = useState(2.0);
   const [relayPhUp, setRelayPhUp] = useState(1);
   const [relayPhDown, setRelayPhDown] = useState(0);
   const [intervaloAutoPh, setIntervaloAutoPh] = useState(300);
   const [tempoRecirculacao, setTempoRecirculacao] = useState(60);
   const [autoEnabled, setAutoEnabled] = useState(false);
+  const [aggressiveness, setAggressiveness] = useState(0.5);
 
   const phOp = usePhOperationState(deviceId, Boolean(deviceId), {
     intervalCeilingSec: intervaloAutoPh,
@@ -110,20 +120,41 @@ export default function PhControllerPanel({
   const loadConfig = useCallback(async () => {
     if (!deviceId || justSavedRef.current) return;
     try {
-      const res = await fetch(`/api/ph-controller/config?device_id=${encodeURIComponent(deviceId)}`);
-      if (!res.ok) return;
-      const data = await res.json();
+      const [phRes, ecRes] = await Promise.all([
+        fetch(`/api/ph-controller/config?device_id=${encodeURIComponent(deviceId)}`),
+        fetch(`/api/ec-controller/config?device_id=${encodeURIComponent(deviceId)}`),
+      ]);
+      if (!phRes.ok) return;
+      const data = await phRes.json();
+
+      let syncedVolume = Number(data.volume) || 100;
+      if (ecRes.ok) {
+        const ecData = await ecRes.json();
+        const ecVol = Number(ecData.volume);
+        if (Number.isFinite(ecVol) && ecVol > 0) syncedVolume = ecVol;
+      }
+
       setPhSetpoint(Number(data.ph_setpoint) || 6.0);
       setPhTolerance(Number(data.ph_tolerance) || 0.2);
       setFlowRatePhUp(Number(data.flow_rate_ph_up) || 1.0);
       setFlowRatePhDown(Number(data.flow_rate_ph_down) || 1.0);
-      setVolume(Number(data.volume) || 100);
-      setMlPerPhUnit(Number(data.ml_per_ph_unit) || 2.0);
+      setVolume(syncedVolume);
+      setMlPerPhUnitAcid(
+        data.ml_per_ph_unit_acid != null
+          ? Number(data.ml_per_ph_unit_acid)
+          : Number(data.ml_per_ph_unit) || 2.0
+      );
+      setMlPerPhUnitBase(
+        data.ml_per_ph_unit_base != null
+          ? Number(data.ml_per_ph_unit_base)
+          : Number(data.ml_per_ph_unit) || 2.0
+      );
       setRelayPhUp(Number(data.relay_ph_up) ?? 1);
       setRelayPhDown(Number(data.relay_ph_down) ?? 0);
       setIntervaloAutoPh(Number(data.intervalo_auto_ph) || 300);
       setTempoRecirculacao(Number(data.tempo_recirculacao) || 60);
       setAutoEnabled(Boolean(data.auto_enabled));
+      setAggressiveness(Number(data.aggressiveness) || 0.5);
     } catch (err) {
       console.error('[PH Controller] load error', err);
     }
@@ -132,6 +163,12 @@ export default function PhControllerPanel({
   useEffect(() => {
     loadConfig();
   }, [loadConfig]);
+
+  useEffect(() => {
+    if (!deviceId || !autoEnabled) return;
+    const id = setInterval(loadConfig, 30000);
+    return () => clearInterval(id);
+  }, [deviceId, autoEnabled, loadConfig]);
 
   const saveConfig = useCallback(async (silent = false) => {
     if (!deviceId) return false;
@@ -146,12 +183,14 @@ export default function PhControllerPanel({
           flow_rate_ph_up: flowRatePhUp,
           flow_rate_ph_down: flowRatePhDown,
           volume,
-          ml_per_ph_unit: mlPerPhUnit,
+          ml_per_ph_unit_acid: mlPerPhUnitAcid,
+          ml_per_ph_unit_base: mlPerPhUnitBase,
           relay_ph_up: relayPhUp,
           relay_ph_down: relayPhDown,
           intervalo_auto_ph: intervaloAutoPh,
           tempo_recirculacao: tempoRecirculacao,
           auto_enabled: autoEnabled,
+          aggressiveness,
         }),
       });
       if (!res.ok) {
@@ -167,15 +206,14 @@ export default function PhControllerPanel({
       return false;
     }
   }, [
-    deviceId, phSetpoint, phTolerance, flowRatePhUp, flowRatePhDown,
-    volume, mlPerPhUnit, relayPhUp, relayPhDown, intervaloAutoPh,
-    tempoRecirculacao, autoEnabled,
+    deviceId, phSetpoint, phTolerance, flowRatePhUp, flowRatePhDown, volume,
+    mlPerPhUnitAcid, mlPerPhUnitBase, relayPhUp, relayPhDown, intervaloAutoPh,
+    tempoRecirculacao, autoEnabled, aggressiveness,
   ]);
 
   const toggleAutoPh = async () => {
     if (!deviceId) return;
-    const next = !autoEnabled;
-    if (next) {
+    if (!autoEnabled) {
       const saved = await saveConfig(true);
       if (!saved) return;
       const { error } = await supabase.rpc('activate_auto_ph', { p_device_id: deviceId });
@@ -207,20 +245,37 @@ export default function PhControllerPanel({
     }
   };
 
-  const phError =
-    currentPh != null ? currentPh - phSetpoint : null;
+  const displayPh = isPlausiblePh(currentPh) ? currentPh : null;
+  const phError = displayPh != null ? displayPh - phSetpoint : null;
+
+  const phDirection = useMemo(() => {
+    if (displayPh === null) return '--';
+    if (Math.abs(displayPh - phSetpoint) <= phTolerance) return 'Neutro';
+    return displayPh < phSetpoint ? 'pH+ (base)' : 'pH− (ácido)';
+  }, [displayPh, phSetpoint, phTolerance]);
 
   const phWithinTolerance = useMemo(() => {
-    if (currentPh === null) return null;
-    return Math.abs(currentPh - phSetpoint) <= phTolerance;
-  }, [currentPh, phSetpoint, phTolerance]);
+    if (displayPh === null) return null;
+    return Math.abs(displayPh - phSetpoint) <= phTolerance;
+  }, [displayPh, phSetpoint, phTolerance]);
+
+  const calibBaseLine = formatPhCalibrationLine(
+    'pH+ (base)',
+    mlPerPhUnitBase,
+    volume,
+    flowRatePhUp
+  );
+  const calibAcidLine = formatPhCalibrationLine(
+    'pH− (ácido)',
+    mlPerPhUnitAcid,
+    volume,
+    flowRatePhDown
+  );
 
   const formatCountdown = (totalSec: number): string => {
     const minutes = Math.floor(totalSec / 60);
     const seconds = totalSec % 60;
-    if (minutes > 0) {
-      return `${minutes}:${String(seconds).padStart(2, '0')}`;
-    }
+    if (minutes > 0) return `${minutes}:${String(seconds).padStart(2, '0')}`;
     return `${seconds}s`;
   };
 
@@ -238,9 +293,7 @@ export default function PhControllerPanel({
           ) : (
             <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
           )}
-          <h3 className="text-lg font-semibold text-dark-text">
-            🧪 Controle Automático de pH
-          </h3>
+          <h3 className="text-lg font-semibold text-dark-text">🧪 Controle Automático de pH</h3>
         </div>
         <button
           onClick={(e) => {
@@ -260,10 +313,19 @@ export default function PhControllerPanel({
       {expanded && (
         <div className="p-4 sm:p-6 border-t border-dark-border">
           <p className="text-xs sm:text-sm text-dark-textSecondary mb-4">
-            Controle proporcional bidirecional (pH+ / pH-) com setpoint e tolerância.
+            Calibre ácido e base em{' '}
+            <Link href="/calibragem" className="text-violet-400 hover:underline">/calibragem</Link>
+            ; aqui regula apenas objetivo (pH, tolerância) e agressividade A.
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          {currentPh !== null && displayPh === null && (
+            <p className="text-xs text-amber-400 mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+              Leitura pH inválida ({String(currentPh)}). Aguardando valor entre 4.0 e 9.0.
+            </p>
+          )}
+
+          <h4 className="text-sm font-semibold text-violet-400 mb-2">Objetivo</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div>
               <label className="block text-sm text-dark-textSecondary mb-1">Setpoint pH</label>
               <input
@@ -291,6 +353,26 @@ export default function PhControllerPanel({
               />
             </div>
             <div>
+              <label className="block text-sm text-dark-textSecondary mb-1">
+                Agressividade A ({aggressiveness.toFixed(2)})
+              </label>
+              <input
+                type="range"
+                min="0.2"
+                max="1"
+                step="0.05"
+                value={aggressiveness}
+                disabled={disabled}
+                onChange={(e) => setAggressiveness(parseFloat(e.target.value))}
+                className="w-full accent-violet-500 disabled:opacity-50"
+              />
+              <span className="text-xs text-dark-textSecondary">0.2 conservador — 1.0 agressivo</span>
+            </div>
+          </div>
+
+          <h4 className="text-sm font-semibold text-violet-400 mb-2">Actuação</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <div>
               <label className="block text-sm text-dark-textSecondary mb-1">Relé pH+</label>
               <select
                 value={relayPhUp}
@@ -304,7 +386,7 @@ export default function PhControllerPanel({
               </select>
             </div>
             <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">Relé pH-</label>
+              <label className="block text-sm text-dark-textSecondary mb-1">Relé pH−</label>
               <select
                 value={relayPhDown}
                 disabled={disabled}
@@ -315,60 +397,6 @@ export default function PhControllerPanel({
                   <option key={r.number} value={r.number}>{r.number}: {r.name}</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">ml/unidade pH</label>
-              <input
-                type="number"
-                step="0.1"
-                min="0.1"
-                value={mlPerPhUnit}
-                disabled={disabled}
-                onChange={(e) => setMlPerPhUnit(parseFloat(e.target.value) || 2)}
-                className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text disabled:opacity-50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">Vazão pH+</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={flowRatePhUp}
-                disabled={disabled}
-                onChange={(e) => setFlowRatePhUp(parseFloat(e.target.value) || 1)}
-                className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text disabled:opacity-50"
-              />
-              <span className="text-xs text-dark-textSecondary">{formatFlowRate(flowRatePhUp)}</span>
-            </div>
-            <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">Vazão pH-</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={flowRatePhDown}
-                disabled={disabled}
-                onChange={(e) => setFlowRatePhDown(parseFloat(e.target.value) || 1)}
-                className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text disabled:opacity-50"
-              />
-              <span className="text-xs text-dark-textSecondary">{formatFlowRate(flowRatePhDown)}</span>
-            </div>
-            <div>
-              <Link href="/calibragem" className="text-sm text-violet-400 hover:underline">
-                Calibrar bombas → /calibragem
-              </Link>
-            </div>
-            <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">Intervalo verificação (s)</label>
-              <input
-                type="number"
-                min="60"
-                value={intervaloAutoPh}
-                disabled={disabled}
-                onChange={(e) => setIntervaloAutoPh(parseInt(e.target.value, 10) || 300)}
-                className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text disabled:opacity-50"
-              />
             </div>
             <div>
               <label className="block text-sm text-dark-textSecondary mb-1">Recirculação (s)</label>
@@ -383,9 +411,24 @@ export default function PhControllerPanel({
             </div>
           </div>
 
+          <h4 className="text-sm font-semibold text-violet-400 mb-2">Cadência</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            <div>
+              <label className="block text-sm text-dark-textSecondary mb-1">Intervalo verificação (s)</label>
+              <input
+                type="number"
+                min="60"
+                value={intervaloAutoPh}
+                disabled={disabled}
+                onChange={(e) => setIntervaloAutoPh(parseInt(e.target.value, 10) || 300)}
+                className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text disabled:opacity-50"
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div className="bg-dark-surface border border-dark-border rounded-lg p-4" aria-live="polite">
-              <h4 className="text-base font-semibold text-dark-text mb-3">📊 Status do Controle</h4>
+              <h4 className="text-base font-semibold text-dark-text mb-3">Status do Controle</h4>
               <div className="space-y-2.5">
                 {phOp.isDosando && (
                   <div className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-lg bg-violet-500/15 border border-violet-500/40">
@@ -394,30 +437,19 @@ export default function PhControllerPanel({
                     </span>
                   </div>
                 )}
-                {!phOp.isDosando &&
-                  autoEnabled &&
-                  phOp.isAguardandoRecirculacao &&
-                  phOp.operationRemainingSec > 0 && (
+                {!phOp.isDosando && autoEnabled && phOp.isAguardandoRecirculacao && phOp.operationRemainingSec > 0 && (
                   <div className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-lg bg-cyan-500/15 border border-cyan-500/40">
                     <ClockIcon className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
-                    <span className="text-base font-semibold text-cyan-400 tracking-wide">
-                      Aguardando recirculação
-                    </span>
+                    <span className="text-base font-semibold text-cyan-400">Aguardando recirculação</span>
                     <span className="text-sm font-mono tabular-nums text-cyan-300/90 bg-cyan-500/10 px-2 py-0.5 rounded">
                       {formatCountdown(phOp.operationRemainingSec)}
                     </span>
                   </div>
                 )}
-                {!phOp.isDosando &&
-                  !phOp.isAguardandoRecirculacao &&
-                  autoEnabled &&
-                  phOp.isPhCheckPending &&
-                  phOp.nextCheckInSec > 0 && (
+                {!phOp.isDosando && !phOp.isAguardandoRecirculacao && autoEnabled && phOp.isPhCheckPending && phOp.nextCheckInSec > 0 && (
                   <div className="flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-lg bg-violet-500/15 border border-violet-500/40">
                     <ClockIcon className="w-4 h-4 text-violet-400 shrink-0" />
-                    <span className="text-base font-semibold text-violet-400 tracking-wide">
-                      Próxima verificação pH
-                    </span>
+                    <span className="text-base font-semibold text-violet-400">Próxima verificação pH</span>
                     <span className="text-sm font-mono tabular-nums text-violet-300/90 bg-violet-500/10 px-2 py-0.5 rounded">
                       {formatCountdown(phOp.nextCheckInSec)}
                     </span>
@@ -426,84 +458,59 @@ export default function PhControllerPanel({
                 <div className="flex justify-between">
                   <span className="text-base text-dark-textSecondary">Status:</span>
                   <span className={`text-base font-medium ${autoEnabled ? 'text-green-400' : 'text-red-400'}`}>
-                    {autoEnabled ? '✅ Ativado' : '❌ Desativado'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-base text-dark-textSecondary">Setpoint:</span>
-                  <span className="text-base font-medium text-dark-text">
-                    {formatSensorValue(phSetpoint, 2)} ± {formatSensorValue(phTolerance, 2)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-base text-dark-textSecondary">Erro (|pH − SP|):</span>
-                  <span className="text-base font-medium text-dark-text">
-                    {currentPh !== null && phError !== null
-                      ? formatSensorValue(Math.abs(phError), 2)
-                      : '--'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-base text-dark-textSecondary">Banda morta:</span>
-                  <span
-                    className={`text-base font-medium ${
-                      phWithinTolerance === true
-                        ? 'text-green-400'
-                        : phWithinTolerance === false
-                          ? 'text-amber-400'
-                          : 'text-dark-text'
-                    }`}
-                  >
-                    {phWithinTolerance === null
-                      ? '--'
-                      : phWithinTolerance
-                        ? '✓ Dentro da tolerância'
-                        : '⚡ Ajuste necessário'}
+                    {autoEnabled ? 'Ativado' : 'Desativado'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-base text-dark-textSecondary">pH Atual:</span>
-                  <span className="text-base font-medium text-dark-text tabular-nums">
-                    {currentPh !== null ? formatSensorValue(currentPh, 2) : '--'}
+                  <span className="text-base font-medium tabular-nums">
+                    {displayPh !== null ? formatSensorValue(displayPh, 2) : '--'}
                   </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-base text-dark-textSecondary">Erro (|pH − SP|):</span>
+                  <span className="text-base font-medium tabular-nums">
+                    {displayPh !== null && phError !== null ? formatSensorValue(Math.abs(phError), 2) : '--'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-base text-dark-textSecondary">Banda morta:</span>
+                  <span className={`text-base font-medium ${phWithinTolerance === true ? 'text-green-400' : phWithinTolerance === false ? 'text-amber-400' : 'text-dark-text'}`}>
+                    {phWithinTolerance === null ? '--' : phWithinTolerance ? 'Dentro da tolerância' : 'Ajuste necessário'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-base text-dark-textSecondary">Direção:</span>
+                  <span className="text-base font-medium">{phDirection}</span>
                 </div>
               </div>
             </div>
 
             <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-              <h4 className="text-base font-semibold text-dark-text mb-3">🧮 Controle Bidirecional</h4>
-              <div className="space-y-2.5 text-base">
-                <div className="flex justify-between">
-                  <span className="text-dark-textSecondary">Direção:</span>
-                  <span className="text-dark-text font-medium">
-                    {currentPh === null || phError === null
-                      ? '--'
-                      : phError > phTolerance
-                        ? 'pH- (baixar)'
-                        : phError < -phTolerance
-                          ? 'pH+ (subir)'
-                          : 'Neutro'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-dark-textSecondary">Relé pH+:</span>
-                  <span className="text-dark-text font-medium">
-                    {availableRelays.find((r) => r.number === relayPhUp)?.name ?? `Relé ${relayPhUp}`}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-dark-textSecondary">Relé pH-:</span>
-                  <span className="text-dark-text font-medium">
-                    {availableRelays.find((r) => r.number === relayPhDown)?.name ?? `Relé ${relayPhDown}`}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-dark-textSecondary">ml/unidade pH:</span>
-                  <span className="text-dark-text font-medium">{mlPerPhUnit}</span>
-                </div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-base font-semibold text-dark-text">Calibragem (read-only)</h4>
+                <Link href="/calibragem" className="text-xs text-violet-400 hover:underline">Editar →</Link>
+              </div>
+              <div className="space-y-3 text-sm">
+                <p className="text-dark-textSecondary leading-relaxed">{calibBaseLine}</p>
+                <p className="text-dark-textSecondary leading-relaxed">{calibAcidLine}</p>
+                <p className="text-xs text-dark-textSecondary border-t border-dark-border pt-2">
+                  Tanque: {volume} L · Base: {formatMlPerPhUnit(mlPerPhUnitBase)} ml/unid (
+                  {formatMlPerLiterPerPhUnit(mlPerLiterPerPhUnit(mlPerPhUnitBase, volume))} ml/L/unid)
+                </p>
+                <p className="text-xs text-dark-textSecondary">
+                  Ácido: {formatMlPerPhUnit(mlPerPhUnitAcid)} ml/unid (
+                  {formatMlPerLiterPerPhUnit(mlPerLiterPerPhUnit(mlPerPhUnitAcid, volume))} ml/L/unid)
+                  · Vazões: {formatFlowRate(flowRatePhUp)} / {formatFlowRate(flowRatePhDown)}
+                </p>
+                <p className="text-xs text-dark-textSecondary">
+                  Agressividade A: {aggressiveness.toFixed(2)}
+                </p>
               </div>
             </div>
           </div>
+
+          <PhDosageDetail deviceId={deviceId} enabled={autoEnabled} />
 
           <div className="flex flex-wrap gap-2">
             <button
@@ -532,11 +539,11 @@ export default function PhControllerPanel({
                   ph_operation_remaining_sec: 0,
                   ph_next_check_in_sec: 0,
                 }).eq('device_id', deviceId);
-                toast.error('🚨 Reset emergencial pH');
+                toast.error('Reset emergencial pH');
               }}
               className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg disabled:opacity-50"
             >
-              🚨 RESET EMERGENCIAL
+              RESET EMERGENCIAL
             </button>
           </div>
         </div>

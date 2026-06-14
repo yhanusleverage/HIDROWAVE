@@ -28,15 +28,24 @@ export function resolvePhPlausible(
 }
 
 /**
- * pH para display na UI — alinhado ao dashboard (aceita qualquer pH numérico finito).
+ * pH para display / Auto pH — rejeita lixo de sensor (ex.: 2e-39).
+ * Stale-while-revalidate: o hook só actualiza quando o valor passa QC.
  */
 export function resolvePhForDisplay(
   row: { ph?: number | null } | null | undefined
 ): number | null {
-  if (!row) return null;
-  if (row.ph !== null && row.ph !== undefined && !Number.isNaN(Number(row.ph))) {
-    const n = Number(row.ph);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
+  const ph = resolvePh(row);
+  return isPlausiblePh(ph) ? ph : null;
+}
+
+/** Seed Kacid/Kbase desde ml/unidade pH — espelha firmware AdaptivePHController. */
+export function seedKFromMlPerPhUnit(
+  phSetpoint: number,
+  mlPerPhUnit: number
+): number | null {
+  if (mlPerPhUnit < 0.01 || !isPlausiblePh(phSetpoint)) return null;
+  const H = Math.pow(10, -phSetpoint);
+  const erroHOneUnit = H * 9;
+  if (erroHOneUnit < 1e-15) return null;
+  return erroHOneUnit / mlPerPhUnit;
 }
