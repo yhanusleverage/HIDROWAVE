@@ -27,6 +27,17 @@
 | `scripts/CLEANUP_TEST_DEVICES.sql` | **Ya** — borrar ~1000 filas `TEST_*` |
 | `scripts/CRIAR_TABELA_NUTRIENT_DOSAGES.sql` | **Sendero Última dosagem** — `nutrient_dosages` + `relay_master.ec_operation_*` |
 | `scripts/VERIFICAR_NUTRIENT_DOSAGES_E2E.sql` | **Post-migración** — checklist SQL prod |
+| `scripts/ADD_PH_CONTROLLER_COLUMNS.sql` | **Auto pH** — `ph_dosages` + `relay_master.ph_operation_*` |
+| `scripts/MIGRATE_PH_ADAPTIVE.sql` | **Auto pH adaptativo** — K gains, límites |
+| `scripts/MIGRATE_PH_CALIBRATION.sql` | **Calibragem** — ml/unid ácido/base |
+| `scripts/CREATE_RPC_ACTIVATE_AUTO_PH.sql` | RPC activación Auto pH |
+| `scripts/VERIFICAR_PH_DOSAGES_E2E.sql` | **Post-migración pH** — checklist SQL prod |
+| `scripts/verify-ph-dosages-e2e.js` | **npm run verify:ph-dosages** — paridad EC |
+| `scripts/CRIAR_TABELA_EC_CONTROLLER_METRICS.sql` | **Métricas ciclo Auto EC** |
+| `scripts/CRIAR_TABELA_PH_CONTROLLER_METRICS.sql` | **Métricas ciclo Auto pH** |
+| `scripts/VERIFICAR_CONTROLLER_METRICS_E2E.sql` | Post-migración métricas |
+| `scripts/BANCADA_EC_REMAINDER_CHECKLIST.md` | Soak 24h + fallback HTTPS EC |
+| `scripts/reset-ph-operation.sql` | Reset estados huérfanos tras tests MQTT pH |
 
 ### Supabase Realtime (implementado en frontend)
 
@@ -38,6 +49,10 @@
 | Detalle nutrientes | `src/components/NutrientDosageDetail.tsx` | `nutrient_dosages` (Realtime por sequence_id) |
 | Realtime dosagens | `src/lib/realtime/nutrient-dosages.ts` | INSERT → UI |
 | Estado operacional EC | `src/hooks/useEcOperationState.ts` | `relay_master.ec_operation_state` |
+| Auto pH — estado | `src/hooks/usePhOperationState.ts` | `relay_master.ph_operation_*` |
+| Auto pH — dosagens | `src/lib/realtime/ph-dosages.ts` | INSERT → `PhDosageDetail` |
+| Métricas ciclo EC/pH | `src/lib/controller-metrics.ts` | `ec_controller_metrics`, `ph_controller_metrics` |
+| Gráfico métricas | `src/components/ControllerMetricsChart.tsx` | Dashboard — error + u(t) 24h |
 | Sensores dashboard | `src/lib/realtime/sensor-measurements.ts` | `hydro_measurements`, `environment_data` |
 
 WebSocket: browser → Supabase (no Railway). Ver `docs/MQTT_INTEGRACAO_FRONTEND.md`.
@@ -50,6 +65,31 @@ WebSocket: browser → Supabase (no Railway). Ver `docs/MQTT_INTEGRACAO_FRONTEND
 | `hidrowave/+/dose` | INSERT `nutrient_dosages` |
 
 Firmware: MQTT primario + HTTPS fallback (`HydroSystemCore::syncEcOperationStateToSupabase`, `handleNutrientDoseEvent`). Test: `infra/mqtt/bridge` → `npm run test:pub:ec-dose`.
+
+### Handoffs serial Auto pH
+
+| Doc | Uso |
+|-----|-----|
+| [`docs/handoffs/ph/00_INDICE_SERIAL.md`](handoffs/ph/00_INDICE_SERIAL.md) | **Entrada única** S01→S08 (SQL, NVS, calibragem, bridge, bancada) |
+| [`docs/HANDOFF_AUTO_PH_E2E.md`](HANDOFF_AUTO_PH_E2E.md) | Resumen 1 pantalla + links |
+
+### Bridge MQTT — Auto pH UX (implementado)
+
+| Tópico | Bridge action |
+|--------|---------------|
+| `hidrowave/+/ph_operation` | PATCH `relay_master.ph_operation_*` |
+| `hidrowave/+/ph_dose` | INSERT `ph_dosages` |
+
+Firmware: MQTT primario + HTTPS fallback (`syncPhOperationStateToSupabase`, `handlePhDoseEvent`). Test: `npm run test:pub:ph-dose`. Handoff: [`docs/handoffs/ph/S01_PH_DOSAGES_E2E.md`](handoffs/ph/S01_PH_DOSAGES_E2E.md).
+
+### Bridge MQTT — métricas de ciclo (implementado)
+
+| Tópico | Bridge action |
+|--------|---------------|
+| `hidrowave/+/ec_metric` | INSERT `ec_controller_metrics` |
+| `hidrowave/+/ph_metric` | INSERT `ph_controller_metrics` |
+
+Firmware: cada `checkAutoEC` / `checkAutoPH` con PV válido. Verificar: `npm run verify:controller-metrics`.
 
 ### Schema prod (contrato fijo)
 

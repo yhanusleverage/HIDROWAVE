@@ -74,26 +74,12 @@ COMMENT ON COLUMN public.relay_master.ec_operation_remaining_sec IS
 COMMENT ON COLUMN public.relay_master.ec_next_check_in_sec IS
   'Segundos até próximo checkAutoEC (intervalo_auto_ec).';
 
--- ─── 3. RLS nutrient_dosages ───
-ALTER TABLE public.nutrient_dosages ENABLE ROW LEVEL SECURITY;
+-- ─── 3. RLS nutrient_dosages (alinhado com ph_dosages em prod) ───
+-- Bridge MQTT + ESP HTTPS insertam; UI lê com authenticated/anon.
+ALTER TABLE public.nutrient_dosages DISABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS nutrient_dosages_select_own ON public.nutrient_dosages;
 DROP POLICY IF EXISTS nutrient_dosages_insert_device ON public.nutrient_dosages;
-
-CREATE POLICY nutrient_dosages_select_own ON public.nutrient_dosages
-  FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.device_status ds
-      WHERE ds.device_id = nutrient_dosages.device_id
-        AND lower(ds.user_email) = lower(auth.jwt() ->> 'email')
-    )
-  );
-
--- ESP32 usa anon key (mesmo padrão hydro_measurements)
-CREATE POLICY nutrient_dosages_insert_device ON public.nutrient_dosages
-  FOR INSERT TO anon, authenticated
-  WITH CHECK (device_id IS NOT NULL AND length(trim(device_id)) > 0);
 
 -- ─── 4. Realtime (opcional — executar se publication existir) ───
 DO $$

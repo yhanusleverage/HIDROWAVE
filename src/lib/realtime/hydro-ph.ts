@@ -1,7 +1,7 @@
 /** Fallback REST lento para pH si Realtime pierde eventos. */
 export const HYDRO_PH_FALLBACK_MS = 90 * 1000;
 
-/** pH plausível para hidroponia. */
+/** Faixa hidroponia — só QC visual opcional; não bloqueia controle em dev. */
 export const PH_MIN_PLAUSIBLE = 4.0;
 export const PH_MAX_PLAUSIBLE = 9.0;
 
@@ -10,6 +10,13 @@ export function isPlausiblePh(ph: number | null | undefined): ph is number {
   const n = Number(ph);
   if (Number.isNaN(n) || !Number.isFinite(n)) return false;
   return n >= PH_MIN_PLAUSIBLE && n <= PH_MAX_PLAUSIBLE;
+}
+
+/** pH parseado e finito — sem filtro de intervalo (paridade com resolveEcForDisplay). */
+export function isFinitePh(ph: number | null | undefined): ph is number {
+  if (ph === null || ph === undefined) return false;
+  const n = Number(ph);
+  return !Number.isNaN(n) && Number.isFinite(n);
 }
 
 export function resolvePh(
@@ -28,24 +35,28 @@ export function resolvePhPlausible(
 }
 
 /**
- * pH para display / Auto pH — rejeita lixo de sensor (ex.: 2e-39).
- * Stale-while-revalidate: o hook só actualiza quando o valor passa QC.
+ * pH para display / Auto pH — alinhado ao EC: aceita qualquer valor finito parseado.
+ * Rejeita apenas NaN / ±Infinity (lixo de parse).
  */
 export function resolvePhForDisplay(
   row: { ph?: number | null } | null | undefined
 ): number | null {
   const ph = resolvePh(row);
-  return isPlausiblePh(ph) ? ph : null;
+  return isFinitePh(ph) ? ph : null;
 }
 
-/** Seed Kacid/Kbase desde ml/unidade pH — espelha firmware AdaptivePHController. */
-export function seedKFromMlPerPhUnit(
-  phSetpoint: number,
-  mlPerPhUnit: number
+/**
+ * pH para controle Auto pH — qualquer valor finito (paridade firmware isfinite + EC).
+ * Use isPlausiblePh apenas para QC visual opcional.
+ */
+export function resolvePhForControl(
+  row: { ph?: number | null } | null | undefined
 ): number | null {
-  if (mlPerPhUnit < 0.01 || !isPlausiblePh(phSetpoint)) return null;
-  const H = Math.pow(10, -phSetpoint);
-  const erroHOneUnit = H * 9;
-  if (erroHOneUnit < 1e-15) return null;
-  return erroHOneUnit / mlPerPhUnit;
+  return resolvePhForDisplay(row);
+}
+
+export function resolvePhForControlValue(ph: number | null | undefined): number | null {
+  if (ph == null) return null;
+  const n = Number(ph);
+  return isFinitePh(n) ? n : null;
 }

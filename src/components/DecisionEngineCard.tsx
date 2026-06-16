@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'react-hot-toast';
-import { Cog6ToothIcon, PlayIcon, PauseIcon, PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { Cog6ToothIcon, PlayIcon, PauseIcon, PlusIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import SequentialScriptEditor from './SequentialScriptEditor';
+import { formatInstructionType } from '@/lib/instruction-labels';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface DecisionEngineCardProps {
@@ -135,7 +136,7 @@ export default function DecisionEngineCard({ deviceId }: DecisionEngineCardProps
 
   return (
     <>
-      <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden">
+      <div className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg overflow-hidden">
         <div className="p-4 border-b border-dark-border flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Cog6ToothIcon className="w-5 h-5 text-aqua-400" />
@@ -221,7 +222,7 @@ export default function DecisionEngineCard({ deviceId }: DecisionEngineCardProps
                         className="p-2 hover:bg-dark-surface rounded-lg transition-colors"
                         title="Excluir"
                       >
-                        <TrashIcon className="w-4 h-4 text-red-400" />
+                        <XMarkIcon className="w-4 h-4 text-red-400" />
                       </button>
                     </div>
                   </div>
@@ -231,7 +232,7 @@ export default function DecisionEngineCard({ deviceId }: DecisionEngineCardProps
                     <div className="mt-2 text-xs text-gray-400 space-y-1 font-mono">
                       {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
                         <div key={idx} className="text-aqua-300">
-                          {idx + 1}. {instr.type.toUpperCase()}
+                          {idx + 1}. {formatInstructionType(instr.type)}
                           {instr.condition && (
                             <span className="ml-2 text-gray-400">
                               {instr.condition.sensor} {instr.condition.operator} {instr.condition.value}

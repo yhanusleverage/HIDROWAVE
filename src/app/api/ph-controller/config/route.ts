@@ -1,5 +1,14 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import {
+  validatePhRelayAssignment,
+  type EcNutrientRelaySlice,
+} from '@/lib/relay-allocation';
+import {
+  stripPhWritableConfig,
+  sanitizePhNumericFields,
+  configApiErrorResponse,
+} from '@/lib/controller-config-api';
 
 const DEFAULT_PH_CONFIG = {
   ph_setpoint: 6.0,
@@ -31,7 +40,10 @@ export async function GET(request: Request) {
     const deviceId = searchParams.get('device_id');
 
     if (!deviceId) {
-      return NextResponse.json({ error: 'device_id é obrigatório' }, { status: 400 });
+      return NextResponse.json(
+        configApiErrorResponse('device_id é obrigatório', 400),
+        { status: 400 }
+      );
     }
 
     const { data, error } = await supabase
@@ -45,39 +57,76 @@ export async function GET(request: Request) {
     }
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        configApiErrorResponse(error.message || 'Erro ao buscar ph_config_view', 500, {
+          code: error.code,
+        }),
+        { status: 500 }
+      );
     }
 
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
+      configApiErrorResponse(
+        error instanceof Error ? error.message : 'Internal server error',
+        500
+      ),
       { status: 500 }
     );
   }
 }
 
-function stripReadOnlyFields(config: Record<string, unknown>): Record<string, unknown> {
-  const {
-    id: _id,
-    created_at: _ca,
-    k_acid: _ka,
-    k_base: _kb,
-    ...rest
-  } = config;
-  return rest;
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { device_id, ...config } = body;
+    const { device_id, ...rawConfig } = body;
 
-    if (!device_id) {
-      return NextResponse.json({ error: 'device_id é obrigatório' }, { status: 400 });
+    if (!device_id || typeof device_id !== 'string') {
+      return NextResponse.json(
+        configApiErrorResponse('device_id é obrigatório', 400),
+        { status: 400 }
+      );
     }
 
-    const writableConfig = stripReadOnlyFields(config as Record<string, unknown>);
+    let writableConfig = sanitizePhNumericFields(
+      stripPhWritableConfig(rawConfig as Record<string, unknown>)
+    );
+
+    const { data: existingPh } = await supabase
+      .from('ph_config_view')
+      .select('relay_ph_up, relay_ph_down')
+      .eq('device_id', device_id)
+      .maybeSingle();
+
+    const relayPhUp = Number(
+      writableConfig.relay_ph_up ?? existingPh?.relay_ph_up ?? 1
+    );
+    const relayPhDown = Number(
+      writableConfig.relay_ph_down ?? existingPh?.relay_ph_down ?? 0
+    );
+
+    const { data: ecRow } = await supabase
+      .from('ec_config_view')
+      .select('nutrients')
+      .eq('device_id', device_id)
+      .maybeSingle();
+
+    const phRelayCheck = validatePhRelayAssignment(
+      relayPhUp,
+      relayPhDown,
+      (ecRow?.nutrients as EcNutrientRelaySlice[] | null) ?? []
+    );
+    if (!phRelayCheck.ok) {
+      return NextResponse.json(
+        configApiErrorResponse(
+          phRelayCheck.error || 'Conflito de relés pH/EC',
+          400,
+          { code: 'RELAY_CONFLICT' }
+        ),
+        { status: 400 }
+      );
+    }
 
     if (typeof writableConfig.aggressiveness === 'number') {
       const a = writableConfig.aggressiveness as number;
@@ -112,13 +161,33 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('Erro ao salvar config pH:', {
+        message: error.message,
+        code: error.code,
+        device_id,
+        keys: Object.keys(writableConfig),
+      });
+      return NextResponse.json(
+        configApiErrorResponse(
+          error.message || 'Falha ao gravar ph_config_view',
+          500,
+          {
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+          }
+        ),
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
+      configApiErrorResponse(
+        error instanceof Error ? error.message : 'Internal server error',
+        500
+      ),
       { status: 500 }
     );
   }

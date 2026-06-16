@@ -4,9 +4,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { DeviceStatus } from '@/lib/automation';
 import { resolveDeviceOnline } from '@/lib/realtime/device-status';
+import { HW_TEXT } from '@/lib/design-tokens';
 import { useAuth } from '@/contexts/AuthContext';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { getDeviceAnalytics, DosageMetrics } from '@/lib/analytics';
+import BrandLoading from '@/components/BrandLoading';
 import toast from 'react-hot-toast';
 import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
 import {
@@ -214,8 +216,10 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
       const analyticsData = await getDeviceAnalytics(device.device_id, analyticsDays);
       setAnalytics(analyticsData.metrics);
     } catch (error) {
-      console.error('Erro ao carregar analytics:', error);
-      toast.error('Erro ao carregar analytics');
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Erro ao carregar analytics:', error);
+      }
+      setAnalytics([]);
     } finally {
       setLoadingAnalytics(false);
     }
@@ -623,7 +627,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
                   <p className="text-sm text-dark-textSecondary mb-1">Status</p>
-                  <p className={`text-lg font-bold ${isOnline ? 'text-aqua-400' : 'text-red-400'}`}>
+                  <p className={`text-lg font-bold ${isOnline ? HW_TEXT.ok : HW_TEXT.danger}`}>
                     {isOnline ? 'Online' : 'Offline'}
                   </p>
                 </div>
@@ -842,14 +846,15 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                 </div>
 
                 {loadingAnalytics ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-aqua-500 mx-auto"></div>
-                    <p className="mt-4 text-dark-textSecondary">Calculando métricas...</p>
-                  </div>
+                  <BrandLoading message="Calculando métricas..." size={40} />
                 ) : analytics.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-dark-textSecondary">
-                      Nenhum dado de dosagem encontrado no período selecionado
+                      Nenhuma dosagem registrada nos últimos {analyticsDays}{' '}
+                      {analyticsDays === 1 ? 'dia' : 'dias'}
+                    </p>
+                    <p className="text-dark-textSecondary/70 text-sm mt-2">
+                      Comandos de relé concluídos aparecerão aqui automaticamente
                     </p>
                   </div>
                 ) : (
@@ -1115,8 +1120,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                 <div className="max-h-96 overflow-y-auto">
                   {loadingSlaves ? (
                     <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-aqua-500 mx-auto"></div>
-                      <p className="mt-4 text-dark-textSecondary">Carregando slaves ESP-NOW...</p>
+                      <BrandLoading message="Carregando slaves ESP-NOW..." size={40} className="py-4" />
                     </div>
                   ) : slaves.length === 0 ? (
                     <div className="text-center py-8 bg-dark-surface border border-dark-border rounded-lg">
@@ -1449,10 +1453,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
               </div>
 
               {loadingSlaves ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-aqua-500 mx-auto"></div>
-                  <p className="mt-4 text-dark-textSecondary">Carregando slaves ESP-NOW...</p>
-                </div>
+                <BrandLoading message="Carregando slaves ESP-NOW..." size={40} className="py-4" />
               ) : slaves.length === 0 ? (
                 <div className="text-center py-8 bg-dark-surface border border-dark-border rounded-lg">
                   <p className="text-dark-textSecondary mb-2">Nenhum slave ESP-NOW encontrado</p>

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { isSupabaseMissingTableError } from './db-schema';
 
 /**
  * Interface para métricas de dosagem
@@ -28,26 +29,13 @@ export interface RelayAnalytics {
 
 /**
  * Configuração de bomba peristáltica para cálculo de ml
- * 
- * Valores padrão (podem ser configurados por relé):
- * - Taxa padrão: 1.0 ml/segundo
- * - Pode variar por tipo de bomba/nutriente
  */
 export interface PumpConfig {
   relay_id: number;
-  flow_rate_ml_per_second: number; // Taxa de fluxo em ml/segundo
-  pump_type?: string; // Tipo de bomba (ex: "peristaltica_12v")
+  flow_rate_ml_per_second: number;
+  pump_type?: string;
 }
 
-/**
- * Calcula ml dosados baseado em duração e taxa de bomba
- * 
- * Fórmula: ml = duração (segundos) × taxa (ml/segundo)
- * 
- * @param durationSeconds Duração em segundos
- * @param flowRateMlPerSecond Taxa de fluxo em ml/segundo (padrão: 1.0)
- * @returns ML dosados
- */
 export function calculateMlDosed(
   durationSeconds: number,
   flowRateMlPerSecond: number = 1.0
@@ -55,28 +43,35 @@ export function calculateMlDosed(
   if (durationSeconds <= 0 || flowRateMlPerSecond <= 0) {
     return 0;
   }
-  return Math.round(durationSeconds * flowRateMlPerSecond * 100) / 100; // Arredondar para 2 casas
+  return Math.round(durationSeconds * flowRateMlPerSecond * 100) / 100;
 }
 
-/**
- * Interface para comando de relé retornado pelo histórico
- */
 interface RelayCommandHistory {
   relay_number: number;
-  rule_name?: string;
-  duration_seconds: number;
+  action?: string;
+  duration_seconds: number | null;
   created_at: string;
+  created_by?: string | null;
+  target_device_id?: string | null;
   [key: string]: unknown;
 }
 
+function relayLabelFromCommand(command: RelayCommandHistory): string {
+  const createdBy = command.created_by?.trim();
+  if (createdBy && createdBy !== 'web_interface') {
+    return createdBy;
+  }
+  return `Relé ${command.relay_number + 1}`;
+}
+
+function isDosageCommand(command: RelayCommandHistory): boolean {
+  if (command.action === 'off') return false;
+  const duration = command.duration_seconds;
+  return duration !== null && duration !== undefined && duration > 0;
+}
+
 /**
- * Busca histórico de comandos de relés para analytics
- * 
- * @param deviceId ID do dispositivo (master ou slave MAC)
- * @param startDate Data inicial (opcional)
- * @param endDate Data final (opcional)
- * @param relayType Tipo de relé: 'local' (HydroControl) ou 'slave' (ESP-NOW)
- * @returns Lista de comandos executados
+ * Histórico de comandos — schema prod: public.relay_commands
  */
 export async function getRelayCommandsHistory(
   deviceId: string,
@@ -85,18 +80,20 @@ export async function getRelayCommandsHistory(
   relayType: 'local' | 'slave' = 'local'
 ): Promise<RelayCommandHistory[]> {
   try {
-    // ✅ CORRIGIDO: Usar tabela correta conforme o tipo
-    const tableName = relayType === 'local' ? 'relay_commands_master' : 'relay_commands_slave';
-    
     let query = supabase
-      .from(tableName)
+      .from('relay_commands')
       .select('*')
       .eq('device_id', deviceId)
-      .in('status', ['completed', 'sent']) // ✅ Incluir 'sent' também (comandos executados)
+      .in('status', ['completed', 'sent'])
       .order('created_at', { ascending: false })
-      .limit(1000); // ✅ Limitar resultados para evitar timeout
+      .limit(1000);
 
-    // Filtrar por período se fornecido
+    if (relayType === 'local') {
+      query = query.is('target_device_id', null);
+    } else {
+      query = query.not('target_device_id', 'is', null);
+    }
+
     if (startDate) {
       query = query.gte('created_at', startDate.toISOString());
     }
@@ -107,77 +104,50 @@ export async function getRelayCommandsHistory(
     const { data, error } = await query;
 
     if (error) {
-      console.error(`❌ Erro ao buscar histórico de comandos (${tableName}):`, {
-        error,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-        deviceId,
-        relayType,
-        startDate: startDate?.toISOString(),
-        endDate: endDate?.toISOString()
-      });
+      if (isSupabaseMissingTableError(error)) {
+        console.warn('[analytics] Tabela relay_commands indisponível:', error.message);
+      } else if (process.env.NODE_ENV === 'development') {
+        console.warn('[analytics] Erro ao buscar relay_commands:', error.message, error.code);
+      }
       return [];
     }
 
-    if (!data) {
-      console.warn(`⚠️ Nenhum dado retornado de ${tableName} para device_id: ${deviceId}`);
-      return [];
-    }
-
-    return data;
+    return (data as RelayCommandHistory[]) || [];
   } catch (error) {
-    console.error('❌ Erro ao buscar histórico de comandos (exceção):', {
-      error,
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      deviceId,
-      relayType
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[analytics] Exceção ao buscar histórico:', error);
+    }
     return [];
   }
 }
 
-/**
- * Calcula métricas de dosagem para um dispositivo
- * 
- * Agrupa comandos por relé e calcula:
- * - Total de ml dosados
- * - Número de ativações
- * - Duração total
- * - Média de duração
- * 
- * @param deviceId ID do dispositivo
- * @param pumpConfigs Configurações de bombas (taxa de fluxo por relé)
- * @param daysBack Quantos dias para trás buscar (padrão: 7)
- * @returns Métricas de dosagem por relé
- */
 export async function calculateDosageMetrics(
   deviceId: string,
   pumpConfigs: PumpConfig[] = [],
-  daysBack: number = 7
+  daysBack: number = 7,
+  relayType: 'local' | 'slave' = 'local'
 ): Promise<DosageMetrics[]> {
   try {
-    // Calcular período
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysBack);
 
-    // Buscar histórico de comandos
-    const commands = await getRelayCommandsHistory(deviceId, startDate, endDate);
+    const commands = await getRelayCommandsHistory(deviceId, startDate, endDate, relayType);
+    const dosageCommands = commands.filter(isDosageCommand);
 
-    // Agrupar por relay_number
-    const relayMap = new Map<number, {
-      relay_id: number;
-      relay_name: string;
-      activations: RelayCommandHistory[];
-      total_duration: number;
-    }>();
+    const relayMap = new Map<
+      number,
+      {
+        relay_id: number;
+        relay_name: string;
+        activations: RelayCommandHistory[];
+        total_duration: number;
+      }
+    >();
 
-    commands.forEach((command) => {
+    dosageCommands.forEach((command) => {
       const relayId = command.relay_number;
-      const relayName = command.rule_name || `Relé ${relayId + 1}`;
+      const relayName = relayLabelFromCommand(command);
 
       if (!relayMap.has(relayId)) {
         relayMap.set(relayId, {
@@ -193,18 +163,14 @@ export async function calculateDosageMetrics(
       relayData.total_duration += command.duration_seconds || 0;
     });
 
-    // Calcular métricas para cada relé
     const metrics: DosageMetrics[] = Array.from(relayMap.values()).map((relayData) => {
-      // Buscar configuração de bomba para este relé
-      const pumpConfig = pumpConfigs.find(p => p.relay_id === relayData.relay_id);
-      const flowRate = pumpConfig?.flow_rate_ml_per_second || 1.0; // Padrão: 1 ml/segundo
-
-      // Calcular ml dosados
+      const pumpConfig = pumpConfigs.find((p) => p.relay_id === relayData.relay_id);
+      const flowRate = pumpConfig?.flow_rate_ml_per_second || 1.0;
       const totalMl = calculateMlDosed(relayData.total_duration, flowRate);
 
-      // Encontrar última ativação
-      const lastActivation = relayData.activations
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+      const lastActivation = relayData.activations.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0];
 
       return {
         relay_id: relayData.relay_id,
@@ -212,63 +178,59 @@ export async function calculateDosageMetrics(
         total_ml_dosed: totalMl,
         total_activations: relayData.activations.length,
         total_duration_seconds: relayData.total_duration,
-        average_duration_seconds: relayData.activations.length > 0
-          ? Math.round(relayData.total_duration / relayData.activations.length)
-          : 0,
+        average_duration_seconds:
+          relayData.activations.length > 0
+            ? Math.round(relayData.total_duration / relayData.activations.length)
+            : 0,
         last_activation: lastActivation?.created_at,
       };
     });
 
-    // Ordenar por total de ml (maior primeiro)
     return metrics.sort((a, b) => b.total_ml_dosed - a.total_ml_dosed);
   } catch (error) {
-    console.error('Erro ao calcular métricas:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[analytics] Erro ao calcular métricas:', error);
+    }
     return [];
   }
 }
 
-/**
- * Busca analytics completos para um dispositivo
- * 
- * @param deviceId ID do dispositivo master
- * @param daysBack Quantos dias para trás (padrão: 7)
- * @returns Analytics completos
- */
 export async function getDeviceAnalytics(
   deviceId: string,
   daysBack: number = 7
 ): Promise<RelayAnalytics> {
-  try {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysBack);
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - daysBack);
 
-    // Buscar comandos locais (HydroControl)
-    const localCommands = await getRelayCommandsHistory(deviceId, startDate, endDate, 'local');
-    
-    // ✅ Log para debug
-    if (localCommands.length === 0) {
-      console.log(`ℹ️ Nenhum comando encontrado para device_id: ${deviceId} no período de ${daysBack} dias`);
-    } else {
-      console.log(`✅ Encontrados ${localCommands.length} comandos para analytics`);
-    }
-    
-    // Configurações padrão de bombas (pode ser carregado do banco depois)
+  const emptyResult = (): RelayAnalytics => ({
+    device_id: deviceId,
+    relay_type: 'local',
+    metrics: [],
+    total_ml_all_relays: 0,
+    period_start: startDate.toISOString(),
+    period_end: endDate.toISOString(),
+  });
+
+  try {
     const defaultPumpConfigs: PumpConfig[] = [
-      { relay_id: 0, flow_rate_ml_per_second: 1.0 }, // pH+
-      { relay_id: 1, flow_rate_ml_per_second: 1.0 }, // pH-
-      { relay_id: 2, flow_rate_ml_per_second: 1.0 }, // Grow
-      { relay_id: 3, flow_rate_ml_per_second: 1.0 }, // Micro
-      { relay_id: 4, flow_rate_ml_per_second: 1.0 }, // Bloom
-      { relay_id: 5, flow_rate_ml_per_second: 2.0 }, // Bomba Principal (maior vazão)
-      { relay_id: 6, flow_rate_ml_per_second: 1.0 }, // Luz UV
-      { relay_id: 7, flow_rate_ml_per_second: 1.0 }, // Aerador
+      { relay_id: 0, flow_rate_ml_per_second: 1.0 },
+      { relay_id: 1, flow_rate_ml_per_second: 1.0 },
+      { relay_id: 2, flow_rate_ml_per_second: 1.0 },
+      { relay_id: 3, flow_rate_ml_per_second: 1.0 },
+      { relay_id: 4, flow_rate_ml_per_second: 1.0 },
+      { relay_id: 5, flow_rate_ml_per_second: 2.0 },
+      { relay_id: 6, flow_rate_ml_per_second: 1.0 },
+      { relay_id: 7, flow_rate_ml_per_second: 1.0 },
     ];
 
-    // Calcular métricas locais
-    const localMetrics = await calculateDosageMetrics(deviceId, defaultPumpConfigs, daysBack);
+    const localMetrics = await calculateDosageMetrics(
+      deviceId,
+      defaultPumpConfigs,
+      daysBack,
+      'local'
+    );
 
-    // Calcular total de ml
     const totalMl = localMetrics.reduce((sum, metric) => sum + metric.total_ml_dosed, 0);
 
     return {
@@ -279,28 +241,7 @@ export async function getDeviceAnalytics(
       period_start: startDate.toISOString(),
       period_end: endDate.toISOString(),
     };
-  } catch (error) {
-    console.error('❌ Erro ao buscar analytics:', {
-      error,
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      deviceId,
-      daysBack
-    });
-    
-    // ✅ Retornar estrutura vazia ao invés de lançar erro
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysBack);
-    
-    return {
-      device_id: deviceId,
-      relay_type: 'local',
-      metrics: [],
-      total_ml_all_relays: 0,
-      period_start: startDate.toISOString(),
-      period_end: endDate.toISOString(),
-    };
+  } catch {
+    return emptyResult();
   }
 }
-

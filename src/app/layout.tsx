@@ -11,9 +11,11 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'HydroWave - Sistema de Cultivo Hidropônico',
   description: 'Sistema de controle e monitoramento para cultivo hidropônico de alto rendimento',
+  manifest: '/manifest.json',
   icons: {
     icon: [{ url: '/sigma-svgrepo-com.svg', type: 'image/svg+xml' }],
     shortcut: '/sigma-svgrepo-com.svg',
+    apple: [{ url: '/icon-192.svg', type: 'image/svg+xml' }],
   },
 };
 

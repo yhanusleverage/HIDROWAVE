@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
+import NavLink from '@/components/NavLink';
 import { usePathname } from 'next/navigation';
 import { useSidebar } from '@/contexts/SidebarContext';
+import BrandLogo from '@/components/BrandLogo';
+import { hwNavActiveClasses, hwNavIconClasses } from '@/lib/design-tokens';
 import {
   HomeIcon,
   Cog6ToothIcon,
@@ -12,6 +14,10 @@ import {
   BookOpenIcon,
   QuestionMarkCircleIcon,
   BeakerIcon,
+  CreditCardIcon,
+  UserGroupIcon,
+  AcademicCapIcon,
+  QueueListIcon,
 } from '@heroicons/react/24/outline';
 import {
   HomeIcon as HomeIconSolid,
@@ -21,6 +27,10 @@ import {
   BookOpenIcon as BookOpenIconSolid,
   QuestionMarkCircleIcon as QuestionMarkCircleIconSolid,
   BeakerIcon as BeakerIconSolid,
+  CreditCardIcon as CreditCardIconSolid,
+  UserGroupIcon as UserGroupIconSolid,
+  AcademicCapIcon as AcademicCapIconSolid,
+  QueueListIcon as QueueListIconSolid,
 } from '@heroicons/react/24/solid';
 
 interface MenuItem {
@@ -68,10 +78,34 @@ const menuItems: MenuItem[] = [
     iconSolid: BookOpenIconSolid,
   },
   {
+    name: 'Support',
+    href: '/support',
+    icon: AcademicCapIcon,
+    iconSolid: AcademicCapIconSolid,
+  },
+  {
+    name: 'Processos',
+    href: '/processos',
+    icon: QueueListIcon,
+    iconSolid: QueueListIconSolid,
+  },
+  {
     name: 'Informação',
     href: '/informacao',
     icon: QuestionMarkCircleIcon,
     iconSolid: QuestionMarkCircleIconSolid,
+  },
+  {
+    name: 'Planos',
+    href: '/planos',
+    icon: CreditCardIcon,
+    iconSolid: CreditCardIconSolid,
+  },
+  {
+    name: 'Quem Somos',
+    href: '/quem-somos',
+    icon: UserGroupIcon,
+    iconSolid: UserGroupIconSolid,
   },
 ];
 
@@ -129,11 +163,18 @@ export default function Sidebar() {
       style={{ marginLeft: 0 }}
     >
       {/* Logo/Header */}
-      <div className="flex items-center justify-between p-4 border-b border-dark-border">
-        <div className={`flex items-center space-x-3 transition-opacity ${isExpanded ? 'opacity-100' : 'opacity-0 w-0'}`}>
-          <span className="text-2xl">🌱</span>
-          <h1 className="text-xl font-bold whitespace-nowrap">HydroWave</h1>
-        </div>
+      <div
+        className={`flex p-4 border-b border-dark-border ${
+          isExpanded ? 'items-center justify-between' : 'flex-col items-center gap-2'
+        }`}
+      >
+        <BrandLogo
+          variant="dark"
+          size={32}
+          showWordmark={isExpanded}
+          wordmarkSize="md"
+          className={isExpanded ? 'min-w-0' : 'justify-center'}
+        />
         <button
           onClick={toggleSidebar}
           className="p-2 rounded-lg hover:bg-dark-card transition-colors flex-shrink-0"
@@ -154,20 +195,21 @@ export default function Sidebar() {
       <nav className="mt-6 px-2">
         <ul className="space-y-2">
           {menuItems.map((item) => {
-            const isActive = pathname === item.href || (item.href === '/dashboard' && pathname === '/');
+            const isActive =
+              pathname === item.href ||
+              (item.href === '/dashboard' && pathname === '/') ||
+              (item.href === '/support' && pathname.startsWith('/support')) ||
+              (item.href === '/processos' && pathname.startsWith('/processos'));
             const Icon = isActive ? item.iconSolid : item.icon;
 
             return (
               <li key={item.name}>
-                <Link
+                <NavLink
                   href={item.href}
-                  className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-                    isActive
-                      ? 'bg-gradient-to-r from-aqua-600 to-primary-600 shadow-lg shadow-aqua-500/30 transform scale-105'
-                      : 'hover:bg-dark-card hover:translate-x-1'
-                  }`}
+                  prefetch
+                  className={`flex items-center space-x-3 px-3 py-3 rounded-lg transition-all duration-200 ${hwNavActiveClasses(isActive)}`}
                 >
-                  <Icon className="w-6 h-6 flex-shrink-0" />
+                  <Icon className={`w-6 h-6 flex-shrink-0 ${hwNavIconClasses(item.href, isActive)}`} />
                   <span
                     className={`font-medium transition-opacity duration-200 ${
                       isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'
@@ -175,7 +217,7 @@ export default function Sidebar() {
                   >
                     {item.name}
                   </span>
-                </Link>
+                </NavLink>
               </li>
             );
           })}
@@ -184,7 +226,10 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className={`absolute bottom-4 left-0 right-0 px-4 transition-opacity ${isExpanded ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="text-xs text-dark-textSecondary text-center">
+        <div className="text-xs text-dark-textSecondary text-center space-y-1">
+          <NavLink href="/quem-somos" className="block hover:text-aqua-400 transition-colors">
+            Quem somos
+          </NavLink>
           <p>© {new Date().getFullYear()} HydroWave</p>
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import NavLink from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 import { loadSettings, saveSettings, type Settings } from '@/lib/settings';
@@ -169,7 +170,7 @@ export default function ConfiguracaoPage() {
       
       <main className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         {/* Conexão com Supabase */}
-        <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6 mb-6">
+        <div className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center space-x-3 mb-4">
             <ServerIcon className="w-6 h-6 text-aqua-400" />
             <h2 className="text-xl font-semibold text-dark-text">Conexão com Banco de Dados</h2>
@@ -210,7 +211,7 @@ export default function ConfiguracaoPage() {
         </div>
 
         {/* Configurações Gerais */}
-        <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6 mb-6">
+        <div className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center space-x-3 mb-4">
             <Cog6ToothIcon className="w-6 h-6 text-aqua-400" />
             <h2 className="text-xl font-semibold text-dark-text">Configurações Gerais</h2>
@@ -314,7 +315,7 @@ export default function ConfiguracaoPage() {
         </div>
 
         {/* Notificações */}
-        <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6 mb-6">
+        <div className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center space-x-3 mb-4">
             <BellIcon className="w-6 h-6 text-aqua-400" />
             <h2 className="text-xl font-semibold text-dark-text">Notificações</h2>
@@ -443,6 +444,10 @@ export default function ConfiguracaoPage() {
               <p className="text-sm text-dark-textSecondary">
                 <span className="font-medium text-dark-text">Plano:</span>{' '}
                 <span className="capitalize">{userProfile?.subscription_type || 'N/A'}</span>
+                {' · '}
+                <NavLink href="/planos" className="text-aqua-400 hover:text-aqua-300 transition-colors">
+                  Gerenciar plano →
+                </NavLink>
               </p>
             </div>
             

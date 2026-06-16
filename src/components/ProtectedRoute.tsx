@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import BrandLoading from '@/components/BrandLoading';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface ProtectedRouteProps {
@@ -22,14 +23,10 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     }
   }, [user, userProfile, loading, router]);
 
-  // ✅ Mostrar loading enquanto verifica autenticação
   if (loading) {
     return (
       <div className="min-h-screen bg-dark-bg flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-aqua-500 mx-auto"></div>
-          <p className="mt-4 text-dark-textSecondary">Verificando autenticação...</p>
-        </div>
+        <BrandLoading layout="hero" message="Verificando autenticação..." />
       </div>
     );
   }
@@ -42,7 +39,5 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     return null;
   }
 
-  // Auth OK — perfil public.users e opcional (fallback no AuthContext)
   return <>{children}</>;
 }
-

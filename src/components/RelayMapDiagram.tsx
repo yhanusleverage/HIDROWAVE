@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { ESPNowSlave } from '@/lib/esp-now-slaves';
+import type { RelayAllocationRegistry } from '@/lib/relay-allocation';
+import { registryToMasterRelayDiagram } from '@/lib/relay-allocation-diagram';
 
 interface Relay {
   id: number;
@@ -17,14 +19,29 @@ interface RelayMapDiagramProps {
   masterRelays: Relay[];
   slaveRelays: ESPNowSlave[];
   onRelayClick?: (relay: Relay) => void;
+  /** Se passado, sobrescreve masterRelays dosificadores 0–7 com conflitos do registro global */
+  allocationRegistry?: RelayAllocationRegistry;
+  doserRelayStates?: boolean[];
 }
 
 export default function RelayMapDiagram({ 
   masterRelays, 
   slaveRelays, 
-  onRelayClick 
+  onRelayClick,
+  allocationRegistry,
+  doserRelayStates,
 }: RelayMapDiagramProps) {
   const [selectedRelay, setSelectedRelay] = useState<Relay | null>(null);
+
+  const resolvedMasterRelays: Relay[] = allocationRegistry
+    ? registryToMasterRelayDiagram(allocationRegistry, doserRelayStates).map((r) => ({
+        id: r.id,
+        name: r.name,
+        device: r.device,
+        state: r.state,
+        conflicts: r.conflicts,
+      }))
+    : masterRelays;
 
   const handleRelayClick = (relay: Relay) => {
     setSelectedRelay(relay);
@@ -34,14 +51,14 @@ export default function RelayMapDiagram({
   };
 
   return (
-    <div className="bg-dark-card rounded-lg p-6 border border-dark-border">
+    <div className="bg-dark-card rounded-lg p-6 border border-dark-border border-t-2 border-t-aqua-500">
       <h3 className="text-xl font-bold mb-4 text-dark-text">🗺️ Mapa de Relays</h3>
       
       {/* Master Relays */}
       <div className="mb-6">
         <h4 className="text-lg font-semibold mb-3 text-dark-text">🏠 MASTER (Local)</h4>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {masterRelays.map(relay => (
+          {resolvedMasterRelays.map(relay => (
             <div
               key={relay.id}
               onClick={() => handleRelayClick(relay)}

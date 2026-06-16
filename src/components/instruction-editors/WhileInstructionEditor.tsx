@@ -6,6 +6,13 @@ import { Instruction } from '../SequentialScriptEditor';
 import { ESPNowSlave } from '@/lib/esp-now-slaves';
 import RelayActionEditor from './RelayActionEditor';
 import IfInstructionEditor from './IfInstructionEditor';
+import {
+  INSTRUCTION_OPERATORS,
+  formatInstructionType,
+  SWITCH_LABEL,
+  SWITCH_MODE_CYCLE,
+  SWITCH_MODE_TIMER,
+} from '@/lib/instruction-labels';
 
 interface WhileInstructionEditorProps {
   instruction: Instruction;
@@ -26,15 +33,6 @@ const WATER_LEVEL_OPTIONS = [
   { value: 'baixo', label: 'Baixo' },
   { value: 'medio', label: 'Médio' },
   { value: 'alto', label: 'Alto' },
-];
-
-const OPERATORS = [
-  { value: '<', label: 'Menor que (<)' },
-  { value: '>', label: 'Maior que (>)' },
-  { value: '<=', label: 'Menor ou igual (≤)' },
-  { value: '>=', label: 'Maior ou igual (≥)' },
-  { value: '==', label: 'Igual a (=)' },
-  { value: '!=', label: 'Diferente de (≠)' },
 ];
 
 export default function WhileInstructionEditor({
@@ -137,7 +135,7 @@ export default function WhileInstructionEditor({
             onChange={(e) => updateCondition('operator', e.target.value)}
             className="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
           >
-            {OPERATORS.map((op) => (
+            {INSTRUCTION_OPERATORS.map((op) => (
               <option key={op.value} value={op.value}>
                 {op.label}
               </option>
@@ -187,7 +185,7 @@ export default function WhileInstructionEditor({
             >
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs text-purple-400 font-mono">
-                  {bodyInstr.type.toUpperCase()}
+                  {formatInstructionType(bodyInstr.type)}
                 </span>
                 <button
                   onClick={() => removeBodyInstruction(idx)}
@@ -208,7 +206,7 @@ export default function WhileInstructionEditor({
               {bodyInstr.type === 'switch' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs text-gray-400 mb-2">Switch (Trocar Estado)</label>
+                    <label className="block text-xs text-gray-400 mb-2">{SWITCH_LABEL}</label>
                     
                     {/* Seleção de Modo: Ciclo ou Timer */}
                     <div className="mb-3">
@@ -228,8 +226,8 @@ export default function WhileInstructionEditor({
                         }}
                         className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                       >
-                        <option value="timer">Timer (Duração fixa)</option>
-                        <option value="cycle">Ciclo (Toggle automático ON/OFF)</option>
+                        <option value="timer">{SWITCH_MODE_TIMER}</option>
+                        <option value="cycle">{SWITCH_MODE_CYCLE}</option>
                       </select>
                     </div>
 
@@ -341,7 +339,7 @@ export default function WhileInstructionEditor({
               )}
 
               {bodyInstr.type === 'return' && (
-                <div className="text-xs text-gray-400 italic">Retorna do loop</div>
+                <div className="text-xs text-gray-400 italic">Retornar do loop</div>
               )}
             </div>
           ))}
@@ -380,16 +378,16 @@ export default function WhileInstructionEditor({
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
               <PlusIcon className="w-3 h-3" />
-              RETURN
+              Retornar
             </button>
           </div>
         </div>
       </div>
 
-      {/* Delay entre iterações */}
+      {/* Espera entre iterações */}
       <div>
         <label className="block text-xs text-gray-400 mb-1">
-          Delay entre iterações (ms)
+          Espera entre iterações (ms)
         </label>
         <input
           type="number"

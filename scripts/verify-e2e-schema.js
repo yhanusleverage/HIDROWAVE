@@ -128,6 +128,24 @@ async function main() {
         : 'no row for device'
   );
 
+  const phDosages = await supabase.from('ph_dosages').select('id').limit(1);
+  record(
+    'ph_dosages table',
+    !phDosages.error,
+    phDosages.error ? phDosages.error.message : `accessible (${phDosages.data?.length ?? 0} sample rows)`
+  );
+
+  const phDosageCount = await supabase
+    .from('ph_dosages')
+    .select('id', { count: 'exact', head: true })
+    .eq('device_id', DEVICE_ID);
+
+  record(
+    'ph_dosages rows for device',
+    !phDosageCount.error,
+    phDosageCount.error ? phDosageCount.error.message : `${phDosageCount.count ?? 0} rows`
+  );
+
   console.log('\n' + (results.ok ? 'SCHEMA OK' : 'SCHEMA INCOMPLETE — ejecutar scripts SQL en Supabase'));
   process.exit(results.ok ? 0 : 2);
 }

@@ -19,6 +19,8 @@ import {
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import { useAuth } from '@/contexts/AuthContext';
 import DeviceControlPanel from '@/components/DeviceControlPanel';
+import BrandEmptyState from '@/components/BrandEmptyState';
+import BrandLoading from '@/components/BrandLoading';
 
 export default function DispositivosPage() {
   const { userProfile } = useAuth();
@@ -236,20 +238,19 @@ export default function DispositivosPage() {
         </div>
 
         {loading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-aqua-500 mx-auto"></div>
-            <p className="mt-4 text-dark-textSecondary">Carregando dispositivos...</p>
-          </div>
+          <BrandLoading message="Carregando dispositivos..." />
         ) : devices.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-dark-textSecondary mb-4">Nenhum dispositivo encontrado</p>
-            <button 
+          <BrandEmptyState
+            title="Nenhum dispositivo encontrado"
+            description="Associe seu ESP32 com o mesmo email da sua conta para começar a monitorar o cultivo."
+          >
+            <button
               onClick={handleOpenAddModal}
               className="bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-2 px-4 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50"
             >
               Adicionar Primeiro Dispositivo
             </button>
-          </div>
+          </BrandEmptyState>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {devices
@@ -376,7 +377,7 @@ export default function DispositivosPage() {
           </div>
         )}
 
-        <div className="mt-8 bg-dark-card border border-dark-border rounded-lg shadow-lg p-6">
+        <div className="mt-8 bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-6">
           <h3 className="text-lg font-semibold text-dark-text mb-4">Estatísticas de Conexão</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-aqua-500/20 border border-aqua-500/30 p-4 rounded-lg">
@@ -430,10 +431,7 @@ export default function DispositivosPage() {
             </div>
 
             {loadingAvailable ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-aqua-500 mx-auto"></div>
-                <p className="mt-4 text-dark-textSecondary">Descobrindo dispositivos...</p>
-              </div>
+              <BrandLoading message="Descobrindo dispositivos..." />
             ) : availableDevices.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-dark-textSecondary mb-2">Nenhum dispositivo disponível encontrado</p>

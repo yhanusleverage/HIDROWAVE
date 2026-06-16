@@ -79,7 +79,7 @@ export default function RelayActionEditor({
           className="flex-1 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
         >
           {relayOptions.length === 0 ? (
-            <option value="">Nenhum relay slave disponível</option>
+            <option value="">Nenhum relé slave disponível</option>
           ) : (
             relayOptions.map((option) => (
               <option key={option.value} value={option.value}>

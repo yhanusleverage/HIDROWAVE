@@ -1,7 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import BrandLogo from '@/components/BrandLogo';
 
 export default function Home() {
   const router = useRouter();
@@ -21,9 +23,13 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-gradient-to-br from-dark-bg via-primary-900 to-aqua-900">
       <div className="max-w-3xl w-full bg-dark-card border border-dark-border rounded-lg shadow-2xl p-8 text-center">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">
-            🌱 HydroWave
-          </h1>
+          <BrandLogo
+            variant="gradient"
+            size={48}
+            showWordmark
+            wordmarkSize="xl"
+            className="justify-center mb-4"
+          />
           <p className="text-lg text-dark-textSecondary">
             Sistema de Controle e Monitoramento para Cultivo Hidropônico de Alto Rendimento
           </p>
@@ -65,6 +71,12 @@ export default function Home() {
         >
           Acessar o Dashboard
         </button>
+
+        <p className="mt-6 text-sm text-dark-textSecondary">
+          <Link href="/quem-somos" className="text-aqua-400 hover:text-aqua-300 transition-colors">
+            Conheça a HydroWave — Quem somos →
+          </Link>
+        </p>
       </div>
     </main>
   );

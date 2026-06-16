@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
+import NavLink from '@/components/NavLink';
 import { toast } from 'react-hot-toast';
+import { hwToast } from '@/lib/control-toast';
 import {
   BeakerIcon,
   CheckCircleIcon,
@@ -23,6 +24,9 @@ import {
   CALIBRATION_TEST_DURATIONS_SEC,
 } from '@/lib/pump-calibration';
 import { PhCalibrationSection } from '@/components/PhCalibrationSection';
+import { useRelayAllocation } from '@/hooks/useRelayAllocation';
+import { DoserRelaySelect } from '@/components/DoserRelaySelect';
+import { DoserRelayMapPanel } from '@/components/DoserRelayMapPanel';
 
 const STEPS = [
   {
@@ -69,6 +73,15 @@ export default function CalibragemPage() {
   const [activeTab, setActiveTab] = useState<'vazao' | 'ph'>('vazao');
 
   const calculatedRate = calculateFlowRateMlPerSecond(measuredVolumeMl, measuredDurationSec);
+
+  const relayAllocation = useRelayAllocation(selectedDeviceId, {
+    enabled: Boolean(selectedDeviceId),
+    calibragemRelay: testingRelay ? testRelayNumber : null,
+  });
+
+  const calibragemRegistry = relayAllocation.buildRegistry({
+    calibragemRelay: testingRelay ? testRelayNumber : null,
+  });
 
   useEffect(() => {
     if (devices.length > 0 && !selectedDeviceId) {
@@ -151,7 +164,7 @@ export default function CalibragemPage() {
         throw new Error(err.error || 'Erro ao salvar');
       }
 
-      toast.success('Vazão calibrada salva com sucesso');
+      hwToast.success('Vazão calibrada salva com sucesso', 'CALIBRAGEM');
       window.dispatchEvent(new CustomEvent('flowRateUpdated', { detail: { deviceId: selectedDeviceId, flowRate } }));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao salvar');
@@ -235,8 +248,8 @@ export default function CalibragemPage() {
             onClick={() => setActiveTab('vazao')}
             className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
               activeTab === 'vazao'
-                ? 'bg-dark-card text-aqua-400 border border-dark-border border-b-transparent -mb-px'
-                : 'text-dark-textSecondary hover:text-dark-text'
+                ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/40 border-b-transparent -mb-px'
+                : 'text-dark-textSecondary hover:text-cyan-400/80'
             }`}
           >
             Vazão EC / bombas
@@ -246,8 +259,8 @@ export default function CalibragemPage() {
             onClick={() => setActiveTab('ph')}
             className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
               activeTab === 'ph'
-                ? 'bg-dark-card text-violet-400 border border-dark-border border-b-transparent -mb-px'
-                : 'text-dark-textSecondary hover:text-dark-text'
+                ? 'bg-violet-500/10 text-violet-400 border border-violet-500/40 border-b-transparent -mb-px'
+                : 'text-dark-textSecondary hover:text-violet-400/80'
             }`}
           >
             Calibragem química pH
@@ -263,9 +276,9 @@ export default function CalibragemPage() {
         ) : (
           <>
         {/* Explicação */}
-        <section className="bg-gradient-to-br from-aqua-500/10 to-primary-500/10 border border-aqua-500/30 rounded-xl p-5">
+        <section className="bg-gradient-to-br from-cyan-500/10 to-sky-500/5 border border-cyan-500/30 rounded-xl p-5">
           <div className="flex gap-3">
-            <InformationCircleIcon className="w-6 h-6 text-aqua-400 flex-shrink-0 mt-0.5" />
+            <InformationCircleIcon className="w-6 h-6 text-cyan-400 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-dark-textSecondary space-y-2">
               <p>
                 <strong className="text-dark-text">O que é a taxa de dosagem?</strong> É a vazão real
@@ -290,7 +303,7 @@ export default function CalibragemPage() {
                 key={step.title}
                 className="flex gap-4 bg-dark-card border border-dark-border rounded-lg p-4"
               >
-                <span className="flex-shrink-0 w-8 h-8 rounded-full bg-aqua-500/20 text-aqua-400 flex items-center justify-center font-bold text-sm">
+                <span className="flex-shrink-0 w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-sm">
                   {i + 1}
                 </span>
                 <div>
@@ -303,8 +316,8 @@ export default function CalibragemPage() {
         </section>
 
         {/* Calculadora */}
-        <section className="bg-dark-card border border-dark-border rounded-xl p-5">
-          <h2 className="text-lg font-semibold text-dark-text mb-4">Calculadora de vazão</h2>
+        <section className="bg-dark-card border border-dark-border border-t-2 border-t-cyan-500 rounded-xl p-5">
+          <h2 className="text-lg font-semibold text-cyan-400 mb-4">Calculadora de vazão</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-sm text-dark-textSecondary mb-1">
@@ -339,8 +352,8 @@ export default function CalibragemPage() {
                     onClick={() => setMeasuredDurationSec(sec)}
                     className={`text-xs px-2 py-1 rounded border ${
                       measuredDurationSec === sec
-                        ? 'border-aqua-500 bg-aqua-500/20 text-aqua-400'
-                        : 'border-dark-border text-dark-textSecondary hover:border-aqua-500/50'
+                        ? 'border-cyan-500 bg-cyan-500/20 text-cyan-400'
+                        : 'border-dark-border text-dark-textSecondary hover:border-cyan-500/50'
                     }`}
                   >
                     {sec}s
@@ -353,7 +366,7 @@ export default function CalibragemPage() {
           <div className="bg-dark-surface rounded-lg p-4 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <p className="text-xs text-dark-textSecondary uppercase tracking-wide">Resultado</p>
-              <p className="text-2xl font-bold text-aqua-400">
+              <p className="text-2xl font-bold text-cyan-400">
                 {calculatedRate !== null ? formatFlowRate(calculatedRate) : '—'}
               </p>
               {calculatedRate !== null && (
@@ -366,20 +379,20 @@ export default function CalibragemPage() {
               type="button"
               onClick={applyCalculatedRate}
               disabled={calculatedRate === null}
-              className="px-4 py-2 bg-aqua-500/20 border border-aqua-500/40 text-aqua-400 rounded-lg hover:bg-aqua-500/30 disabled:opacity-40 text-sm font-medium"
+              className="px-4 py-2 bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 rounded-lg hover:bg-cyan-500/30 disabled:opacity-40 text-sm font-medium"
             >
               Usar este valor
             </button>
           </div>
 
           <p className="text-xs text-dark-textSecondary">
-            Fórmula: <code className="text-aqua-400">vazão (ml/s) = volume (ml) ÷ tempo (s)</code>
+            Fórmula: <code className="text-cyan-400">vazão (ml/s) = volume (ml) ÷ tempo (s)</code>
           </p>
         </section>
 
         {/* Valor final + salvar */}
-        <section className="bg-dark-card border border-dark-border rounded-xl p-5">
-          <h2 className="text-lg font-semibold text-dark-text mb-4">Vazão calibrada do dispositivo</h2>
+        <section className="bg-dark-card border border-dark-border border-t-2 border-t-cyan-500 rounded-xl p-5">
+          <h2 className="text-lg font-semibold text-cyan-400 mb-4">Vazão calibrada do dispositivo</h2>
           {loading ? (
             <p className="text-dark-textSecondary text-sm">Carregando…</p>
           ) : (
@@ -407,7 +420,7 @@ export default function CalibragemPage() {
                     type="button"
                     onClick={saveFlowRate}
                     disabled={saving || flowRate <= 0}
-                    className="w-full py-3 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full py-3 bg-gradient-to-r from-cyan-500 to-sky-600 hover:from-cyan-600 hover:to-sky-700 text-white rounded-lg font-medium disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {saving ? (
                       <ArrowPathIcon className="w-5 h-5 animate-spin" />
@@ -427,6 +440,7 @@ export default function CalibragemPage() {
               {/* Teste de validação */}
               <div className="border-t border-dark-border pt-4 mt-4">
                 <h3 className="text-sm font-semibold text-dark-text mb-3">Validar com dosagem de teste</h3>
+                <DoserRelayMapPanel registry={calibragemRegistry} />
                 <p className="text-xs text-dark-textSecondary mb-3">
                   Envia um pulso curto ao relé escolhido. Meça o volume na proveta e compare com o
                   esperado. Repita o ajuste fino se necessário.
@@ -434,17 +448,14 @@ export default function CalibragemPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs text-dark-textSecondary mb-1">Relé (bomba)</label>
-                    <select
+                    <DoserRelaySelect
+                      registry={calibragemRegistry}
+                      context={{ field: 'calibragem', currentValue: testRelayNumber }}
                       value={testRelayNumber}
-                      onChange={(e) => setTestRelayNumber(parseInt(e.target.value, 10))}
+                      onChange={setTestRelayNumber}
                       className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-sm text-dark-text"
-                    >
-                      {relayOptions.map((r) => (
-                        <option key={r.number} value={r.number}>
-                          {r.name} (R{r.number})
-                        </option>
-                      ))}
-                    </select>
+                      emptyMessage="Nenhum relé livre para teste. Libere relés em /automacao."
+                    />
                   </div>
                   <div>
                     <label className="block text-xs text-dark-textSecondary mb-1">Volume teste (ml)</label>
@@ -462,7 +473,7 @@ export default function CalibragemPage() {
                       type="button"
                       onClick={runValidationDose}
                       disabled={testingRelay || !selectedDevice?.is_online}
-                      className="w-full py-2 border border-aqua-500/40 text-aqua-400 rounded-lg hover:bg-aqua-500/10 disabled:opacity-40 text-sm flex items-center justify-center gap-2"
+                      className="w-full py-2 border border-cyan-500/40 text-cyan-400 rounded-lg hover:bg-cyan-500/10 disabled:opacity-40 text-sm flex items-center justify-center gap-2"
                     >
                       <PlayIcon className="w-4 h-4" />
                       {testingRelay ? 'Enviando…' : 'Dosar teste'}
@@ -487,9 +498,9 @@ export default function CalibragemPage() {
             <li>Desvio visível entre volume esperado e medido na proveta</li>
           </ul>
           <p className="mt-4">
-            <Link href="/automacao" className="text-aqua-400 hover:underline">
+            <NavLink href="/automacao" className="text-aqua-400 hover:underline">
               ← Voltar para Automação
-            </Link>
+            </NavLink>
             {' · '}
             A vazão calibrada é usada no controle de EC, nutrição e bombas pH (se calibradas na aba pH).
           </p>

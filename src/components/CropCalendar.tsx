@@ -17,6 +17,7 @@ import {
   BellIcon
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import BrandLoading from '@/components/BrandLoading';
 import {
   getCropTasks,
   updateCropTask,
@@ -716,10 +717,7 @@ export default function CropCalendar({
       )}
 
       {isLoading && (
-        <div className="mb-4 flex items-center gap-2 text-sm text-dark-textSecondary">
-          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-aqua-500 border-t-transparent" />
-          Carregando calendário…
-        </div>
+        <BrandLoading message="Carregando calendário…" size={32} className="mb-4 py-4" />
       )}
 
       {/* Calendário */}

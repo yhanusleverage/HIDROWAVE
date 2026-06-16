@@ -4,11 +4,15 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 export type RelayMasterRow = {
   device_id: string;
   doser_relay_states?: boolean[];
+  doser_relay_has_timers?: boolean[];
   level_relay_states?: boolean[];
   reserved_relay_states?: boolean[];
   ec_operation_state?: string;
   ec_operation_remaining_sec?: number;
   ec_next_check_in_sec?: number;
+  ph_operation_state?: string;
+  ph_operation_remaining_sec?: number;
+  ph_next_check_in_sec?: number;
   last_update?: string;
 };
 

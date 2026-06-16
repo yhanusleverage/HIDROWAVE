@@ -2,46 +2,53 @@
 
 import React from 'react';
 import { usePathname } from 'next/navigation';
-import { Toaster } from 'react-hot-toast';
+import ControlToaster from '@/components/ControlToaster';
 import Sidebar from '@/components/Sidebar';
 import CropAlarmsNotifier from '@/components/CropAlarmsNotifier';
+import PageNavOverlay from '@/components/PageNavOverlay';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { NavigationPendingProvider, useNavigationPending } from '@/contexts/NavigationPendingContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
-export default function LayoutContent({ children }: { children: React.ReactNode }) {
+function MainContent({ children }: { children: React.ReactNode }) {
   const { isExpanded } = useSidebar();
+  const { pending } = useNavigationPending();
+
+  return (
+    <div className="flex min-h-screen">
+      {pending && <PageNavOverlay />}
+      <Sidebar />
+      <main
+        className="relative flex-1 transition-all duration-300 ease-in-out min-h-screen"
+        style={{
+          marginLeft: isExpanded ? '256px' : '80px',
+        }}
+      >
+        <div className={pending ? 'opacity-0 pointer-events-none' : 'animate-page-enter'}>
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default function LayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  
-  // Rotas sem sidebar/alarmes (login). Demais rotas autenticadas recebem CropAlarmsNotifier.
-  const publicRoutes = ['/login'];
+
+  const publicRoutes = ['/login', '/quem-somos'];
   const isPublicRoute = publicRoutes.includes(pathname || '');
 
-  // ✅ Se é rota pública, mostrar sem proteção
   if (isPublicRoute) {
     return <>{children}</>;
   }
 
-  // ✅ Rotas protegidas: requerem autenticação
   return (
     <ProtectedRoute>
-      <CropAlarmsNotifier />
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          style: { maxWidth: '22rem' },
-        }}
-      />
-      <div className="flex min-h-screen">
-        <Sidebar />
-        <main 
-          className="flex-1 transition-all duration-300 ease-in-out"
-          style={{ 
-            marginLeft: isExpanded ? '256px' : '80px'
-          }}
-        >
-          {children}
-        </main>
-      </div>
+      <NavigationPendingProvider>
+        <CropAlarmsNotifier />
+        <ControlToaster />
+        <MainContent>{children}</MainContent>
+      </NavigationPendingProvider>
     </ProtectedRoute>
   );
 }

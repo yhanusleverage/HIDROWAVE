@@ -3,9 +3,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import SensorCard from '@/components/SensorCard';
 import RelayControl from '@/components/RelayControl';
-import SensorChart from '@/components/SensorChart';
+import HydroMonitoringChart from '@/components/HydroMonitoringChart';
+import ControllerMetricsChart from '@/components/ControllerMetricsChart';
 import CropCalendar from '@/components/CropCalendar';
 import { EcAutoStatusCard } from '@/components/EcAutoStatusCard';
+import { PhAutoStatusCard } from '@/components/PhAutoStatusCard';
 import { toast } from 'react-hot-toast';
 import { HydroMeasurement, EnvironmentMeasurement } from '@/lib/supabase';
 import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
@@ -16,8 +18,11 @@ import {
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { getPollingInterval, loadSettings, saveSettings, type Settings } from '@/lib/settings';
 import { formatSensorValue } from '@/lib/format-sensor-value';
+import { resolvePhForDisplay } from '@/lib/realtime/hydro-ph';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
+import BrandLoading from '@/components/BrandLoading';
+import QuemSomosTeaser from '@/components/QuemSomosTeaser';
 import { 
   AdjustmentsHorizontalIcon,
   XMarkIcon
@@ -105,9 +110,7 @@ export default function DashboardPage() {
     return null;
   };
 
-  // ✅ Función helper para calcular EC de forma consistente
-  // Tipado correctamente para evitar errores en Vercel (sin tipos 'any')
-  // DEBE estar definida ANTES de nutrientsChartData para evitar errores de inicialización
+  // EC consistente para cards (prioridade: coluna ec, depois TDS × 2)
   const calculateEC = (item: HydroMeasurement | null | undefined): number | null => {
     // ✅ Validar que el item existe
     if (!item) return null;
@@ -309,130 +312,15 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userEmail, selectedDeviceId]);
 
-  // ✅ Usar useMemo para nutrientsChartData para asegurar que calculateEC esté disponible
-  const nutrientsChartData = useMemo(() => {
-    return {
-      labels: hydroHistory.map(item => {
-        const date = new Date(item.created_at || '');
-        return date.toLocaleTimeString();
-      }),
-      datasets: [
-        {
-          label: 'pH',
-          data: hydroHistory.map(item => {
-            // ✅ Filtrar valores nulos/undefined y asegurar que sea un número válido
-            const phValue = item.ph;
-            if (phValue === null || phValue === undefined || isNaN(Number(phValue))) {
-              return null; // Chart.js manejará null correctamente
-            }
-            return Number(phValue);
-          }),
-          borderColor: 'rgb(255, 205, 86)',
-          backgroundColor: 'rgba(255, 205, 86, 0.5)',
-          tension: 0.3,
-          yAxisID: 'y',
-          spanGaps: true, // ✅ Conectar puntos aunque haya gaps
-        },
-        {
-          label: 'EC (µS/cm)',
-          data: hydroHistory.map(item => {
-            // ✅ Usar función helper compartida para calcular EC
-            const ecValue = calculateEC(item);
-            return ecValue;
-          }),
-          borderColor: 'rgb(75, 192, 192)',
-          backgroundColor: 'rgba(75, 192, 192, 0.5)',
-          tension: 0.3,
-          yAxisID: 'y1',
-          spanGaps: true,
-        },
-        {
-          label: 'Temperatura da Água (°C)',
-          data: hydroHistory.map(item => {
-            const tempValue = item.temperature;
-            if (tempValue === null || tempValue === undefined || isNaN(Number(tempValue))) {
-              return null;
-            }
-            return Number(tempValue);
-          }),
-          borderColor: 'rgb(53, 162, 235)',
-          backgroundColor: 'rgba(53, 162, 235, 0.3)',
-          tension: 0.3,
-          yAxisID: 'y2',
-          spanGaps: true,
-        },
-      ],
-    };
-  }, [hydroHistory]);
-
-  const nutrientsChartOptions = {
-    scales: {
-      y: {
-        type: 'linear' as const,
-        display: true,
-        position: 'left' as const,
-        title: {
-          display: true,
-          text: 'pH',
-        },
-        min: 4,
-        max: 10, // ✅ Aumentado de 8 a 10 para mostrar valores de pH más altos (hasta 9.5+)
-        // ✅ Asegurar que el eje Y muestre valores de pH correctamente
-        ticks: {
-          stepSize: 0.5,
-        },
-      },
-      y1: {
-        type: 'linear' as const,
-        display: true,
-        position: 'right' as const,
-        title: {
-          display: true,
-          text: 'EC (µS/cm)',
-        },
-        grid: {
-          drawOnChartArea: false,
-        },
-      },
-      y2: {
-        type: 'linear' as const,
-        display: true,
-        position: 'left' as const,
-        title: {
-          display: true,
-          text: 'Temperatura (°C)',
-        },
-        min: 15,
-        max: 35,
-        grid: {
-          drawOnChartArea: false,
-        },
-        // ✅ Posicionar este eje después del eje y (pH)
-        afterFit: (scale: { left: number }) => {
-          // Ajustar posición para que no se superponga
-          scale.left = 60;
-        },
-      },
-    },
-    // ✅ Opciones adicionales para mejorar la visualización
-    plugins: {
-      legend: {
-        display: true,
-        position: 'top' as const,
-      },
-      tooltip: {
-        mode: 'index' as const,
-        intersect: false,
-      },
-    },
-  };
-
   // Function to determine pH status
   const getPHStatus = (ph: number): 'normal' | 'warning' | 'danger' => {
     if (ph < 5.5 || ph > 7.0) return 'danger';
     if (ph < 5.8 || ph > 6.8) return 'warning';
     return 'normal';
   };
+
+  /** pH com QC 4.0–9.0 — alinhado com /automacao e handoff Auto pH. */
+  const displayPh = useMemo(() => resolvePhForDisplay(hydroData), [hydroData]);
 
   // Function to determine EC status usando umbrales configurables
   const getECStatus = (ec: number): 'normal' | 'warning' | 'danger' => {
@@ -477,7 +365,7 @@ export default function DashboardPage() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">
-                🌱 HydroWave Dashboard
+                Dashboard
               </h1>
               <p className="text-sm text-dark-textSecondary mt-1">
                 Monitoramento em tempo real do seu sistema
@@ -512,6 +400,7 @@ export default function DashboardPage() {
       
       {/* Conteúdo Principal */}
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <QuemSomosTeaser />
         {error && (
           <div className="bg-red-900/30 border border-red-500 text-red-300 px-4 py-3 rounded mb-6" role="alert">
             <strong className="font-bold">Erro!</strong>
@@ -519,6 +408,31 @@ export default function DashboardPage() {
           </div>
         )}
         
+        {/* ✅ Seção de Gráficos - acima dos valores atuais */}
+        <section className="mb-8">
+          <h2 className="text-xl font-bold mb-4 text-dark-text flex items-center gap-2">
+            <span className="text-2xl">📈</span>
+            Gráficos de Monitoramento
+            {loadingCharts && (
+              <span className="text-xs text-dark-textSecondary ml-2">(Carregando...)</span>
+            )}
+          </h2>
+          {loadingCharts ? (
+            <BrandLoading
+              message="Carregando histórico para gráficos..."
+              size={40}
+              className="py-12 bg-dark-surface rounded-lg border border-dark-border"
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-6">
+              <HydroMonitoringChart history={hydroHistory} />
+              {selectedDeviceId ? (
+                <ControllerMetricsChart deviceId={selectedDeviceId} />
+              ) : null}
+            </div>
+          )}
+        </section>
+
         {/* ✅ Seção de Sensores - Carga independiente */}
         <section className="mb-8">
               <div className="flex items-center justify-between mb-4">
@@ -549,10 +463,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               {loadingSensors ? (
-                <div className="text-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-4 border-aqua-500/30 border-t-aqua-500 mx-auto"></div>
-                  <p className="mt-4 text-sm text-dark-textSecondary">Carregando sensores...</p>
-                </div>
+                <BrandLoading message="Carregando sensores..." className="py-12" />
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* Card Temperatura da Água con botón */}
@@ -586,12 +497,13 @@ export default function DashboardPage() {
                   <div className="relative">
                     <SensorCard 
                       title="pH" 
+                      domain="ph"
                       value={
-                        hydroData?.ph !== undefined && hydroData.ph !== null
-                          ? formatSensorValue(hydroData.ph, 2)
+                        displayPh !== null
+                          ? formatSensorValue(displayPh, 2)
                           : '--'
                       }
-                      status={hydroData?.ph !== undefined && hydroData.ph !== null ? getPHStatus(hydroData.ph) : 'normal'}
+                      status={displayPh !== null ? getPHStatus(displayPh) : 'normal'}
                     />
                     <button
                       onClick={() => setShowPHConfig(true)}
@@ -606,6 +518,7 @@ export default function DashboardPage() {
                   <div className="relative">
                     <SensorCard 
                       title="EC" 
+                      domain="ec"
                       value={
                         (() => {
                           // ✅ Usar función helper compartida para calcular EC
@@ -666,33 +579,11 @@ export default function DashboardPage() {
             </section>
 
             {selectedDeviceId && (
-              <EcAutoStatusCard deviceId={selectedDeviceId} />
+              <>
+                <EcAutoStatusCard deviceId={selectedDeviceId} />
+                <PhAutoStatusCard deviceId={selectedDeviceId} />
+              </>
             )}
-            
-            {/* ✅ Seção de Gráficos - Carga independiente */}
-            <section className="mb-8">
-              <h2 className="text-xl font-bold mb-4 text-dark-text flex items-center gap-2">
-                <span className="text-2xl">📈</span>
-                Gráficos de Monitoramento
-                {loadingCharts && (
-                  <span className="text-xs text-dark-textSecondary ml-2">(Carregando...)</span>
-                )}
-              </h2>
-              {loadingCharts ? (
-                <div className="text-center py-12 bg-dark-surface rounded-lg border border-dark-border">
-                  <div className="animate-spin rounded-full h-10 w-10 border-4 border-aqua-500/30 border-t-aqua-500 mx-auto"></div>
-                  <p className="mt-4 text-sm text-dark-textSecondary">Carregando histórico para gráficos...</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-6">
-                  <SensorChart 
-                    title="pH e EC" 
-                    data={nutrientsChartData} 
-                    options={nutrientsChartOptions} 
-                  />
-                </div>
-              )}
-            </section>
             
             {/* Seção de Calendário de Cultivo */}
             <section className="mb-8">

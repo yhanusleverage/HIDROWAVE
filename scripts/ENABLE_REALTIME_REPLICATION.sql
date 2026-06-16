@@ -1,6 +1,7 @@
 -- =====================================================
 -- Supabase Realtime — activar tablas para WebSocket
--- Ejecutar en Supabase SQL Editor (ignora si ya están añadidas)
+-- Solo añade tablas que EXISTEN (evita error 42P01)
+-- Métricas: ejecutar RUN_CONTROLLER_METRICS_MIGRATIONS.sql antes
 -- =====================================================
 
 DO $$
@@ -13,10 +14,21 @@ DECLARE
     'relay_commands',
     'hydro_measurements',
     'environment_data',
-    'nutrient_dosages'
+    'nutrient_dosages',
+    'ph_dosages',
+    'ec_controller_metrics',
+    'ph_controller_metrics'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = t
+    ) THEN
+      RAISE NOTICE 'Omitido (tabla no existe): %', t;
+      CONTINUE;
+    END IF;
+
     BEGIN
       EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I', t);
       RAISE NOTICE 'Added % to supabase_realtime', t;

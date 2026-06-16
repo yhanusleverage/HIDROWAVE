@@ -1,9 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { Toaster, toast } from 'react-hot-toast';
+import BrandLoading from '@/components/BrandLoading';
+import BrandLogo from '@/components/BrandLogo';
+import ControlToaster from '@/components/ControlToaster';
+import { toast } from 'react-hot-toast';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -31,10 +35,7 @@ export default function LoginPage() {
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-dark-bg via-primary-900 to-aqua-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-aqua-500 mx-auto"></div>
-          <p className="mt-4 text-dark-textSecondary">Verificando autenticação...</p>
-        </div>
+        <BrandLoading layout="hero" showWordmark message="Verificando autenticação..." />
       </div>
     );
   }
@@ -85,13 +86,17 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-dark-bg via-primary-900 to-aqua-900 flex items-center justify-center p-4">
-      <Toaster position="top-right" />
+      <ControlToaster />
       
-      <div className="bg-dark-card border border-dark-border rounded-lg shadow-2xl p-8 w-full max-w-md">
+      <div className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-2xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent mb-2">
-            🌱 HydroWave
-          </h1>
+          <BrandLogo
+            variant="gradient"
+            size={40}
+            showWordmark
+            wordmarkSize="lg"
+            className="justify-center mb-3"
+          />
           <p className="text-dark-textSecondary">
             {isSignUp ? 'Criar nova conta' : 'Entre na sua conta'}
           </p>
@@ -175,6 +180,12 @@ export default function LoginPage() {
             {isSignUp ? 'Já tem uma conta? Entrar' : 'Não tem conta? Criar conta'}
           </button>
         </div>
+
+        <p className="mt-4 text-center text-sm text-dark-textSecondary">
+          <Link href="/quem-somos" className="text-aqua-400 hover:text-aqua-300 transition-colors">
+            Conheça a HydroWave — Quem somos →
+          </Link>
+        </p>
 
       </div>
     </div>

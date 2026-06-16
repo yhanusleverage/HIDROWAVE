@@ -82,12 +82,11 @@ export function formatPhCalibrationLine(
       ? mlPerLiterPerPhUnit(mlPerPhUnit, volumeLiters)
       : null;
   const parts = [
-    `${label}:`,
     mlPerPhUnit != null ? `${formatMlPerPhUnit(mlPerPhUnit)} ml/unid` : '— ml/unid',
     mlL != null ? `${formatMlPerLiterPerPhUnit(mlL)} ml/L/unid` : '— ml/L/unid',
   ];
   if (flowRateMlPerSec != null && flowRateMlPerSec > 0) {
     parts.push(`${flowRateMlPerSec.toFixed(2)} ml/s`);
   }
-  return parts.join(' · ');
+  return `${label}: ${parts.join(' · ')}`;
 }

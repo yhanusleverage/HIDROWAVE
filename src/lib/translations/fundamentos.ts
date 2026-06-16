@@ -245,7 +245,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
           {
             title: 'Como usar no dia a dia',
             body:
-              'Com temperatura e humidade do ambiente calcula-se o VPD (apps ou tabelas). Se a tabela está verde mas a planta murcha → olhe VPD alto. Se bebe pouco e EC sobe com nível ESTÁTICO → olhe VPD baixo + Nota 2. HIDROWAVE trata solução; o cultivador equilibra o ar — os dois juntos fecham o ciclo da planta.',
+              'Com temperatura e humidade do ambiente calcula-se o VPD (apps ou tabelas). Se a tabela está verde mas a planta murcha → olhe VPD alto. Se bebe pouco e EC sobe com nível ESTÁTICO → olhe VPD baixo + Nota 2. HydroWave trata solução; o cultivador equilibra o ar — os dois juntos fecham o ciclo da planta.',
           },
         ],
       },
@@ -452,7 +452,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
           {
             title: 'Daily use',
             body:
-              'With ambient temperature and humidity you calculate VPD (apps or charts). If the table is green but the plant wilts → check high VPD. If it drinks little and EC rises with STATIC level → check low VPD + Note 2. HIDROWAVE manages the solution; the grower balances the air—together they close the plant’s cycle.',
+              'With ambient temperature and humidity you calculate VPD (apps or charts). If the table is green but the plant wilts → check high VPD. If it drinks little and EC rises with STATIC level → check low VPD + Note 2. HydroWave manages the solution; the grower balances the air—together they close the plant’s cycle.',
           },
         ],
       },
@@ -659,7 +659,7 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
           {
             title: 'Uso diario',
             body:
-              'Con temperatura y humedad del ambiente se calcula el VPD (apps o tablas). Si la tabla está verde pero la planta se marchita → revise VPD alto. Si bebe poco y la EC sube con nivel ESTÁTICO → revise VPD bajo + Nota 2. HIDROWAVE cuida la solución; el cultivador equilibra el aire — juntos cierran el ciclo de la planta.',
+              'Con temperatura y humedad del ambiente se calcula el VPD (apps o tablas). Si la tabla está verde pero la planta se marchita → revise VPD alto. Si bebe poco y la EC sube con nivel ESTÁTICO → revise VPD bajo + Nota 2. HydroWave cuida la solución; el cultivador equilibra el aire — juntos cierran el ciclo de la planta.',
           },
         ],
       },

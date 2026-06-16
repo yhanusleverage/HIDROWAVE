@@ -10,6 +10,25 @@ module.exports = {
     extend: {
       animation: {
         'spin-slow': 'spin 3s linear infinite',
+        'brand-pulse': 'brand-breathe 2.4s ease-in-out infinite',
+        'brand-breathe': 'brand-breathe 2.4s ease-in-out infinite',
+        'page-enter': 'page-enter 0.35s ease-out',
+      },
+      keyframes: {
+        'brand-breathe': {
+          '0%, 100%': {
+            transform: 'scale(0.88)',
+            filter: 'drop-shadow(0 0 6px rgba(38, 198, 218, 0.35))',
+          },
+          '50%': {
+            transform: 'scale(1.14)',
+            filter: 'drop-shadow(0 0 22px rgba(45, 212, 191, 0.9))',
+          },
+        },
+        'page-enter': {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
       },
       colors: {
         dark: {
@@ -43,6 +62,19 @@ module.exports = {
           700: "#075985",
           800: "#0c4a6e",
           900: "#082f49",
+        },
+        hw: {
+          surface: {
+            0: "var(--hw-surface-0)",
+            1: "var(--hw-surface-1)",
+            2: "var(--hw-surface-2)",
+          },
+          domain: {
+            brand: "var(--hw-domain-brand)",
+            ec: "var(--hw-domain-ec)",
+            ph: "var(--hw-domain-ph)",
+            wait: "var(--hw-domain-wait)",
+          },
         },
       },
     },

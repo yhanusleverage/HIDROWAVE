@@ -159,7 +159,7 @@ export function NutrientDosageDetail({
   const nutrientCount = composition.length;
 
   return (
-    <div className="mt-3 border border-dark-border rounded-lg overflow-hidden">
+    <div className="mt-3 border border-dark-border border-t-2 border-t-emerald-500 rounded-lg overflow-hidden">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}

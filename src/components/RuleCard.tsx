@@ -5,12 +5,12 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   PencilIcon,
-  TrashIcon,
   EyeIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 
-import type { AutomationRule } from '@/app/automacao/page';
+import type { AutomationRule } from '@/app/automacao/AutomacaoPageClient';
+import { HW_ACCENT_TOP, HW_BADGE } from '@/lib/design-tokens';
 
 interface RuleCardProps {
   rule: AutomationRule;
@@ -41,8 +41,8 @@ export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardP
 
   return (
     <div
-      className={`bg-dark-card border border-dark-border rounded-lg transition-all duration-300 shadow-md hover:shadow-lg ${
-        rule.enabled ? 'border-aqua-500/30' : 'border-dark-border'
+      className={`bg-dark-card border rounded-lg transition-all duration-300 shadow-md hover:shadow-lg border-t-2 ${
+        rule.enabled ? `${HW_ACCENT_TOP.brand} border-aqua-500/30` : `${HW_ACCENT_TOP.neutral} border-dark-border`
       }`}
     >
       {/* Header - Clickeable para abrir modal de edição */}
@@ -57,9 +57,7 @@ export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardP
                 <h3 className="text-base font-semibold text-dark-text truncate">{rule.name}</h3>
                 <span
                   className={`px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 ${
-                    rule.enabled
-                      ? 'bg-aqua-500/20 text-aqua-400 border-aqua-500/30'
-                      : 'bg-dark-surface text-dark-textSecondary border-dark-border'
+                    rule.enabled ? HW_BADGE.brand : HW_BADGE.neutral
                   }`}
                 >
                   {rule.enabled ? (
@@ -108,7 +106,7 @@ export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardP
               className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-red-400 hover:text-red-300"
               title="Excluir (requer senha de administrador)"
             >
-              <TrashIcon className="w-5 h-5" />
+              <XMarkIcon className="w-5 h-5" />
             </button>
           </div>
         </div>

@@ -1,14 +1,23 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowUpIcon, ArrowDownIcon, TrashIcon, PlusIcon, Cog6ToothIcon, PaperClipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon, Cog6ToothIcon, PaperClipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import { hwToast } from '@/lib/control-toast';
+import {
+  formatInstructionType,
+  SWITCH_LABEL,
+  SWITCH_MODE_CYCLE,
+  SWITCH_MODE_TIMER,
+} from '@/lib/instruction-labels';
 import WhileInstructionEditor from './instruction-editors/WhileInstructionEditor';
 import IfInstructionEditor from './instruction-editors/IfInstructionEditor';
 import RelayActionEditor from './instruction-editors/RelayActionEditor';
 import { Instruction } from './SequentialScriptEditor';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+import TargetRuleIdField from '@/components/TargetRuleIdField';
 interface Relay {
   id: number;
   name: string;
@@ -172,6 +181,8 @@ export default function CreateRuleModal({
   const [espnowSlaves, setEspnowSlaves] = useState<ESPNowSlave[]>([]);
   const [chainedEventsSequential, setChainedEventsSequential] = useState<ChainedEventSequential[]>([]);
   const [expandedChainedEventsSequential, setExpandedChainedEventsSequential] = useState(false);
+  const [availableRules, setAvailableRules] = useState<Array<{ rule_id: string; rule_name: string }>>([]);
+  const [loadingAvailableRules, setLoadingAvailableRules] = useState(false);
 
   const sensors = [
     { value: 'level_1', label: 'Nível 1' },
@@ -232,7 +243,7 @@ export default function CreateRuleModal({
     });
 
     if (relayOptions.length === 0) {
-      toast.error('Nenhum relay slave disponível. Carregue os slaves primeiro.');
+      toast.error('Nenhum relé slave disponível. Carregue os slaves primeiro.');
       return;
     }
 
@@ -313,6 +324,10 @@ export default function CreateRuleModal({
         if (typeof ruleJson.script?.max_iterations === 'number') {
           setMaxIterations(ruleJson.script.max_iterations);
         }
+
+        if (ruleJson.script?.chained_events && Array.isArray(ruleJson.script.chained_events)) {
+          setChainedEventsSequential(ruleJson.script.chained_events as ChainedEventSequential[]);
+        }
       }
       
       // Carregar condições e ações tradicionais (se não for Sequential Script)
@@ -367,6 +382,35 @@ export default function CreateRuleModal({
     if (isOpen && deviceId && userProfile?.email) {
       loadSlaves();
     }
+  }, [isOpen, deviceId, userProfile?.email]);
+
+  useEffect(() => {
+    const loadAvailableRules = async () => {
+      if (!isOpen || !deviceId || !userProfile?.email) {
+        setAvailableRules([]);
+        return;
+      }
+
+      setLoadingAvailableRules(true);
+      try {
+        const { data, error } = await supabase
+          .from('decision_rules')
+          .select('rule_id, rule_name')
+          .eq('device_id', deviceId)
+          .eq('created_by', userProfile.email)
+          .order('rule_name', { ascending: true });
+
+        if (error) throw error;
+        setAvailableRules(data || []);
+      } catch (error) {
+        console.error('Erro ao carregar regras disponíveis:', error);
+        setAvailableRules([]);
+      } finally {
+        setLoadingAvailableRules(false);
+      }
+    };
+
+    loadAvailableRules();
   }, [isOpen, deviceId, userProfile?.email]);
 
   const loadSlaves = async () => {
@@ -471,7 +515,7 @@ export default function CreateRuleModal({
     };
 
     onSave(rule);
-    toast.success(editingRule ? 'Regra atualizada com sucesso!' : 'Regra criada com sucesso!');
+    hwToast.success(editingRule ? 'Regra atualizada com sucesso!' : 'Regra criada com sucesso!', 'REGRA');
     
     // Reset form
     setRuleName('');
@@ -722,7 +766,7 @@ export default function CreateRuleModal({
                             className="flex-1 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
                           >
                             {relayOptions.length === 0 ? (
-                              <option value="">Nenhum relay slave disponível</option>
+                              <option value="">Nenhum relé slave disponível</option>
                             ) : (
                               relayOptions.map((option) => (
                                 <option key={option.value} value={option.value}>
@@ -765,7 +809,7 @@ export default function CreateRuleModal({
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-mono text-sm font-semibold text-aqua-400">
-                      {index + 1}. {instr.type === 'while' ? 'LOOP' : instr.type === 'if' ? 'Se' : instr.type === 'relay_action' ? 'Relé' : instr.type === 'switch' ? 'Switch' : instr.type.toUpperCase()}
+                      {index + 1}. {formatInstructionType(instr.type)}
                     </span>
                     <div className="flex gap-1">
                       <button
@@ -789,7 +833,7 @@ export default function CreateRuleModal({
                         className="p-1 hover:bg-dark-surface rounded"
                         title="Remover"
                       >
-                        <TrashIcon className="w-4 h-4 text-red-400" />
+                        <XMarkIcon className="w-4 h-4 text-red-400" />
                       </button>
                     </div>
                   </div>
@@ -822,7 +866,7 @@ export default function CreateRuleModal({
                   {instr.type === 'switch' && (
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-xs text-gray-400 mb-2">Switch (Trocar Estado)</label>
+                        <label className="block text-xs text-gray-400 mb-2">{SWITCH_LABEL}</label>
                         
                         {/* Seleção de Modo: Ciclo ou Timer */}
                         <div className="mb-3">
@@ -842,8 +886,8 @@ export default function CreateRuleModal({
                             }}
                             className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                           >
-                            <option value="timer">Timer (Duração fixa)</option>
-                            <option value="cycle">Ciclo (Toggle automático ON/OFF)</option>
+                            <option value="timer">{SWITCH_MODE_TIMER}</option>
+                            <option value="cycle">{SWITCH_MODE_CYCLE}</option>
                           </select>
                         </div>
 
@@ -975,7 +1019,7 @@ export default function CreateRuleModal({
                   )}
 
                   {instr.type === 'return' && (
-                    <div className="text-sm text-dark-textSecondary italic">Retorna do loop</div>
+                    <div className="text-sm text-dark-textSecondary italic">Retornar do loop</div>
                   )}
                     </div>
                     ))}
@@ -1060,7 +1104,7 @@ export default function CreateRuleModal({
                             }
                             className="p-1 hover:bg-dark-surface rounded"
                           >
-                            <TrashIcon className="w-3 h-3 text-red-400" />
+                            <XMarkIcon className="w-3 h-3 text-red-400" />
                           </button>
                         </div>
 
@@ -1069,16 +1113,21 @@ export default function CreateRuleModal({
                             <label className="block text-xs text-dark-textSecondary mb-1">
                               ID da Regra Alvo
                             </label>
-                            <input
-                              type="text"
+                            <TargetRuleIdField
                               value={event.target_rule_id}
-                              onChange={(e) => {
+                              onChange={(nextValue) => {
                                 const updated = [...chainedEventsSequential];
-                                updated[idx].target_rule_id = e.target.value;
+                                updated[idx].target_rule_id = nextValue;
                                 setChainedEventsSequential(updated);
                               }}
-                              placeholder="Ex: RULE_001"
-                              className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                              availableRules={availableRules}
+                              excludeRuleId={
+                                typeof editingRule?.rule_id === 'string' ? editingRule.rule_id : null
+                              }
+                              loading={loadingAvailableRules}
+                              fieldId={`modal-chained-event-${idx}`}
+                              inputClassName="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                              hintClassName="text-xs text-dark-textSecondary mt-1"
                             />
                           </div>
 
@@ -1102,7 +1151,7 @@ export default function CreateRuleModal({
 
                           <div>
                             <label className="block text-xs text-dark-textSecondary mb-1">
-                              Delay (ms)
+                              Espera (ms)
                             </label>
                             <input
                               type="number"

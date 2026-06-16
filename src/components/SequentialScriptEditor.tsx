@@ -1,14 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { XMarkIcon, ArrowUpIcon, ArrowDownIcon, TrashIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, Cog6ToothIcon, PaperClipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, Cog6ToothIcon, PaperClipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'react-hot-toast';
+import {
+  formatInstructionType,
+  SWITCH_LABEL,
+  SWITCH_MODE_CYCLE,
+  SWITCH_MODE_TIMER,
+} from '@/lib/instruction-labels';
 import WhileInstructionEditor from './instruction-editors/WhileInstructionEditor';
 import IfInstructionEditor from './instruction-editors/IfInstructionEditor';
 import RelayActionEditor from './instruction-editors/RelayActionEditor';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { useAuth } from '@/contexts/AuthContext';
+import TargetRuleIdField from '@/components/TargetRuleIdField';
 
 export interface Instruction {
   type: 'while' | 'if' | 'relay_action' | 'switch' | 'return' | 'break' | 'continue' | 'delay';
@@ -68,13 +75,15 @@ export default function SequentialScriptEditor({
   const [chainedEvents, setChainedEvents] = useState<ChainedEvent[]>([]);
   const [expandedChainedEvents, setExpandedChainedEvents] = useState(false);
   const [availableRules, setAvailableRules] = useState<Array<{ rule_id: string; rule_name: string }>>([]);
+  const [loadingAvailableRules, setLoadingAvailableRules] = useState(false);
   const [currentRuleId, setCurrentRuleId] = useState<string | null>(null);
 
   // ✅ Carregar regras disponíveis para eventos encadeados
   useEffect(() => {
     const loadAvailableRules = async () => {
       if (!deviceId || !userProfile?.email) return;
-      
+
+      setLoadingAvailableRules(true);
       try {
         const { data, error } = await supabase
           .from('decision_rules')
@@ -87,6 +96,9 @@ export default function SequentialScriptEditor({
         setAvailableRules(data || []);
       } catch (error) {
         console.error('Erro ao carregar regras disponíveis:', error);
+        setAvailableRules([]);
+      } finally {
+        setLoadingAvailableRules(false);
       }
     };
 
@@ -460,7 +472,7 @@ export default function SequentialScriptEditor({
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-mono text-sm font-semibold text-aqua-400">
-                    {index + 1}. {instr.type === 'while' ? 'LOOP' : instr.type === 'if' ? 'Se' : instr.type === 'relay_action' ? 'Relé' : instr.type === 'switch' ? 'Switch' : instr.type.toUpperCase()}
+                    {index + 1}. {formatInstructionType(instr.type)}
                   </span>
                   <div className="flex gap-1">
                     <button
@@ -484,7 +496,7 @@ export default function SequentialScriptEditor({
                       className="p-1 hover:bg-dark-surface rounded"
                       title="Remover"
                     >
-                      <TrashIcon className="w-4 h-4 text-red-400" />
+                      <XMarkIcon className="w-4 h-4 text-red-400" />
                     </button>
                   </div>
                 </div>
@@ -518,7 +530,7 @@ export default function SequentialScriptEditor({
                 {instr.type === 'switch' && (
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs text-gray-400 mb-2">Switch (Trocar Estado)</label>
+                      <label className="block text-xs text-gray-400 mb-2">{SWITCH_LABEL}</label>
                       
                       {/* Seleção de Modo: Ciclo ou Timer */}
                       <div className="mb-3">
@@ -538,8 +550,8 @@ export default function SequentialScriptEditor({
                           }}
                           className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                         >
-                          <option value="timer">Timer (Duração fixa)</option>
-                          <option value="cycle">Ciclo (Toggle automático ON/OFF)</option>
+                          <option value="timer">{SWITCH_MODE_TIMER}</option>
+                          <option value="cycle">{SWITCH_MODE_CYCLE}</option>
                         </select>
                       </div>
 
@@ -671,7 +683,7 @@ export default function SequentialScriptEditor({
                 )}
 
                 {instr.type === 'return' && (
-                  <div className="text-sm text-gray-400 italic">Retorna do loop</div>
+                  <div className="text-sm text-gray-400 italic">Retornar do loop</div>
                 )}
               </div>
             ))}
@@ -753,50 +765,27 @@ export default function SequentialScriptEditor({
                           }
                           className="p-1 hover:bg-dark-surface rounded"
                         >
-                          <TrashIcon className="w-3 h-3 text-red-400" />
+                          <XMarkIcon className="w-3 h-3 text-red-400" />
                         </button>
                       </div>
 
                       <div className="space-y-2">
                         <div>
                           <label className="block text-xs text-gray-400 mb-1">
-                            Regra Alvo (rule_id)
+                            ID da Regra Alvo
                           </label>
-                          {availableRules.length > 0 ? (
-                            <select
-                              value={event.target_rule_id}
-                              onChange={(e) => {
-                                const updated = [...chainedEvents];
-                                updated[idx].target_rule_id = e.target.value;
-                                setChainedEvents(updated);
-                              }}
-                              className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
-                            >
-                              <option value="">Selecione uma regra...</option>
-                              {availableRules
-                                .filter(rule => rule.rule_id !== currentRuleId) // ✅ Excluir a própria regra
-                                .map((rule) => (
-                                  <option key={rule.rule_id} value={rule.rule_id}>
-                                    {rule.rule_name} ({rule.rule_id})
-                                  </option>
-                                ))}
-                            </select>
-                          ) : (
-                            <input
-                              type="text"
-                              value={event.target_rule_id}
-                              onChange={(e) => {
-                                const updated = [...chainedEvents];
-                                updated[idx].target_rule_id = e.target.value;
-                                setChainedEvents(updated);
-                              }}
-                              placeholder="Ex: RULE_001"
-                              className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
-                            />
-                          )}
-                          <p className="text-xs text-gray-500 mt-1">
-                            ✅ Use o rule_id de outra regra para encadear eventos
-                          </p>
+                          <TargetRuleIdField
+                            value={event.target_rule_id}
+                            onChange={(nextValue) => {
+                              const updated = [...chainedEvents];
+                              updated[idx].target_rule_id = nextValue;
+                              setChainedEvents(updated);
+                            }}
+                            availableRules={availableRules}
+                            excludeRuleId={currentRuleId}
+                            loading={loadingAvailableRules}
+                            fieldId={`chained-event-${idx}`}
+                          />
                         </div>
 
                         <div>
@@ -819,7 +808,7 @@ export default function SequentialScriptEditor({
 
                         <div>
                           <label className="block text-xs text-gray-400 mb-1">
-                            Delay (ms)
+                            Espera (ms)
                           </label>
                           <input
                             type="number"

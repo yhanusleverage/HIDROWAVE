@@ -1,7 +1,7 @@
 # Handoff — Última dosagem E2E (Auto EC · ISA-88 batch events)
 
 **Fecha:** jun/2026 · **Device ref:** `ESP32_HIDRO_269844`  
-**Estado código:** implementado en repo · **Estado prod:** pendiente SQL + flash + bancada
+**Estado código:** implementado en repo · **Estado prod:** sendero **Auto EC → MQTT → bridge → Supabase** cerrado (16 jun 2026)
 
 ---
 
@@ -97,8 +97,8 @@ source ('auto_ec'|'manual'|'web'), created_at
 
 ### Fase A — Supabase (operaciones)
 
-- [ ] Ejecutar [`CRIAR_TABELA_NUTRIENT_DOSAGES.sql`](../scripts/CRIAR_TABELA_NUTRIENT_DOSAGES.sql) en SQL Editor prod (fix PL/pgSQL aplicado)
-- [ ] Verificar con [`VERIFICAR_NUTRIENT_DOSAGES_E2E.sql`](../scripts/VERIFICAR_NUTRIENT_DOSAGES_E2E.sql)
+- [x] Ejecutar [`CRIAR_TABELA_NUTRIENT_DOSAGES.sql`](../scripts/CRIAR_TABELA_NUTRIENT_DOSAGES.sql) en SQL Editor prod (fix PL/pgSQL aplicado)
+- [x] Verificar con [`VERIFICAR_NUTRIENT_DOSAGES_E2E.sql`](../scripts/VERIFICAR_NUTRIENT_DOSAGES_E2E.sql)
 
 ```sql
 SELECT COUNT(*) FROM information_schema.tables
@@ -108,7 +108,8 @@ SELECT column_name FROM information_schema.columns
 WHERE table_name = 'relay_master' AND column_name LIKE 'ec_operation%';
 ```
 
-- [ ] Añadir `nutrient_dosages` a Realtime (script incluye bloque; o [`ENABLE_REALTIME_REPLICATION.sql`](../scripts/ENABLE_REALTIME_REPLICATION.sql))
+- [x] Añadir `nutrient_dosages` a Realtime (script incluye bloque; o [`ENABLE_REALTIME_REPLICATION.sql`](../scripts/ENABLE_REALTIME_REPLICATION.sql))
+- [x] Índice dedup [`NUTRIENT_DOSAGES_DEDUP_INDEX.sql`](../scripts/NUTRIENT_DOSAGES_DEDUP_INDEX.sql) — upsert bridge sin duplicados MQTT+HTTPS
 - [ ] Test INSERT manual anon (opcional):
 
 ```sql
@@ -118,45 +119,45 @@ VALUES ('ESP32_HIDRO_269844', 'test-001', '22CCC', 3, 144.4, 863.0, 'auto_ec');
 
 ### Fase B — Firmware
 
-- [ ] Flash build con `insertNutrientDosage` + `RECIRCULATING` + interlock TDS
-- [ ] Serial esperado tras cada nutriente:
+- [x] Flash build con `insertNutrientDosage` + MQTT `dose`/`ec_operation` + interlock TDS
+- [x] Serial esperado tras cada nutriente (MQTT primario; HTTPS solo si broker caído):
 
 ```
-💾 [DOSAGEM] INSERT nutrient_dosages: 22CCC 144.40 ml relé 4
+[MQTT] dose 23 0.93 ml relé 5
 ```
 
-- [ ] Tras secuencia:
+- [x] Tras secuencia:
 
 ```
 ✅ SEQUÊNCIA COMPLETA
 ⏳ [RECIRC] Aguardando 60 s (tempo_recirculacao)...
 ```
 
-- [ ] Con EC=0 / TDS bajo: `⚠️ [AUTO EC] Sensor EC/TDS inválido — dosagem bloqueada`
+- [x] Con EC=0 / TDS bajo: interlock activo — `auto_enabled=false` o dosagem bloqueada
 
 ### Fase C — Frontend (Railway / local)
 
-- [ ] Deploy HIDROWAVE con hooks nuevos
-- [ ] `/automacao` → Status do Controle:
+- [x] Deploy HIDROWAVE con hooks nuevos (`useLastDosage`, `useEcOperationState`, Realtime)
+- [x] `/automacao` → Status do Controle:
   - `Última dosagem: -- ml` antes del primer ciclo
-  - Tras ciclo: `336.59 ml` ≈ serial `u(t)=336.592`
+  - Tras ciclo: SUM último `sequence_id` (ej. `4.28 ml` seq `116020`) ≈ serial u(t)
   - Badges: Dosando · Aguardando recirculação · Próxima verificação EC
-- [ ] Expandir **Detalhe da última dosagem** → 22CCC / 23 por relé
+- [x] Expandir **Detalhe da última dosagem** → 23 / CAGE / DDSF por relé
 
 ### Fase D — KPI bancada (cierre)
 
-| KPI | Criterio |
-|-----|----------|
-| Latencia INSERT | < 5s tras OFF relé (HTTPS, heap OK) |
-| SUM UI vs serial | \|UI − u(t)\| < 0.05 ml |
-| Recirc badge | Visible ~`tempo_recirculacao` s post-secuencia |
-| Interlock | Sin dosagem absurda con sensor desconectado |
+| KPI | Criterio | 16/jun |
+|-----|----------|--------|
+| Latencia INSERT | < 5s tras OFF relé (MQTT + Realtime) | ✅ |
+| SUM UI vs serial | \|UI − u(t)\| < 0.05 ml | ✅ 4.277 ml |
+| Recirc badge | Visible ~`tempo_recirculacao` s post-secuencia | ✅ |
+| Interlock | Sin dosagem absurda con sensor desconectado | ✅ |
 
 ---
 
-## 5. Transporte MQTT (implementado — opcional en prod)
+## 5. Transporte MQTT (cerrado en prod — jun/2026)
 
-ESP publica por MQTT cuando el broker está conectado; si falla → HTTPS directo (sin doble escritura).
+ESP publica por MQTT cuando el broker está conectado; si falla → HTTPS directo (sin doble escritura). **Verificado en bancada:** filas en `nutrient_dosages`, badges `ec_operation_*` y SUM UI alineados con serial.
 
 | Tópico | QoS | Bridge → Supabase |
 |--------|-----|-------------------|
@@ -165,9 +166,9 @@ ESP publica por MQTT cuando el broker está conectado; si falla → HTTPS direct
 
 **Archivos:** `ESP-HIDROWAVE-main/infra/mqtt/bridge/index.js`, `MqttClient.cpp`, `HydroSystemCore.cpp` (`syncEcOperationStateToSupabase`, `handleNutrientDoseEvent`).
 
-**Deploy bridge:** actualizar ACL (`ec_operation`, `dose`), `systemctl restart hidrowave-bridge`, test `npm run test:pub:ec-dose`.
+**Deploy bridge:** ACL (`ec_operation`, `dose`) activa; `hidrowave-bridge` en Lightsail. Test local: `npm run test:pub:ec-dose`.
 
-**UI:** sin cambios — sigue leyendo Supabase Realtime.
+**UI:** sin cambios — sigue leyendo Supabase Realtime (no consume MQTT directamente).
 
 ### Fix countdown recirc (jun/2026)
 
@@ -184,7 +185,8 @@ ESP publica por MQTT cuando el broker está conectado; si falla → HTTPS direct
 |------|--------|
 | ~~Realtime en `useLastDosage`~~ | ✅ Implementado (`nutrient-dosages.ts`) |
 | ~~MQTT `ec_operation` + `dose` + bridge~~ | ✅ Implementado — activar en Lightsail |
-| Tabla `ec_controller_metrics` | Gráficos históricos EC vs dosagem |
+| Tabla `ec_controller_metrics` | ✅ firmware MQTT `ec_metric` + bridge + dashboard |
+| Tabla `ph_controller_metrics` | ✅ firmware MQTT `ph_metric` + bridge + dashboard |
 | ~~`source='web'` en `executeWebDosage`~~ | ✅ Firmware distingue `auto_ec` / `web` |
 | Dashboard global | Mostrar última dosagem fuera de `/automacao` |
 | RPC `get_last_dosage(device_id)` | Una query en lugar de 2 SELECT en hook |
@@ -238,4 +240,133 @@ ESP publica por MQTT cuando el broker está conectado; si falla → HTTPS direct
 
 ---
 
-**Próximo paso inmediato:** ejecutar SQL prod → flash ESP → una dosagem de prueba con sensor válido → confirmar KPI SUM.
+## 11. Evidencia de cierre MQTT E2E (16 jun 2026)
+
+### Cadena verificada
+
+```text
+ESP32 checkAutoEC → emitNutrientDoseEvent → [MQTT] dose
+  → Mosquitto → bridge insertDose (upsert dedup)
+  → nutrient_dosages → Realtime → useLastDosage / NutrientDosageDetail
+```
+
+Paralelo: `syncEcOperationStateToSupabase` → `[MQTT] ec_operation` → bridge `PATCH relay_master`.
+
+### Evidencia Supabase (prod)
+
+Script: `node scripts/verify-nutrient-dosages-e2e.js` → **E2E nutrient_dosages OK** (16 jun 2026).
+
+| Check | Resultado |
+|-------|-----------|
+| Tabla legible (anon) | OK |
+| Últimas filas `ESP32_HIDRO_269844` | 10+ filas `source=auto_ec` |
+| SUM último `sequence_id` | `116020` → **4.277 ml** (3 nutrientes: 23, CAGE, DDSF) |
+| `relay_master.ec_operation_state` | `idle` post-ciclo |
+
+Último ciclo en DB (ejemplo):
+
+| Nutriente | ml | Relé |
+|-----------|-----|------|
+| 23 | 0.93 | 5 |
+| CAGE | 0.93 | 6 |
+| DDSF | 2.417 | 7 |
+
+### Cómo verificar en UI
+
+1. Abrir `/automacao` → panel **Status do Controle** (Control Nutricional).
+2. Tras un ciclo Auto EC:
+   - **Última dosagem:** debe mostrar SUM del último `sequence_id` (ej. `4.28 ml`), no `--`.
+   - Badges: `Dosando` → `Aguardando recirculação` → idle (según `tempo_recirculacao`).
+3. Expandir **Detalhe da última dosagem** → una fila por nutriente del mismo `sequence_id`.
+4. Latencia esperada: &lt; 3 s tras `[MQTT] dose` (Realtime INSERT).
+
+### Cómo verificar en DB
+
+**SQL Editor** — ejecutar [`VERIFICAR_NUTRIENT_DOSAGES_E2E.sql`](../scripts/VERIFICAR_NUTRIENT_DOSAGES_E2E.sql) (secciones 6–8).
+
+**Node (misma lógica que UI):**
+
+```bash
+cd HIDROWAVE-main
+node scripts/verify-nutrient-dosages-e2e.js
+```
+
+**Bridge (Lightsail):**
+
+```bash
+sudo journalctl -u hidrowave-bridge -f
+# Esperado por nutriente:
+# [bridge] INSERT nutrient_dosages ESP32_HIDRO_269844 23 0.93ml seq=116020
+```
+
+**Serial ESP:**
+
+```text
+[MQTT] dose 23 0.93 ml relé 5
+[MQTT] ec_operation dosing rem=...s next=...s
+✅ SEQUÊNCIA COMPLETA
+⏳ [RECIRC] Aguardando 60 s (tempo_recirculacao)...
+```
+
+### KPI bancada — resultado
+
+| KPI | Criterio | Estado 16/jun |
+|-----|----------|---------------|
+| 1 nutriente = 1 fila | dedup `idx_nutrient_dosages_dedup` | ✅ |
+| SUM UI ≈ serial u(t) | \|Δ\| &lt; 0.05 ml | ✅ (4.277 ml) |
+| Badge recirc | `ec_operation_state=recirculating` | ✅ |
+| Interlock EC/TDS bajo | sin dosagem absurda con sensor off | ✅ (auto desactivado si EC inválido) |
+| Fallback HTTPS | sin broker → INSERT directo | ⏳ no re-testado en esta sesión |
+
+---
+
+## 12. Problemas secundarios en logs (ortogonales al sendero dose)
+
+El sendero **dose + ec_operation** está cerrado. Siguen ruidos en telemetría/ambiente que **no bloquean** `nutrient_dosages` pero ensucian serial, `hydro_measurements` y `environment_data`.
+
+| Síntoma en serial / bridge | Causa | Impacto en Auto EC dose | Acción |
+|----------------------------|-------|-------------------------|--------|
+| `pH: -8.48e27`, `Temp agua/ar: -890316288` | Sensores pH/temp desconectados o bus I²C basura | Interlock bloquea dosagem si TDS/EC inválido; MQTT dose OK cuando sensor válido | Bancada: cableado + calibragem; ver [`HANDOFF_SENSOR_MAGISTRAL_MQTT_FALLBACK.md`](HANDOFF_SENSOR_MAGISTRAL_MQTT_FALLBACK.md) |
+| `[TELEMETRIA MQTT] EC: 0` / `-0` | Sonda EC off o solución vacía | `auto_enabled=false` o interlock — no dosifica | Conectar sonda antes de activar Auto EC |
+| Bridge `environment_data insert failed` / `envSkip` | `air_temp` fuera de [0,50] o `humidity` fuera de [0,100] | Ninguno en dose | Bridge ya omite INSERT inválido; firmware filtra en HTTPS (`SupabaseClient::sendEnvironmentData`) |
+| `hydro_measurements_*_check` violado | Misma telemetría basura en payload MQTT | Cards dashboard `--`; no afecta SUM dosagem | QC UI `resolveEcPlausible`; limpiar filas corruptas si existen |
+| `[MQTT] heartbeat reboot=122` | Contador NVS de reinicios acumulado | Ninguno en dose | Monitorear soak 24h; investigar brownout/WDT si sube en sesión |
+| `WebServerTask nullptr`, `masterManager nullptr` | Orden init / modo sin slaves | No bloquea MQTT dose | Refactor init documentado en checkpoint |
+| Heap 31% → 45% tras SSL | Fragmentación normal ESP32 | Vigilar en soak | Ya monitorizado en heartbeat |
+
+**Regla operativa:** con sensores desconectados, mantener `auto_enabled=false` en frontend hasta PV plausible (EC/TDS ≥ 50 µS/cm, pH finito 4–9 en prod).
+
+---
+
+**Próximo paso inmediato:** ejecutar SQL métricas en prod → flash ESP → deploy bridge con `ec_metric`/`ph_metric` ACL → `npm run verify:controller-metrics`.
+
+---
+
+## 13. Métricas de ciclo (`ec_controller_metrics` / `ph_controller_metrics`)
+
+Registra **cada evaluación** `checkAutoEC` / `checkAutoPH` (con PV válido), con o sin dosagem.
+
+### Flujo
+
+```text
+checkAutoEC/checkAutoPH → emit*ControllerMetric
+  → MQTT hidrowave/{id}/ec_metric | ph_metric
+  → bridge INSERT
+  → dashboard ControllerMetricsChart (poll 60s)
+```
+
+### SQL (orden)
+
+1. [`CRIAR_TABELA_EC_CONTROLLER_METRICS.sql`](../scripts/CRIAR_TABELA_EC_CONTROLLER_METRICS.sql)
+2. [`CRIAR_TABELA_PH_CONTROLLER_METRICS.sql`](../scripts/CRIAR_TABELA_PH_CONTROLLER_METRICS.sql)
+3. [`VERIFICAR_CONTROLLER_METRICS_E2E.sql`](../scripts/VERIFICAR_CONTROLLER_METRICS_E2E.sql)
+
+### Verificación
+
+```bash
+npm run verify:controller-metrics
+```
+
+Serial: `[MQTT] ec_metric err=... u(t)=...ml`
+
+**Relacionado:** handoff Auto pH en [`handoffs/ph/00_INDICE_SERIAL.md`](handoffs/ph/00_INDICE_SERIAL.md) (paridad MQTT `ph_operation` + `ph_dose`). Índice EC: [`handoffs/ec/S01_NUTRIENT_DOSAGES_E2E.md`](handoffs/ec/S01_NUTRIENT_DOSAGES_E2E.md).

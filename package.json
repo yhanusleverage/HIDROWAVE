@@ -7,7 +7,11 @@
     "dev:clean": "node -e \"const fs=require('fs');['.next','node_modules/.cache'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true})}catch(e){}})\" && next dev",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
-    "lint": "next lint"
+    "lint": "next lint",
+    "verify:nutrient-dosages": "node scripts/verify-nutrient-dosages-e2e.js",
+    "verify:ph-dosages": "node scripts/verify-ph-dosages-e2e.js",
+    "verify:controller-metrics": "node scripts/verify-controller-metrics-e2e.js",
+    "verify:e2e-schema": "node scripts/verify-e2e-schema.js"
   },
   "engines": {
     "node": ">=20.0.0"

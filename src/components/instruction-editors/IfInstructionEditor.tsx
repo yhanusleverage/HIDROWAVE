@@ -6,6 +6,13 @@ import { Instruction } from '../SequentialScriptEditor';
 import { ESPNowSlave } from '@/lib/esp-now-slaves';
 import RelayActionEditor from './RelayActionEditor';
 import WhileInstructionEditor from './WhileInstructionEditor';
+import {
+  INSTRUCTION_OPERATORS,
+  formatInstructionType,
+  SWITCH_LABEL,
+  SWITCH_MODE_CYCLE,
+  SWITCH_MODE_TIMER,
+} from '@/lib/instruction-labels';
 
 interface IfInstructionEditorProps {
   instruction: Instruction;
@@ -21,21 +28,11 @@ const SENSORS = [
   { value: 'humidity', label: 'Umidade (%)' },
 ];
 
-const OPERATORS = [
-  { value: '==', label: 'Igual (==)' },
-  { value: '!=', label: 'Diferente (!=)' },
-  { value: '<', label: 'Menor (<)' },
-  { value: '>', label: 'Maior (>)' },
-  { value: '<=', label: 'Menor ou Igual (<=)' },
-  { value: '>=', label: 'Maior ou Igual (>=)' },
-];
-
 export default function IfInstructionEditor({
   instruction,
   onChange,
   espnowSlaves,
 }: IfInstructionEditorProps) {
-  // ✅ Funções auxiliares para conversão de tempo
   const msToTime = (ms: number): string => {
     const totalSeconds = Math.floor(ms / 1000);
     const hours = Math.floor(totalSeconds / 3600);
@@ -154,7 +151,7 @@ export default function IfInstructionEditor({
             onChange={(e) => updateCondition('operator', e.target.value)}
             className="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
           >
-            {OPERATORS.map((op) => (
+            {INSTRUCTION_OPERATORS.map((op) => (
               <option key={op.value} value={op.value}>
                 {op.label}
               </option>
@@ -192,7 +189,7 @@ export default function IfInstructionEditor({
 
       {/* THEN */}
       <div>
-        <label className="block text-xs text-gray-400 mb-2">THEN (se verdadeiro):</label>
+        <label className="block text-xs text-gray-400 mb-2">Então (se verdadeiro):</label>
         <div className="space-y-2 ml-4 border-l-2 border-green-500/30 pl-3">
           {(instruction.then || []).map((thenInstr, idx) => (
             <div
@@ -201,7 +198,7 @@ export default function IfInstructionEditor({
             >
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs text-green-400 font-mono">
-                  {thenInstr.type.toUpperCase()}
+                  {formatInstructionType(thenInstr.type)}
                 </span>
                 <button
                   onClick={() => removeThenInstruction(idx)}
@@ -222,7 +219,7 @@ export default function IfInstructionEditor({
               {thenInstr.type === 'switch' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs text-gray-400 mb-2">Switch (Trocar Estado)</label>
+                    <label className="block text-xs text-gray-400 mb-2">{SWITCH_LABEL}</label>
                     
                     {/* Seleção de Modo: Ciclo ou Timer */}
                     <div className="mb-3">
@@ -242,8 +239,8 @@ export default function IfInstructionEditor({
                         }}
                         className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                       >
-                        <option value="timer">Timer (Duração fixa)</option>
-                        <option value="cycle">Ciclo (Toggle automático ON/OFF)</option>
+                        <option value="timer">{SWITCH_MODE_TIMER}</option>
+                        <option value="cycle">{SWITCH_MODE_CYCLE}</option>
                       </select>
                     </div>
 
@@ -391,7 +388,7 @@ export default function IfInstructionEditor({
               )}
 
               {thenInstr.type === 'return' && (
-                <div className="text-xs text-gray-400 italic">Retorna do loop</div>
+                <div className="text-xs text-gray-400 italic">Retornar do loop</div>
               )}
             </div>
           ))}
@@ -430,7 +427,7 @@ export default function IfInstructionEditor({
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
               <PlusIcon className="w-3 h-3" />
-              RETURN
+              Retornar
             </button>
           </div>
         </div>
@@ -449,7 +446,7 @@ export default function IfInstructionEditor({
             >
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs text-orange-400 font-mono">
-                  {elseInstr.type.toUpperCase()}
+                  {formatInstructionType(elseInstr.type)}
                 </span>
                 <button
                   onClick={() => removeElseInstruction(idx)}
@@ -470,7 +467,7 @@ export default function IfInstructionEditor({
               {elseInstr.type === 'switch' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs text-gray-400 mb-2">Switch (Trocar Estado)</label>
+                    <label className="block text-xs text-gray-400 mb-2">{SWITCH_LABEL}</label>
                     
                     {/* Seleção de Modo: Ciclo ou Timer */}
                     <div className="mb-3">
@@ -490,8 +487,8 @@ export default function IfInstructionEditor({
                         }}
                         className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                       >
-                        <option value="timer">Timer (Duração fixa)</option>
-                        <option value="cycle">Ciclo (Toggle automático ON/OFF)</option>
+                        <option value="timer">{SWITCH_MODE_TIMER}</option>
+                        <option value="cycle">{SWITCH_MODE_CYCLE}</option>
                       </select>
                     </div>
 
@@ -639,7 +636,7 @@ export default function IfInstructionEditor({
               )}
 
               {elseInstr.type === 'return' && (
-                <div className="text-xs text-gray-400 italic">Retorna do loop</div>
+                <div className="text-xs text-gray-400 italic">Retornar do loop</div>
               )}
             </div>
           ))}
@@ -678,7 +675,7 @@ export default function IfInstructionEditor({
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
               <PlusIcon className="w-3 h-3" />
-              RETURN
+              Retornar
             </button>
           </div>
         </div>

@@ -7,12 +7,14 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
 import type { HydroMeasurement } from '@/lib/supabase';
 import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
 import { resolveEcForDisplay, HYDRO_EC_FALLBACK_MS } from '@/lib/realtime/hydro-ec';
-import { resolvePhForDisplay } from '@/lib/realtime/hydro-ph';
+import { resolvePh, resolvePhForDisplay } from '@/lib/realtime/hydro-ph';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 
 export interface HydroEcReadingResult {
   ec: number | null;
   ph: number | null;
+  /** Último pH parseado (mesmo valor que ph após alinhamento com EC). */
+  phRaw: number | null;
   isLoading: boolean;
   lastUpdatedAt: number | null;
 }
@@ -31,18 +33,23 @@ function applyHydroRow(
   row: HydroMeasurement,
   setEc: Dispatch<SetStateAction<number | null>>,
   setPh: Dispatch<SetStateAction<number | null>>,
+  setPhRaw: Dispatch<SetStateAction<number | null>>,
   setLastUpdatedAt: Dispatch<SetStateAction<number | null>>
 ) {
   const ec = resolveEcForDisplay(row);
-  const ph = resolvePhForDisplay(row);
+  const rawPh = resolvePh(row);
+  const displayPh = resolvePhForDisplay(row);
 
   const now = Date.now();
   if (ec !== null) {
     setEc(ec);
     setLastUpdatedAt(now);
   }
-  if (ph !== null) {
-    setPh(ph);
+  if (rawPh !== null) {
+    setPhRaw(rawPh);
+  }
+  if (displayPh !== null) {
+    setPh(displayPh);
     setLastUpdatedAt(now);
   }
 }
@@ -53,6 +60,7 @@ export function useHydroEcReading(
 ): HydroEcReadingResult {
   const [ec, setEc] = useState<number | null>(null);
   const [ph, setPh] = useState<number | null>(null);
+  const [phRaw, setPhRaw] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const deviceIdRef = useRef(deviceId);
@@ -74,7 +82,7 @@ export function useHydroEcReading(
       const data = (await res.json()) as HydroMeasurement;
       if (!hasHydroFields(data)) return;
 
-      applyHydroRow(data, setEc, setPh, setLastUpdatedAt);
+      applyHydroRow(data, setEc, setPh, setPhRaw, setLastUpdatedAt);
     } catch (err) {
       console.warn('[useHydroEcReading] Erro no fetch:', err);
     } finally {
@@ -85,6 +93,7 @@ export function useHydroEcReading(
   useEffect(() => {
     setEc(null);
     setPh(null);
+    setPhRaw(null);
     setLastUpdatedAt(null);
   }, [deviceId]);
 
@@ -98,7 +107,7 @@ export function useHydroEcReading(
       onHydro: (row) => {
         if (row.device_id && row.device_id !== id) return;
         if (!hasHydroFields(row)) return;
-        applyHydroRow(row, setEc, setPh, setLastUpdatedAt);
+        applyHydroRow(row, setEc, setPh, setPhRaw, setLastUpdatedAt);
       },
     });
 
@@ -110,5 +119,5 @@ export function useHydroEcReading(
     };
   }, [deviceId, enabled, refresh]);
 
-  return { ec, ph, isLoading, lastUpdatedAt };
+  return { ec, ph, phRaw, isLoading, lastUpdatedAt };
 }

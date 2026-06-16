@@ -19,8 +19,12 @@ Repositório ESP: `ESP-HIDROWAVE-main/docs/mqtt/README.md`
 | `is_online` | Pode refletir LWT mais rápido após bridge processar `.../status` |
 | `relay_master.ec_operation_*` | Bridge recebe `hidrowave/{id}/ec_operation` → badges Dosando/Recirc en `/automacao` |
 | `nutrient_dosages` | Bridge recebe `hidrowave/{id}/dose` → KPI Última dosagem ml |
+| `relay_master.ph_operation_*` | Bridge recebe `hidrowave/{id}/ph_operation` → badges Auto pH en `/automacao` |
+| `ph_dosages` | Bridge recebe `hidrowave/{id}/ph_dose` → detalle última dosagem pH |
 
-O frontend **não** subscreve MQTT — lê Supabase Realtime como sempre (`useEcOperationState`, `useLastDosage`).
+O frontend **não** subscreve MQTT — lê Supabase Realtime como sempre (`useEcOperationState`, `useLastDosage`, `usePhOperationState`, `PhDosageDetail`).
+
+**Estabilidad online:** poll REST 90s + umbral `last_seen` 5 min — ver [`HANDOFF_DEVICE_ONLINE_STABILITY.md`](HANDOFF_DEVICE_ONLINE_STABILITY.md).
 
 ## Supabase Realtime (WebSocket) — implementado
 
@@ -35,6 +39,7 @@ O frontend **não** subscreve MQTT — lê Supabase Realtime como sempre (`useEc
 | `DeviceControlPanel` | `relay_master`, `relay_slaves` |
 | `/dashboard` tarjetas | `hydro_measurements`, `environment_data` (histórico sigue REST) |
 | `/automacao` Status EC | `relay_master` (`ec_operation_*`), `nutrient_dosages` |
+| `/automacao` Auto pH | `relay_master` (`ph_operation_*`), `ph_dosages` |
 
 ## Melhorias opcionais (após bridge ativo)
 

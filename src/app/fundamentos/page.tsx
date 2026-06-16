@@ -4,7 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { loadSettings } from '@/lib/settings';
 import { getFundamentosTranslation } from '@/lib/translations/fundamentos';
-import { BookOpenIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { InformationCircleIcon } from '@heroicons/react/24/outline';
+import BrandLogo from '@/components/BrandLogo';
+import BrandLoading from '@/components/BrandLoading';
 
 export default function FundamentosPage() {
   const { userProfile } = useAuth();
@@ -92,7 +94,7 @@ export default function FundamentosPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-dark-bg flex items-center justify-center">
-        <div className="text-dark-text">Cargando...</div>
+        <BrandLoading message="Carregando..." />
       </div>
     );
   }
@@ -102,7 +104,7 @@ export default function FundamentosPage() {
       <header className="bg-dark-card border-b border-dark-border shadow-lg">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
           <div className="flex items-center space-x-3">
-            <BookOpenIcon className="w-8 h-8 text-aqua-400" />
+            <BrandLogo variant="gradient" size={36} />
             <div>
               <h1 className="text-2xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">
                 {translations.title}
@@ -115,7 +117,7 @@ export default function FundamentosPage() {
 
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         {/* Legenda de cores */}
-        <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-4 sm:p-5 mb-6">
+        <div className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-4 sm:p-5 mb-6">
           <h2 className="text-sm font-semibold text-dark-text mb-3">{translations.colorLegend.title}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <div className="flex gap-2 items-start rounded-lg bg-green-900/30 border border-green-700/50 p-3">
@@ -137,7 +139,7 @@ export default function FundamentosPage() {
         </div>
 
         {/* Tabla de Condiciones */}
-        <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6 mb-6 overflow-x-auto">
+        <div className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-6 mb-6 overflow-x-auto">
           <div className="min-w-full">
             <table className="w-full border-collapse">
               <thead>
