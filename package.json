@@ -11,6 +11,8 @@
     "verify:nutrient-dosages": "node scripts/verify-nutrient-dosages-e2e.js",
     "verify:ph-dosages": "node scripts/verify-ph-dosages-e2e.js",
     "verify:controller-metrics": "node scripts/verify-controller-metrics-e2e.js",
+    "verify:hydro-raw": "node scripts/verify-hydro-raw-e2e.js",
+    "verify:controller-metrics-chart": "npx tsx scripts/verify-controller-metrics-chart.ts",
     "verify:e2e-schema": "node scripts/verify-e2e-schema.js"
   },
   "engines": {

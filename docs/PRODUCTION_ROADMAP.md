@@ -66,12 +66,14 @@ WebSocket: browser → Supabase (no Railway). Ver `docs/MQTT_INTEGRACAO_FRONTEND
 
 Firmware: MQTT primario + HTTPS fallback (`HydroSystemCore::syncEcOperationStateToSupabase`, `handleNutrientDoseEvent`). Test: `infra/mqtt/bridge` → `npm run test:pub:ec-dose`.
 
-### Handoffs serial Auto pH
+### Handoffs — punto de entrada
 
 | Doc | Uso |
 |-----|-----|
-| [`docs/handoffs/ph/00_INDICE_SERIAL.md`](handoffs/ph/00_INDICE_SERIAL.md) | **Entrada única** S01→S08 (SQL, NVS, calibragem, bridge, bancada) |
-| [`docs/HANDOFF_AUTO_PH_E2E.md`](HANDOFF_AUTO_PH_E2E.md) | Resumen 1 pantalla + links |
+| [`docs/handoffs/00_GUIA_DOSING_VS_METRICAS.md`](handoffs/00_GUIA_DOSING_VS_METRICAS.md) | **Entrada única** eventos vs métricas EC/pH — gates V1–V4 |
+| [`docs/handoffs/ec/00_INDICE_SERIAL.md`](handoffs/ec/00_INDICE_SERIAL.md) | Sendero EC S01 eventos + S02 métricas |
+| [`docs/handoffs/ph/00_INDICE_SERIAL.md`](handoffs/ph/00_INDICE_SERIAL.md) | Sendero pH S01→S08 + S02 métricas |
+| [`docs/HANDOFF_AUTO_PH_E2E.md`](HANDOFF_AUTO_PH_E2E.md) | Resumen 1 pantalla Auto pH |
 
 ### Bridge MQTT — Auto pH UX (implementado)
 

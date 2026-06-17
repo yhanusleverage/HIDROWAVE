@@ -1,6 +1,8 @@
 # Auto pH — Índice serial de handoffs
 
-**Punto de entrada único.** Ejecutar S01 → S08 en orden. No avanzar sin pasar el **gate** de cada paso.
+**Punto de entrada dosing/métricas:** [00_GUIA_DOSING_VS_METRICAS.md](../00_GUIA_DOSING_VS_METRICAS.md)
+
+**Sendero serial:** ejecutar S01 → S08 en orden. No avanzar sin pasar el **gate** de cada paso.
 
 **Device ref:** `ESP32_HIDRO_269844` · **Jun/2026**
 
@@ -14,7 +16,8 @@
 
 | Paso | Documento | Capa | Duración est. |
 |------|-----------|------|---------------|
-| S01 | [S01_SUPABASE_SCHEMA.md](S01_SUPABASE_SCHEMA.md) · [S01_PH_DOSAGES_E2E.md](S01_PH_DOSAGES_E2E.md) | Supabase SQL + verify ph_dosages | 15–30 min |
+| S01 | [S01_SUPABASE_SCHEMA.md](S01_SUPABASE_SCHEMA.md) · [S01_PH_DOSAGES_E2E.md](S01_PH_DOSAGES_E2E.md) | Eventos `ph_dosages` (**V2**) | 15–30 min |
+| S02m | [S02_PH_CONTROLLER_METRICS.md](S02_PH_CONTROLLER_METRICS.md) | Métricas `ph_controller_metrics` (**V4**) | 10 min + flash |
 | S02 | [S02_FIRMWARE_NVS_BOOT.md](S02_FIRMWARE_NVS_BOOT.md) | Firmware NVS boot | 20 min + flash |
 | S03 | [S03_CONTROL_DOMINIO_H.md](S03_CONTROL_DOMINIO_H.md) | Ingeniería control (lectura) | 15 min |
 | S04 | [S04_FLUJO_POLL_CONFIG.md](S04_FLUJO_POLL_CONFIG.md) | Firmware poll config | 10 min |
@@ -48,4 +51,8 @@ flowchart LR
 
 ## Relacionado EC
 
-[`HANDOFF_ULTIMA_DOSAGEM_E2E.md`](../../HANDOFF_ULTIMA_DOSAGEM_E2E.md) — Auto EC (sendero independiente; futuro índice serial EC).
+| Doc | Uso |
+|-----|-----|
+| [ec/00_INDICE_SERIAL.md](../ec/00_INDICE_SERIAL.md) | Sendero EC S01–S02 |
+| [00_GUIA_DOSING_VS_METRICAS.md](../00_GUIA_DOSING_VS_METRICAS.md) | V1–V4 validación |
+| [HANDOFF_ULTIMA_DOSAGEM_E2E.md](../../HANDOFF_ULTIMA_DOSAGEM_E2E.md) | Histórico EC |

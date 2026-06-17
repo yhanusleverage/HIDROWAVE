@@ -344,29 +344,18 @@ El sendero **dose + ec_operation** está cerrado. Siguen ruidos en telemetría/a
 
 ## 13. Métricas de ciclo (`ec_controller_metrics` / `ph_controller_metrics`)
 
-Registra **cada evaluación** `checkAutoEC` / `checkAutoPH` (con PV válido), con o sin dosagem.
+**Resumen:** una fila por evaluación `checkAutoEC` / `checkAutoPH` (PV válido), **no** por pulso de relé. Topics MQTT: `ec_metric` / `ph_metric`. UI: card «Métricas de ciclo» en dashboard.
 
-### Flujo
+**No confundir con** eventos de dosagem (§1–12): `nutrient_dosages` / `ph_dosages` se escriben al apagar el relé.
 
-```text
-checkAutoEC/checkAutoPH → emit*ControllerMetric
-  → MQTT hidrowave/{id}/ec_metric | ph_metric
-  → bridge INSERT
-  → dashboard ControllerMetricsChart (poll 60s)
-```
-
-### SQL (orden)
-
-1. [`CRIAR_TABELA_EC_CONTROLLER_METRICS.sql`](../scripts/CRIAR_TABELA_EC_CONTROLLER_METRICS.sql)
-2. [`CRIAR_TABELA_PH_CONTROLLER_METRICS.sql`](../scripts/CRIAR_TABELA_PH_CONTROLLER_METRICS.sql)
-3. [`VERIFICAR_CONTROLLER_METRICS_E2E.sql`](../scripts/VERIFICAR_CONTROLLER_METRICS_E2E.sql)
-
-### Verificación
+| Gate | Handoff |
+|------|---------|
+| V3 EC | [`handoffs/ec/S02_EC_CONTROLLER_METRICS.md`](handoffs/ec/S02_EC_CONTROLLER_METRICS.md) |
+| V4 pH | [`handoffs/ph/S02_PH_CONTROLLER_METRICS.md`](handoffs/ph/S02_PH_CONTROLLER_METRICS.md) |
+| Índice maestro | [`handoffs/00_GUIA_DOSING_VS_METRICAS.md`](handoffs/00_GUIA_DOSING_VS_METRICAS.md) |
 
 ```bash
 npm run verify:controller-metrics
 ```
 
-Serial: `[MQTT] ec_metric err=... u(t)=...ml`
-
-**Relacionado:** handoff Auto pH en [`handoffs/ph/00_INDICE_SERIAL.md`](handoffs/ph/00_INDICE_SERIAL.md) (paridad MQTT `ph_operation` + `ph_dose`). Índice EC: [`handoffs/ec/S01_NUTRIENT_DOSAGES_E2E.md`](handoffs/ec/S01_NUTRIENT_DOSAGES_E2E.md).
+**Prod (Jun/2026):** tablas OK; filas pendientes tras flash firmware + bridge ACL + Auto EC/pH con sensor válido.

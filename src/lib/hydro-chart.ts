@@ -1,7 +1,7 @@
 import type { ChartData, ChartOptions, Plugin } from 'chart.js';
 import { formatSensorValue } from '@/lib/format-sensor-value';
 import { resolveEcForDisplay } from '@/lib/realtime/hydro-ec';
-import { resolvePhForDisplay } from '@/lib/realtime/hydro-ph';
+import { resolvePhForChart as resolvePhForChartRow } from '@/lib/realtime/hydro-ph';
 import type { HydroMeasurement } from '@/lib/supabase';
 
 /** Colores de dominio — alinhados a globals.css (--hw-domain-*). */
@@ -51,13 +51,9 @@ function computeAxisBounds(
   return { min, max };
 }
 
-/** pH para gráfico — alinhado às cards; rejeita lixo de sensor (≈0, >14). */
-function resolvePhForChart(row: { ph?: number | null } | null | undefined): number | null {
-  const ph = resolvePhForDisplay(row);
-  if (ph == null) return null;
-  if (Math.abs(ph) < 0.01) return null;
-  if (ph > PH_CHART_MAX) return null;
-  return ph;
+/** pH para gráfico — ph_display_clamped (0–14) desde DB. */
+function resolvePhForChart(row: { ph?: number | null; ph_display_clamped?: number | null } | null | undefined): number | null {
+  return resolvePhForChartRow(row);
 }
 
 function resolveTempForChart(temp: number | null | undefined): number | null {

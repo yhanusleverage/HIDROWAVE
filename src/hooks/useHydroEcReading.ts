@@ -22,8 +22,14 @@ export interface HydroEcReadingResult {
 function hasHydroFields(row: HydroMeasurement | null | undefined): boolean {
   if (!row || typeof row !== 'object') return false;
   return (
+    row.water_level_ok !== undefined ||
+    row.level_1 !== undefined ||
+    row.level_2 !== undefined ||
+    row.level_3 !== undefined ||
+    row.level_4 !== undefined ||
     row.temperature !== undefined ||
     row.ph !== undefined ||
+    row.ph_raw !== undefined ||
     row.tds !== undefined ||
     row.ec !== undefined
   );
@@ -43,13 +49,14 @@ function applyHydroRow(
   const now = Date.now();
   if (ec !== null) {
     setEc(ec);
-    setLastUpdatedAt(now);
   }
   if (rawPh !== null) {
     setPhRaw(rawPh);
-  }
-  if (displayPh !== null) {
+    setPh(rawPh);
+  } else if (displayPh !== null) {
     setPh(displayPh);
+  }
+  if (ec !== null || rawPh !== null || displayPh !== null || row.water_level_ok !== undefined) {
     setLastUpdatedAt(now);
   }
 }

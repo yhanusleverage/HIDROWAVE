@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import NavLink from '@/components/NavLink';
 import toast from 'react-hot-toast';
 import { hwToast } from '@/lib/control-toast';
@@ -28,8 +29,6 @@ import {
   previewPhDoseOperatorMl,
   previewPhDoseFirmwareMl,
   capFirmwarePreviewDose,
-  isExtremePhErrorH,
-  formatExtremePhErrorHWarning,
   mlPerPhUnitFromK,
   resolveActiveSL,
   PH_OPERATOR_EQUATION_SYMBOL,
@@ -59,6 +58,12 @@ import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { MetricRow } from '@/components/ui/MetricRow';
 import { HW_TEXT } from '@/lib/design-tokens';
+
+const ControllerMetricsPanel = dynamic(() => import('@/components/ControllerMetricsPanel'), {
+  loading: () => (
+    <p className="text-xs text-dark-textSecondary py-4 text-center">Carregando métricas de ciclo…</p>
+  ),
+});
 
 export interface RelayAllocationBridge {
   buildRegistry: (
@@ -649,8 +654,6 @@ export default function PhControllerPanel({
     [previewFirmwareUncappedMl, previewFirmwareMl]
   );
 
-  const extremeErrorH = useMemo(() => isExtremePhErrorH(errorHAbs), [errorHAbs]);
-
   const previewPulseSec = useMemo(() => {
     if (previewDoseMl == null || activeFlowRate <= 0) return null;
     return previewDoseMl / activeFlowRate;
@@ -668,17 +671,6 @@ export default function PhControllerPanel({
   );
 
   const firmwareDoseBlockMessage = formatPhDoseBlockMessage(firmwareDoseBlockReason);
-
-  const previewDivergesFromLast = useMemo(() => {
-    if (previewDoseMl == null || lastDosageMl == null || lastDosageMl <= 0) {
-      return false;
-    }
-    if (!lastDosageAt) return false;
-    const ageMs = Date.now() - new Date(lastDosageAt).getTime();
-    if (ageMs > 5 * 60 * 1000) return false;
-    const ratio = previewDoseMl / lastDosageMl;
-    return ratio > 20 || ratio < 0.05;
-  }, [previewDoseMl, lastDosageMl, lastDosageAt]);
 
   const relayRegistry = useMemo(() => {
     const phSlice = { relay_ph_up: relayPhUp, relay_ph_down: relayPhDown };
@@ -1064,16 +1056,6 @@ export default function PhControllerPanel({
                 Modelo inverso adaptativo em domínio pH. O operador ajusta apenas A; K é aprendido no
                 detalhe H⁺ colapsável.
               </p>
-              {firmwareDoseBlockMessage && autoEnabled && (
-                <p className="text-xs text-amber-400/95 mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 leading-relaxed">
-                  ESP neste ciclo: {firmwareDoseBlockMessage}
-                </p>
-              )}
-              {previewDivergesFromLast && (
-                <p className="text-xs text-amber-400/95 mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 leading-relaxed">
-                  Preview diverge do último ciclo — revisar PV ou K (ratio &gt;20× em &lt;5 min).
-                </p>
-              )}
               <div className="space-y-2.5 text-base">
                 <div className="space-y-2 pb-2 border-b border-dark-border">
                   <label className="block text-sm text-dark-textSecondary">V (Volume, L)</label>
@@ -1166,11 +1148,6 @@ export default function PhControllerPanel({
                     Domínio firmware (AdaptivePHController). Pode divergir do preview pH em erros grandes.
                     Valores acima do teto são limitados pelo ESP32 antes de dosar.
                   </p>
-                  {extremeErrorH && errorHAbs != null && (
-                    <p className="text-xs text-amber-400/95 leading-relaxed border border-amber-500/30 rounded-md p-2 bg-amber-500/5">
-                      {formatExtremePhErrorHWarning(errorHAbs)}
-                    </p>
-                  )}
                   <div className="flex justify-between border-t border-dark-border pt-2">
                     <span className="text-dark-textSecondary">ErroH (erro H⁺):</span>
                     <span className="text-dark-text font-medium font-mono tabular-nums">
@@ -1219,6 +1196,12 @@ export default function PhControllerPanel({
               </div>
             </InstrumentCard>
           </div>
+
+          {deviceId ? (
+            <div className="mb-6">
+              <ControllerMetricsPanel deviceId={deviceId} focus="ph" hideTabs />
+            </div>
+          ) : null}
 
           <div className="flex flex-wrap gap-3 mb-4">
             <button

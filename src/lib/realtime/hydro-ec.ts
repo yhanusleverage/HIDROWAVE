@@ -1,5 +1,5 @@
-/** Fallback REST lento para EC si Realtime pierde eventos. */
-export const HYDRO_EC_FALLBACK_MS = 90 * 1000;
+/** Fallback REST si Realtime pierde eventos. */
+export const HYDRO_EC_FALLBACK_MS = 30 * 1000;
 
 /** EC plausível para hidroponia (µS/cm) — alinhado ao interlock firmware. */
 export const EC_MIN_PLAUSIBLE = 100;
@@ -22,9 +22,13 @@ export function isPlausibleEc(ec: number | null | undefined): ec is number {
 
 /** EC direto ou derivado de TDS — sem filtro de intervalo. */
 export function resolveEc(
-  row: { ec?: number | null; tds?: number | null } | null | undefined
+  row: { ec?: number | null; ec_raw?: number | null; tds?: number | null } | null | undefined
 ): number | null {
   if (!row) return null;
+  if (row.ec_raw != null && !Number.isNaN(Number(row.ec_raw))) {
+    const raw = Number(row.ec_raw);
+    return Number.isFinite(raw) ? raw : null;
+  }
   if (row.ec != null && !Number.isNaN(Number(row.ec))) return Number(row.ec);
   return ecFromTds(row.tds);
 }

@@ -13,6 +13,7 @@ export interface LevelSensorsState {
   level4: boolean | null;
   waterLevel: WaterLevelAggregate;
   waterLevelOk: boolean | null;
+  lastTelemetryAt: string | null;
   isLoading: boolean;
 }
 
@@ -25,12 +26,15 @@ const EMPTY: LevelSensorsState = {
   level4: null,
   waterLevel: null,
   waterLevelOk: null,
+  lastTelemetryAt: null,
   isLoading: false,
 };
 
 function parseRow(row: Record<string, unknown> | null): LevelSensorsState {
   if (!row) return { ...EMPTY };
   const wl = row.water_level;
+  const updatedAt = typeof row.updated_at === 'string' ? row.updated_at : null;
+  const lastSeen = typeof row.last_seen === 'string' ? row.last_seen : null;
   return {
     level1: typeof row.level_1 === 'boolean' ? row.level_1 : null,
     level2: typeof row.level_2 === 'boolean' ? row.level_2 : null,
@@ -39,6 +43,7 @@ function parseRow(row: Record<string, unknown> | null): LevelSensorsState {
     waterLevel:
       wl === 'vazio' || wl === 'baixo' || wl === 'medio' || wl === 'alto' ? wl : null,
     waterLevelOk: typeof row.water_level_ok === 'boolean' ? row.water_level_ok : null,
+    lastTelemetryAt: updatedAt ?? lastSeen,
     isLoading: false,
   };
 }
@@ -53,7 +58,7 @@ export function useLevelSensors(deviceId: string, enabled = true): LevelSensorsS
     setState((s) => ({ ...s, isLoading: true }));
     const { data, error } = await supabase
       .from('device_status')
-      .select('level_1, level_2, level_3, level_4, water_level, water_level_ok')
+      .select('level_1, level_2, level_3, level_4, water_level, water_level_ok, updated_at, last_seen')
       .eq('device_id', id)
       .maybeSingle();
 

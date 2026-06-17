@@ -106,6 +106,14 @@ export const processosPagesEs: Record<ProcessosPageSlug, DocsPageContent> = {
           { title: 'Registro', body: 'dosages / rule_executions.' },
         ],
       },
+      {
+        id: 'grow-cycle-handoff',
+        title: 'Ciclo de cultivo completo (dev)',
+        accent: 'wait',
+        paragraphs: [
+          'Para mapear reglas tipo Aurora (Initial Fill, Drain, Changeout, Schedule 12 semanas) al modelo P1–P4 de HydroWave, ver handoff técnico S01 (17/jun/2026) en docs/handoffs/processes/S01_GROW_CYCLE_RULES_17JUN2026.md.',
+        ],
+      },
     ],
     cards: [
       { href: '/processos/ciclos-automaticos', title: 'Ciclos Automáticos', description: 'Máquinas de estado EC y pH', accent: 'ec' },

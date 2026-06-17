@@ -83,15 +83,19 @@ const PhControllerPanel = dynamic(() => import('@/components/PhControllerPanel')
   loading: () => <SectionSkeleton className="h-48" />,
 });
 
-const WaterLevelStatusCard = dynamic(
-  () => import('@/components/WaterLevelStatusCard').then((m) => m.WaterLevelStatusCard),
-  { loading: () => <SectionSkeleton className="h-32" /> }
+const WaterLevelSection = dynamic(
+  () => import('@/components/WaterLevelSection').then((m) => m.WaterLevelSection),
+  { loading: () => <SectionSkeleton className="h-48" /> }
 );
 
 const NutrientDosageDetail = dynamic(
   () => import('@/components/NutrientDosageDetail').then((m) => m.NutrientDosageDetail),
   { loading: () => <SectionSkeleton className="h-16" /> }
 );
+
+const ControllerMetricsPanel = dynamic(() => import('@/components/ControllerMetricsPanel'), {
+  loading: () => <SectionSkeleton className="h-48" />,
+});
 
 /** Mínimo ml/L por nutriente na tabela nutricional (Auto EC). Para excluir um nutriente, remova a linha. */
 const MIN_NUTRIENT_ML_PER_LITER = 0.1;
@@ -3140,6 +3144,12 @@ export default function AutomacaoPageClient() {
         </div>
 
 
+        {selectedDeviceId && selectedDeviceId !== 'default_device' && (
+          <div className="mb-6">
+            <WaterLevelSection deviceId={selectedDeviceId} enabled={ecDeviceActive} />
+          </div>
+        )}
+
         {/* Box de Controle Nutricional Proporcional - Colapsável */}
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
           {/* Header - Colapsável */}
@@ -3692,7 +3702,6 @@ export default function AutomacaoPageClient() {
                 
                 {/* Controles e Status */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <WaterLevelStatusCard deviceId={selectedDeviceId} enabled={ecDeviceActive} />
                   {/* Status do EC Controller */}
                   <InstrumentCard accent="ec" title="📊 Status do Controle" ariaLive="polite">
                     <div className="space-y-2.5">
@@ -3797,6 +3806,16 @@ export default function AutomacaoPageClient() {
                     </div>
                   </InstrumentCard>
                 </div>
+
+                {selectedDeviceId ? (
+                  <div className="mb-6">
+                    <ControllerMetricsPanel
+                      deviceId={selectedDeviceId}
+                      focus="ec"
+                      hideTabs
+                    />
+                  </div>
+                ) : null}
                 
                 {/* Botões de Controle */}
                 <div className="flex flex-wrap gap-3 mb-4">

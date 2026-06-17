@@ -25,11 +25,20 @@ export type HydroMeasurement = {
   id?: number;
   device_id?: string;
   created_at?: string;
-  temperature: number;  // Temperatura da solução nutritiva
+  temperature: number;
   ph: number;
   tds: number;
-  ec?: number;  // ✅ Electrical Conductivity (pode vir da base de dados ou ser calculado de TDS)
+  ec?: number;
+  ph_raw?: number | null;
+  ph_display_clamped?: number | null;
+  ec_raw?: number | null;
+  temperature_raw?: number | null;
   water_level_ok: boolean;
+  level_1?: boolean;
+  level_2?: boolean;
+  level_3?: boolean;
+  level_4?: boolean;
+  water_level?: string;
 };
 
 export type EnvironmentMeasurement = {

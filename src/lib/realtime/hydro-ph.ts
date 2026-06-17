@@ -20,11 +20,30 @@ export function isFinitePh(ph: number | null | undefined): ph is number {
 }
 
 export function resolvePh(
-  row: { ph?: number | null } | null | undefined
+  row: { ph?: number | null; ph_raw?: number | null } | null | undefined
 ): number | null {
-  if (!row || row.ph == null) return null;
+  if (!row) return null;
+  if (row.ph_raw != null && !Number.isNaN(Number(row.ph_raw))) {
+    const raw = Number(row.ph_raw);
+    return Number.isFinite(raw) ? raw : null;
+  }
+  if (row.ph == null) return null;
   const n = Number(row.ph);
   return Number.isNaN(n) ? null : n;
+}
+
+/** pH para gráficos — usa clamp DB; fallback ph legacy. */
+export function resolvePhForChart(
+  row: { ph?: number | null; ph_display_clamped?: number | null } | null | undefined
+): number | null {
+  if (!row) return null;
+  if (row.ph_display_clamped != null && !Number.isNaN(Number(row.ph_display_clamped))) {
+    return Number(row.ph_display_clamped);
+  }
+  const ph = resolvePhForDisplay(row);
+  if (ph == null) return null;
+  if (ph < 0 || ph > 14) return null;
+  return ph;
 }
 
 export function resolvePhPlausible(

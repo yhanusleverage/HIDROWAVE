@@ -18,7 +18,7 @@ import {
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { getPollingInterval, loadSettings, saveSettings, type Settings } from '@/lib/settings';
 import { formatSensorValue } from '@/lib/format-sensor-value';
-import { resolvePhForDisplay } from '@/lib/realtime/hydro-ph';
+import { resolvePh, resolvePhForDisplay } from '@/lib/realtime/hydro-ph';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import BrandLoading from '@/components/BrandLoading';
@@ -87,10 +87,14 @@ export default function DashboardPage() {
   const validateHydroData = (data: unknown): HydroMeasurement | null => {
     if (data && typeof data === 'object') {
       const obj = data as Record<string, unknown>;
-      const hasValidData = obj.temperature !== undefined || 
-                          obj.ph !== undefined || 
-                          obj.tds !== undefined ||
-                          obj.ec !== undefined; // ✅ También validar EC
+      const hasValidData =
+        obj.water_level_ok !== undefined ||
+        obj.level_1 !== undefined ||
+        obj.ph_raw !== undefined ||
+        obj.temperature !== undefined ||
+        obj.ph !== undefined ||
+        obj.tds !== undefined ||
+        obj.ec !== undefined;
       if (hasValidData) {
         return data as HydroMeasurement;
       }
@@ -320,7 +324,7 @@ export default function DashboardPage() {
   };
 
   /** pH com QC 4.0–9.0 — alinhado com /automacao e handoff Auto pH. */
-  const displayPh = useMemo(() => resolvePhForDisplay(hydroData), [hydroData]);
+  const displayPh = useMemo(() => resolvePh(hydroData), [hydroData]);
 
   // Function to determine EC status usando umbrales configurables
   const getECStatus = (ec: number): 'normal' | 'warning' | 'danger' => {

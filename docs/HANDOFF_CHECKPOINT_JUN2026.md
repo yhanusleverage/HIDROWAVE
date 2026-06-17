@@ -7,6 +7,10 @@
 - Frontend: `HIDROWAVE-main/`
 - Firmware + bridge: `ESP-HIDROWAVE-main/`
 
+**Dosing vs métricas (EC + pH):** [`docs/handoffs/00_GUIA_DOSING_VS_METRICAS.md`](handoffs/00_GUIA_DOSING_VS_METRICAS.md) — 4 tablas, gates V1–V4, matriz debug por capa.
+
+**Grow cycle (schedules + rules P1 + Auto EC/pH):** [`docs/handoffs/processes/S01_GROW_CYCLE_RULES_17JUN2026.md`](handoffs/processes/S01_GROW_CYCLE_RULES_17JUN2026.md) — mapeo Aurora/Nuravine, JSON `decision_rules`, roadmap interlock P1→P2/P3, checklist bancada (17/jun/2026).
+
 ---
 
 ## 1. Snapshot de este checkpoint
@@ -67,7 +71,7 @@ flowchart TB
 | **Design system** | ~95% UI | Tokens aplicados; falta auditoría páginas residuales |
 | **Realtime / MQTT** | ~85% | EC + pH topics; ver `PRODUCTION_ROADMAP.md` |
 | **Matriz relés** | ~80% | `relay-allocation.ts` + API conflictos; fase 2 reglas/manuales |
-| **Decision Engine** | ~35% | ESP32 carga/ejecuta reglas — macro pendiente |
+| **Decision Engine** | ~35% | ESP32 carga/ejecuta reglas — macro pendiente; ver [S01_GROW_CYCLE_RULES_17JUN2026.md](handoffs/processes/S01_GROW_CYCLE_RULES_17JUN2026.md) para Fill/Drain/Changeout |
 | **Testes E2E / bancada** | ~15% | Checklists existen; ejecución sistemática falta |
 
 ---
@@ -111,6 +115,8 @@ flowchart TB
 **Resumen E2E:** [`HANDOFF_AUTO_PH_E2E.md`](HANDOFF_AUTO_PH_E2E.md)
 
 **Handoff incidente 14/06 (coherencia UI + modo dev):** [`HANDOFF_AUTO_PH_COHERENCIA_14JUN2026.md`](HANDOFF_AUTO_PH_COHERENCIA_14JUN2026.md)
+
+**Handoff 17/06 (banco sin sondas — métricas V3/V4):** [`HANDOFF_DEV_RELAX_SENSORS_17JUN2026.md`](HANDOFF_DEV_RELAX_SENSORS_17JUN2026.md)
 
 #### Coherencia UI Auto pH (Automacao vs calibragem)
 
@@ -257,6 +263,7 @@ Consola browser: `[Realtime] relay_commands registry SUBSCRIBED`, `[Realtime] re
 
 | Pregunta | Dónde mirar |
 |----------|-------------|
+| ¿Eventos vs métricas EC/pH? | `handoffs/00_GUIA_DOSING_VS_METRICAS.md` — V1–V4 |
 | ¿Qué sigue en Auto pH? | `handoffs/ph/00_INDICE_SERIAL.md` — primer gate sin ✅ |
 | ¿Gráfico qué falta? | § 3.1 arriba; plan en `.cursor/plans/gráfico_multiparamétrico_ux_*.plan.md` |
 | ¿EC dosagem OK? | `HANDOFF_ULTIMA_DOSAGEM_E2E.md` |
@@ -286,6 +293,7 @@ scripts/verify-hydro-chart.ts
 | Doc | Uso |
 |-----|-----|
 | Este checkpoint | Macro + micro actual |
+| [`handoffs/00_GUIA_DOSING_VS_METRICAS.md`](handoffs/00_GUIA_DOSING_VS_METRICAS.md) | 4 tablas EC/pH + debug |
 | [`HANDOFF_AUTO_PH_E2E.md`](HANDOFF_AUTO_PH_E2E.md) | Auto pH 1 pantalla |
 | [`HANDOFF_ULTIMA_DOSAGEM_E2E.md`](HANDOFF_ULTIMA_DOSAGEM_E2E.md) | Auto EC |
 | [`HANDOFF_DEVICE_ONLINE_STABILITY.md`](HANDOFF_DEVICE_ONLINE_STABILITY.md) | Falso offline |
