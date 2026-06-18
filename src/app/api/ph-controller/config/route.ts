@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       );
     }
 
-    let writableConfig = sanitizePhNumericFields(
+    const writableConfig = sanitizePhNumericFields(
       stripPhWritableConfig(rawConfig as Record<string, unknown>)
     );
 
