@@ -3,12 +3,13 @@
 **Fecha:** 17/06/2026 · **Device ref:** `ESP32_HIDRO_269844`  
 **Contexto:** bancada sin sondas EC/pH cableadas; bridge y ACL de métricas OK en Lightsail; ESP bloqueaba `ec_metric` por lecturas inválidas (EC=0).
 
-**Estado (17/06 tarde):**
+**Estado (17/06 noche — actualizado):**
 - Firmware `HIDRO_DEV_RELAX_SENSORS=1` — flasheado OK
-- **Gate V3 cerrado** — `npm run verify:controller-metrics` OK (5 filas `err=555`)
-- Bridge `INSERT ec_controller_metrics` confirmado en journalctl
-- Fix telemetría parcial + `validatePhMetric` (`error_h` finito) en `index.js` — **deploy Lightsail pendiente**
-- **Dosaje dev:** PV crudo EC/pH para control (sin `ecForControl=setpoint`); `AdaptivePHController` clamp H + path lineal si pH fuera 0–14
+- **Gate V3 cerrado** — `npm run verify:controller-metrics` OK (EC + pH)
+- **Gate V4 cerrado** — `ph_controller_metrics` INSERT en journalctl; `u(t)=0.26ml`
+- **Bridge Lightsail deploy cerrado** — `INSERT hydro_measurements` con `ph_raw` / `ph_display_clamped`
+- **Realtime UI** — cards/charts dashboard actualizan por WSS tras INSERT hydro
+- **Dosaje dev:** PV crudo EC/pH para control; `AdaptivePHController` clamp H + path lineal si pH fuera 0–14
 
 **Relacionado:** [00_GUIA_DOSING_VS_METRICAS.md](handoffs/00_GUIA_DOSING_VS_METRICAS.md) · [ec/S02](handoffs/ec/S02_EC_CONTROLLER_METRICS.md) · [ec/S03 bridge](handoffs/ec/S03_BRIDGE_METRICS.md)
 
@@ -18,54 +19,71 @@
 
 | Capa | Estado |
 |------|--------|
-| Firmware `ec_metric` cada ~3s | OK — `[MQTT] ec_metric err=555 u(t)=0.00ml adj=0` |
-| Bridge `INSERT ec_controller_metrics` | OK |
-| Gate V3 (`verify:controller-metrics`) | **Cerrado** — 17/06/2026 |
-| Telemetría parcial (solo niveles) | Fix en repo; deploy bridge pendiente |
-| Gate V4 (`ph_controller_metrics`) | Tras flash + Auto pH ON: `errH` finito (no `inf`); bridge sanitiza `error_h` si aplica |
-| Dosaje auto EC/pH en banco | PV crudo — EC=0 vs SP 555 dosifica; pH RS485 absurdo usa path lineal + `error_h` proxy |
+| Firmware `ec_metric` / `ph_metric` | OK |
+| Bridge `INSERT ec_controller_metrics` / `ph_controller_metrics` | OK |
+| Bridge `INSERT hydro_measurements` (`ph_raw`, `tds`, `ec_raw`) | **OK** — 17/06 |
+| Gate V3 + V4 (`verify:controller-metrics`) | **Cerrado** |
+| Gate hydro raw (`verify:hydro-raw`) | Tras INSERT reciente en Supabase |
+| Telemetría parcial (solo niveles o pH sin temp) | OK — whitelist + defaults legacy NOT NULL |
+| Realtime dashboard pH/EC | OK — `ph_raw` en cards, `ph_display_clamped` en gráfico |
+| Dosaje auto EC/pH en banco | PV crudo — EC=0 vs SP 555 dosifica; pH path lineal + `error_h` proxy |
 
 ---
 
-## Verificación V3 (cerrada)
+## Verificación gates (local)
 
 ```bash
 cd HIDROWAVE-main
-npm run verify:controller-metrics
+npm run verify:controller-metrics   # V3 + V4
+npm run verify:hydro-raw            # hydro_measurements ph_raw reciente
+npm run verify:ph-dosages           # V2 eventos
+npm run verify:nutrient-dosages     # V1 eventos
 ```
 
-Resultado esperado (obtenido 17/06):
+Resultado esperado `verify:hydro-raw` (post-bridge):
 
 ```
-OK recent EC metrics: 5 rows (last 5)
-  ... | err=555 | u(t)=0 ml
-E2E controller metrics OK
+OK recent hydro rows: 5 rows
+OK fresh insert: last row < 10 min ago
+OK ph_raw populated: at least one row
+E2E hydro raw OK
 ```
 
 ---
 
-## Telemetría parcial — fix bridge (deploy pendiente)
+## Bridge — journalctl esperado (Lightsail)
 
-**Síntoma:** `Rejected telemetry: temperature/ph/tds must be numbers`  
-**Causa:** firmware dev omite pH/TDS/temp inválidos; bridge exigía los 3 campos.  
-**Fix:** `validateTelemetry` en [`infra/mqtt/bridge/index.js`](../ESP-HIDROWAVE-main/infra/mqtt/bridge/index.js) — acepta payload solo con `water_level_ok` + `level_1..4`; INSERT `hydro_measurements` solo si hay al menos un PV hidro; si no, `PATCH device_status` niveles + log `levels-only`.
+```bash
+sudo journalctl -u hidrowave-bridge -f
+```
 
-**Deploy (una vez):**
+| Log | Significado |
+|-----|-------------|
+| `INSERT hydro_measurements … ph_raw=12.16 ph_disp=12.16 tds=0 ec_raw=0` | Pipeline hydro OK |
+| `INSERT ph_controller_metrics … u(t)=0.26ml` | V4 OK |
+| `INSERT ec_controller_metrics` | V3 OK |
+| `Could not find the 'ec' column` | Bridge viejo — redeploy `index.js` |
+| `null value in column "temperature"` | Bridge sin `applyLegacyHydroNotNullDefaults` — redeploy |
+
+**Redeploy (si hace falta):**
 
 ```powershell
 cd ESP-HIDROWAVE-main\infra\mqtt\bridge\scripts
 .\deploy-lightsail.ps1
 ```
 
-O manual:
+---
 
-```powershell
-$Pem = "$env:USERPROFILE\Documents\Projects\LightsailDefaultKey-ca-central-1.pem"
-scp -i $Pem ESP-HIDROWAVE-main\infra\mqtt\bridge\index.js ubuntu@99.79.36.220:/tmp/hidrowave-index.js
-ssh -i $Pem ubuntu@99.79.36.220 "sudo cp /tmp/hidrowave-index.js /opt/hidrowave-bridge/index.js && sudo systemctl restart hidrowave-bridge"
-```
+## Columnas `ph_raw` / Supabase
 
-**Post-deploy:** journalctl ya no debe mostrar `Rejected telemetry`; debe aparecer `telemetry ... levels-only` o `PATCH device_status ... water_level=`.
+| Script | Uso |
+|--------|-----|
+| [`scripts/ADD_HYDRO_RAW_DISPLAY_COLUMNS.sql`](../scripts/ADD_HYDRO_RAW_DISPLAY_COLUMNS.sql) | Migración columnas |
+| [`scripts/BACKFILL_HYDRO_PH_RAW.sql`](../scripts/BACKFILL_HYDRO_PH_RAW.sql) | Rellenar filas legacy |
+| [`scripts/ALLOW_NULL_HYDRO_SENSOR_COLUMNS.sql`](../scripts/ALLOW_NULL_HYDRO_SENSOR_COLUMNS.sql) | Opcional — quitar NOT NULL en temp/ph/tds |
+| [`scripts/VERIFICAR_HYDRO_RAW_COLUMNS.sql`](../scripts/VERIFICAR_HYDRO_RAW_COLUMNS.sql) | Verificación SQL |
+
+Bridge: `pickHydroInsertRow` (whitelist sin `ec`) + `applyHydroRawColumns` + `applyLegacyHydroNotNullDefaults`.
 
 ---
 
@@ -74,19 +92,17 @@ ssh -i $Pem ubuntu@99.79.36.220 "sudo cp /tmp/hidrowave-index.js /opt/hidrowave-
 | Archivo | Cambio |
 |---------|--------|
 | `include/Config.h` + `platformio.ini` | `HIDRO_DEV_RELAX_SENSORS=1` |
-| `HydroControl.cpp` | PV crudo para control EC/pH; métricas siempre; `emitPhControllerMetric` fallback `error_h` |
-| `AdaptivePHController.cpp` | clamp H en dev; `selectPath`/`errorH` lineales si pH fuera 0–14 |
-| `MqttClient.cpp` | telemetría parcial |
-| `HydroSystemCore.cpp` | banner boot `[DEV]` |
+| `HydroControl.cpp` | PV crudo para control EC/pH; métricas siempre |
+| `AdaptivePHController.cpp` | clamp H en dev; path lineal si pH fuera 0–14 |
+| `MqttClient.cpp` | telemetría parcial — campos crudos si finitos |
+| `HydroSystemCore.cpp` | skip `sendSensorDataToSupabase()` si MQTT conectado; banner `[DEV]` |
 
 Producción futura: `HIDRO_DEV_RELAX_SENSORS=0` cuando sondas reales estén cableadas.
 
 ---
 
-## Próximo paso
+## Próximo paso (post-hydro OK)
 
-1. Deploy bridge (telemetría parcial + `error_h`) — comando arriba; `deploy-lightsail.ps1` usa `$BridgeDir = Split-Path $PSScriptRoot -Parent`
-2. Flash firmware con dosaje dev → activar **Auto EC** y **Auto pH** en frontend
-3. Serial: `[MQTT] ec_metric ... adj=1`, `ph_metric errH=...` finito; bridge `INSERT nutrient_dosages` / `ph_controller_metrics`
-4. `npm run verify:controller-metrics` — filas EC **y** pH
-5. Con sondas reales: desactivar `HIDRO_DEV_RELAX_SENSORS`
+1. **Fase 3 comandos** — env `MQTT_*` en Railway → [`HANDOFF_FASE3_COMANDOS_HIBRIDOS.md`](../../ESP-HIDROWAVE-main/docs/mqtt/HANDOFF_FASE3_COMANDOS_HIBRIDOS.md)
+2. **Manual Dosificar E2E** — reflash ACK + [`VERIFICAR_RELAY_COMMANDS_STUCK.sql`](../scripts/VERIFICAR_RELAY_COMMANDS_STUCK.sql)
+3. Con sondas reales: desactivar `HIDRO_DEV_RELAX_SENSORS` + validar QC 4–9 en UI prod

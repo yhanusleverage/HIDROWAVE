@@ -18,7 +18,9 @@ import {
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { getPollingInterval, loadSettings, saveSettings, type Settings } from '@/lib/settings';
 import { formatSensorValue } from '@/lib/format-sensor-value';
-import { resolvePh, resolvePhForDisplay } from '@/lib/realtime/hydro-ph';
+import { resolvePh, resolvePhForDisplay, hasHydroSensorReading, mergeHydroMeasurements } from '@/lib/realtime/hydro-ph';
+import { resolveEcForDisplay } from '@/lib/realtime/hydro-ec';
+import { resolveTemperatureForDisplay } from '@/lib/realtime/hydro-sensor';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import BrandLoading from '@/components/BrandLoading';
@@ -83,24 +85,34 @@ export default function DashboardPage() {
     loadECThresholds();
   }, [userEmail]);
 
-  // ✅ Función para validar datos hidropónicos
-  const validateHydroData = (data: unknown): HydroMeasurement | null => {
+  const applyHydroRow = (data: unknown, prev: HydroMeasurement | null): HydroMeasurement | null => {
+    const row = parseHydroRow(data);
+    if (!row) return prev;
+    return mergeHydroMeasurements(prev, row) as HydroMeasurement;
+  };
+
+  const parseHydroRow = (data: unknown): HydroMeasurement | null => {
     if (data && typeof data === 'object') {
       const obj = data as Record<string, unknown>;
-      const hasValidData =
+      const hasAny =
         obj.water_level_ok !== undefined ||
         obj.level_1 !== undefined ||
         obj.ph_raw !== undefined ||
         obj.temperature !== undefined ||
         obj.ph !== undefined ||
         obj.tds !== undefined ||
-        obj.ec !== undefined;
-      if (hasValidData) {
+        obj.ec !== undefined ||
+        obj.ec_raw !== undefined;
+      if (hasAny) {
         return data as HydroMeasurement;
       }
     }
     return null;
   };
+
+  // Mantido por compat — alias de parseHydroRow
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const validateHydroData = (data: unknown): HydroMeasurement | null => parseHydroRow(data);
 
   // ✅ Función para validar datos ambientales
   const validateEnvData = (data: unknown): EnvironmentMeasurement | null => {
@@ -114,24 +126,10 @@ export default function DashboardPage() {
     return null;
   };
 
-  // EC consistente para cards (prioridade: coluna ec, depois TDS × 2)
+  // EC consistente para cards — usa resolveEcForDisplay (ignora sentinel 0)
   const calculateEC = (item: HydroMeasurement | null | undefined): number | null => {
-    // ✅ Validar que el item existe
     if (!item) return null;
-    
-    // ✅ Prioridad 1: Usar EC si está disponible (incluyendo 0 como valor válido)
-    // En Supabase, EC puede venir directamente o ser calculado de TDS
-    if (item.ec !== null && item.ec !== undefined && !isNaN(Number(item.ec))) {
-      return Number(item.ec);
-    }
-    
-    // ✅ Prioridad 2: Calcular de TDS: EC = TDS * 2
-    // TDS siempre existe en HydroMeasurement (es obligatorio)
-    if (item.tds !== null && item.tds !== undefined && !isNaN(Number(item.tds))) {
-      return Number(item.tds) * 2;
-    }
-    
-    return null;
+    return resolveEcForDisplay(item);
   };
 
   // ✅ Cargar datos críticos primero (sensores) - carga paralela
@@ -148,14 +146,13 @@ export default function DashboardPage() {
 
       // Procesar datos hidropónicos
       if (hydroRes.ok) {
-        const hydroData = await hydroRes.json();
-        const validated = validateHydroData(hydroData);
-        setHydroData(validated);
+        const hydroJson = await hydroRes.json();
+        setHydroData((prev) => applyHydroRow(hydroJson, prev));
         console.log('✅ [DASHBOARD] Dados hidropônicos carregados');
-        // ✅ Debug: Verificar valores de EC y TDS
-        console.log('🔍 [DASHBOARD] EC:', validated?.ec, 'TDS:', validated?.tds);
-        if (validated) {
-          const ecValue = validated.ec ?? (validated.tds ? validated.tds * 2 : null);
+        const snapshot = applyHydroRow(hydroJson, null);
+        if (snapshot) {
+          console.log('🔍 [DASHBOARD] EC:', snapshot.ec, 'TDS:', snapshot.tds);
+          const ecValue = snapshot.ec ?? (snapshot.tds ? snapshot.tds * 2 : null);
           console.log('🔍 [DASHBOARD] EC calculado para card:', ecValue);
         }
       } else {
@@ -260,10 +257,11 @@ export default function DashboardPage() {
 
     return subscribeSensorMeasurements(deviceId, {
       onHydro: (row) => {
-        const validated = validateHydroData(row);
-        if (validated) {
-          setHydroData(validated);
-          setHydroHistory((prev) => appendToHistoryDesc(prev, validated, deviceId));
+        const parsed = parseHydroRow(row);
+        if (!parsed) return;
+        setHydroData((prev) => applyHydroRow(parsed, prev));
+        if (hasHydroSensorReading(parsed)) {
+          setHydroHistory((prev) => appendToHistoryDesc(prev, parsed, deviceId));
         }
       },
       onEnvironment: (row) => {
@@ -325,6 +323,7 @@ export default function DashboardPage() {
 
   /** pH com QC 4.0–9.0 — alinhado com /automacao e handoff Auto pH. */
   const displayPh = useMemo(() => resolvePh(hydroData), [hydroData]);
+  const displayTemp = useMemo(() => resolveTemperatureForDisplay(hydroData), [hydroData]);
 
   // Function to determine EC status usando umbrales configurables
   const getECStatus = (ec: number): 'normal' | 'warning' | 'danger' => {
@@ -447,9 +446,15 @@ export default function DashboardPage() {
                 {/* ✅ INDICADOR DE STATUS DOS DADOS */}
                 <div className="flex items-center gap-2 text-xs">
                   {hydroData ? (
-                    <span className="px-2 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded">
-                      ✅ Hydro OK
-                    </span>
+                    hasHydroSensorReading(hydroData) ? (
+                      <span className="px-2 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded">
+                        ✅ Hydro OK
+                      </span>
+                    ) : (
+                      <span className="px-2 py-1 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded">
+                        ✅ Niveles (sem pH/EC/temp)
+                      </span>
+                    )
                   ) : (
                     <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded">
                       ⚠️ Sem Hydro
@@ -475,14 +480,14 @@ export default function DashboardPage() {
                     <SensorCard 
                       title="Temperatura da Água" 
                       value={
-                        hydroData?.temperature !== undefined && hydroData.temperature !== null
-                          ? formatSensorValue(hydroData.temperature, 1)
+                        displayTemp !== null
+                          ? formatSensorValue(displayTemp, 1)
                           : '--'
                       } 
                       unit="°C"
                       status={
-                        hydroData?.temperature !== undefined && hydroData.temperature !== null
-                          ? (hydroData.temperature < 18 || hydroData.temperature > 26) 
+                        displayTemp !== null
+                          ? (displayTemp < 18 || displayTemp > 26) 
                           ? 'warning' 
                             : 'normal'
                           : 'normal'

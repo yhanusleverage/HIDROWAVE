@@ -21,11 +21,12 @@
 | Área | Estado | Evidencia |
 |------|--------|-----------|
 | Telemetría pH/EC/temp master | Código listo | `PH_PIN 35`, `TDS_PIN 34`, DS18B20 `TEMP_PIN 4` |
-| Telemetría nivel L1–L4 + agregado | Código listo | `MqttClient::publishTelemetry`, `SupabaseClient` HTTPS |
-| Bridge → `device_status` / `hydro_measurements` | Código listo | `infra/mqtt/bridge/index.js` |
+| Telemetría nivel L1–L4 + agregado | **OK bancada** | Bridge INSERT hydro + PATCH `device_status` |
+| Bridge → `device_status` / `hydro_measurements` | **OK** 17/06 | `ph_raw`, whitelist INSERT, journalctl |
 | UI nivel (`useLevelSensors`) | Código listo | Realtime WSS + poll 30s |
+| HTTPS hydro cuando MQTT up | **Desactivado** | `HydroSystemCore` skip `sendSensorDataToSupabase()` |
 | Comando relé MQTT + poll HTTPS | Fase 3 master validada en bancada | Ver Fase 3 handoff |
-| Push MQTT desde Railway/UI prod | Pendiente operativo | Env `MQTT_*` |
+| Push MQTT desde Railway/UI prod | **Pendiente** | Env `MQTT_*` — ver [`RAILWAY_MQTT_ENV.md`](../../docs/RAILWAY_MQTT_ENV.md) |
 | Migración SQL `level_1..4` | **Pendiente ejecutar en Supabase** | Ver § 8 G1 |
 | Bancada E2E nivel + manual completo | **Pendiente reflash + checklist § 9** | — |
 

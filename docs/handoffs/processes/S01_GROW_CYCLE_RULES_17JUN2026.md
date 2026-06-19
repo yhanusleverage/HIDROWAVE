@@ -71,6 +71,8 @@ flowchart TB
 
 **Regla de oro:** `tempo_recirculacao` de Auto EC/pH es dead-time **post-dosis** (homogeneización). La bomba de circulación 24/7 es regla **TIME P4** separada — no confundir (ver `/processos/agendamentos`).
 
+**Decisión operativa (17/jun/2026):** por ahora se mantiene así — `tempo_recirculacao` **no enciende** relé de bomba; solo espera N segundos en firmware. La circulación física la controla exclusivamente **P4** (`SCHEDULE_*` → slave vía ESP-NOW). Ver §9 Fase 4 para la mejora futura **obligatoria**.
+
 ---
 
 ## 3. Mapeo Aurora/Nuravine → HIDROWAVE
@@ -481,7 +483,7 @@ sequenceDiagram
 3. Badges EC/pH en `idle` (sin recirc activa de dosaje previo).
 4. Entonces: Salvar parámetros → Ativar Auto EC → Ativar Auto pH.
 
-**Durante script P1 activo (hoy):** operador **desactiva temporalmente** Auto EC/pH hasta que el script termine — evita dosaje durante vaciado/llenado.
+**Durante script P1 activo (17/jun/2026):** firmware aplica hold automático si `priority >= 80` — ya no es obligatorio desactivar Auto EC/pH manualmente. Workaround manual sigue válido en firmware antiguo sin flash.
 
 ### Poll vs dosaje
 
@@ -492,9 +494,9 @@ Config remota (poll 30 s) es **independiente** del ciclo dosificador. Ver [S09_E
 - **G5 (producción):** pH bloqueado mientras EC secuencial activo (`PH_PROTOTYPE_RELAX_GUARDS=0`).
 - **ph_low_control:** regla legacy firmware saltada si `auto_ph_active` (`DecisionEngine.cpp`).
 
-### Mutex faltante (roadmap Fase 2)
+### Mutex faltante (roadmap Fase 2) — **implementado 17/jun/2026**
 
-Script P1 activo (`priority` ≥ 80) debería **skip** `checkAutoEC` / `checkAutoPH` en firmware — ver §8.
+Ver §9 Fase 2 y §13. `isAutoDosingPausedByInterlock()` en firmware.
 
 ---
 
@@ -511,8 +513,11 @@ Script P1 activo (`priority` ≥ 80) debería **skip** `checkAutoEC` / `checkAut
 | “Sensor Valve” | ❌ | Patrón WHILE documentado aquí |
 | Schedule 12 semanas UI | ❌ | Patrón doc §6 |
 | `toggleRule` enabled | ❌ No persiste | `AutomacaoPageClient.tsx` |
-| Interlock P1 → P2/P3 | ❌ Parcial | Carrera en changeout |
+| Interlock P1 → P2/P3 | ✅ Hold firmware | `HydroControl.cpp` — 17/jun/2026 |
+| `water_level_ok` en Auto EC/pH | ✅ Implementado | `isAutoDosingPausedByInterlock()` |
 | Schema schedule vs DecisionRule | ⚠️ | `relay_id` vs `relay_ids[]` |
+| Recirc post-dosis → bomba slave | ✅ Fase 4 + RelayCoordinator | Mutex P4 vs recirc §10.5 |
+| Verdad relés distribuidos | Fragmentada (master / slave / UI) | **RelayCoordinator** Fase 5 | `RelayCoordinator.cpp` |
 
 **Advertencia obligatoria:** Decision Engine secuencial en ESP32 **~35%** ([HANDOFF_CHECKPOINT_JUN2026.md](../../HANDOFF_CHECKPOINT_JUN2026.md)). Validar **toda** secuencia Drain/Changeout en bancada antes de producción crítica.
 
@@ -532,18 +537,27 @@ Procedimiento operativo (sin features):
 2. Crear 3 familias de scripts P1 con `rule_id` fijos: `INITIAL_FILL_*`, `CHANGEOUT_W*_W*`, `DRAIN_FULL`.
 3. Encadenar Changeout → Fill vía `chained_events` (ver §4.3).
 4. Tras Initial Fill: activar Auto EC/pH cuando nivel estable (§7).
-5. Durante P1 activo: desactivar temporalmente Auto EC/pH hasta existir Fase 2.
+5. ~~Durante P1 activo: desactivar temporalmente Auto EC/pH~~ — sustituido por hold firmware (Fase 2).
 
-### Fase 2 — Interlock firmware (simple, alto valor)
+### Fase 2 — Interlock firmware (simple, alto valor) — **implementado 17/jun/2026**
 
-**Implementar solo si bancada §10 lo exige.**
+En [`ESP-HIDROWAVE-main/src/HydroControl.cpp`](../../../ESP-HIDROWAVE-main/src/HydroControl.cpp):
 
-En `ESP-HIDROWAVE-main/src/HydroControl.cpp`:
+- `isAutoDosingPausedByInterlock()` — pausa si `!tankLevelOk` **o** hold P1 activo.
+- `holdAutoDosingForTankScript(ms)` — extendido por comandos `rule` con `priority >= 80` ([`HydroSystemCore::processRuleCommand`](../../../ESP-HIDROWAVE-main/src/HydroSystemCore.cpp)) y reglas locales ([`DecisionEngine::evaluateAllRules`](../../../ESP-HIDROWAVE-main/src/DecisionEngine.cpp)).
+- `checkAutoEC()` / `checkAutoPH()` hacen `return` temprano si el interlock está activo (log cada 60 s en serial).
 
-- Si Decision Engine reporta regla P1 en ejecución (`priority` ≥ 80 o flag `tank_script_active`), **skip** `checkAutoEC()` y `checkAutoPH()`.
-- Evita toggles RPC por regla; Auto EC/pH pueden permanecer `auto_enabled=true`.
+Constantes: [`Config.h`](../../../ESP-HIDROWAVE-main/include/Config.h) — `TANK_SCRIPT_PRIORITY_THRESHOLD` (80), holds mín/default/buffer.
 
-Criterio: preferir Fase 2 sobre Fase 3 si el único problema es dosaje durante drain/fill.
+**Serial esperado:**
+
+```
+🔒 [INTERLOCK P1] Auto EC/pH pausados ~120 s (script tanque priority >= 80)
+⚠️ [AUTO EC] Pausado — script tanque P1 activo
+⚠️ [AUTO PH] Pausado — nível de água baixo (water_level_ok=false)
+```
+
+Criterio cumplido: Auto EC/pH pueden permanecer `auto_enabled=true`; no hace falta togglear RPC en cada changeout.
 
 ### Fase 3 — chained_events → activar controladores (opcional)
 
@@ -563,6 +577,105 @@ Extensión mínima — **no** nuevo tipo de acción en UI:
 - Una regla fantasma `ACTIVATE_CONTROLLERS` reutilizable.
 - RPC desde frontend executor o Supabase Edge — **no** desde ESP32.
 - Máximo 1 regla, no RPC por cada changeout.
+
+### Fase 4 — Recirculación física post-dosis (futuro, **obligatorio**)
+
+**Estado hoy:** Auto EC y Auto pH entran en estado `RECIRCULATING` tras dosar y cuentan `tempo_recirculacao` segundos **sin mandar ningún relé**. La UI muestra badge «Recirculando…» desde `relay_master.ec_operation_*` / `ph_operation_*` — es **espera lógica**, no confirmación de bomba ON. La bomba de circulación real solo la acciona **P4** (`SCHEDULE_*` → `relay_commands` → `trustedSlaves` → ESP-NOW → `relay_slaves`).
+
+**Por qué hay que cambiarlo:** Aurora/Nuravine asumen mezcla activa tras cada dosis. Con dead-time puro, el operador depende de que P4 ya tenga la bomba en marcha o de mezcla pasiva — insuficiente para undershoot post-fill y para ciclos sin schedule P4 superpuesto.
+
+**Objetivo Fase 4:** al entrar en `RECIRCULATING` (EC o pH), el master **enciende** el relé de circulación configurado (típicamente slave relay 6/7) vía `MasterSlaveManager::sendRelayCommandToSlave` + `getAllTrustedSlaves()`; al expirar el timer, **apaga** el relé. Coordinar con P4 para no pelear ON/OFF (prioridad o mutex de «dueño» del relé circulación).
+
+```mermaid
+sequenceDiagram
+  participant HC as HydroControl
+  participant MSM as MasterSlaveManager
+  participant Slave as Slave circulacion
+  participant P4 as SCHEDULE P4
+
+  Note over HC: Hoy Fase 0-3
+  HC->>HC: RECIRCULATING timer solo
+
+  Note over HC,Slave: Fase 4 objetivo
+  HC->>MSM: ON relay circ slave MAC
+  MSM->>Slave: ESP-NOW
+  Slave-->>MSM: ACK
+  HC->>HC: esperar tempo_recirculacao
+  HC->>MSM: OFF relay circ
+  Note over P4: Mutex con P4 si schedule activo
+```
+
+**Archivos a tocar (referencia futura):**
+
+| Área | Archivo |
+|------|---------|
+| Máquina estados EC/pH recirc | [`HydroControl.cpp`](../../../ESP-HIDROWAVE-main/src/HydroControl.cpp) — `RECIRCULATING`, `PH_RECIRCULATING` |
+| Envío slave | [`HydroSystemCore.cpp`](../../../ESP-HIDROWAVE-main/src/HydroSystemCore.cpp) — reutilizar patrón `processManualCommand` / ESP-NOW |
+| Lista slaves | [`MasterSlaveManager`](../../../ESP-HIDROWAVE-main/src/MasterSlaveManager.cpp) — `getAllTrustedSlaves()` |
+| Config relé circ | NVS/Supabase — nuevo campo ej. `circulation_slave_mac` + `circulation_relay_id` (o reutilizar allocation doc) |
+| UI estado | [`useEcOperationState`](../../src/hooks/useEcOperationState.ts), [`usePhOperationState`](../../src/hooks/usePhOperationState.ts) — opcional: distinguir «recirc timer» vs «bomba ON confirmada» |
+| Mutex P4 | [`relay-allocation.ts`](../../src/lib/relay-allocation.ts), reglas `SCHEDULE_*` priority 20–40 |
+
+**Criterios de aceptación Fase 4:**
+
+1. Tras dosaje Auto EC o pH, bomba circulación slave ON dentro de &lt; 2 s (ACK ESP-NOW o timeout documentado).
+2. Al fin de `tempo_recirculacao`, bomba OFF salvo que P4 tenga pulso activo (no apagar si P4 «posee» el relé).
+3. Badge UI coherente: recirc post-dosis no confundirse con pulso P4 independiente (§10.5).
+4. Bancada §10.5 ampliada: verificar ON/OFF físico en slave durante recirc Auto EC/pH.
+
+**Scope mínimo:** no unificar Auto EC + pH en un solo comando de circulación en v1 — puede ser el mismo relé con refcount o «último timer gana»; documentar en implementación.
+
+**Estado implementación:** Fase 4 en firmware vía `RelayCoordinator::startPostDoseRecirc` / `endPostDoseRecirc` (requiere NVS `circ_slave_mac` + `circ_relay_id`).
+
+### Fase 5 — RelayCoordinator (Actuator Arbiter) — **implementado**
+
+**Problema:** `trustedSlaves` hoy es directorio + cache + transporte ESP-NOW. Auto EC/pH, P4 y comandos manuales actuaban por caminos distintos sin árbitro único ni mutex en bomba de circulación compartida.
+
+**Solución:** módulo **`RelayCoordinator`** en ESP32 master — capa Plant I/O mínima (no segundo Decision Engine).
+
+```mermaid
+flowchart TB
+  subgraph consumers [Consumidores]
+    AutoEC[HydroControl recirc EC/pH]
+    P4[processRuleCommand]
+    Manual[processManualCommand]
+    DE[DecisionEngine]
+  end
+  subgraph coord [RelayCoordinator]
+    Owner[owner + refCount circulación]
+    Observed[TrustedSlave + relayStates master]
+    Exec[PCF2 + ESP-NOW]
+  end
+  AutoEC --> Owner
+  P4 --> Owner
+  Manual --> Owner
+  DE --> Owner
+  Owner --> Exec
+  Observed --> Owner
+```
+
+**API mínima (firmware):**
+
+| Método | Uso |
+|--------|-----|
+| `requestActuation(owner, target, on/off, durationSec)` | Puerta única ON/OFF master o slave |
+| `getObservedState(target)` | Lee `hydroControl.getRelayStates()` o `TrustedSlave.relayStates[]` |
+| `getOwner(circTarget)` | Dueño actual bomba circulación (mutex P4 vs recirc) |
+| `startPostDoseRecirc` / `endPostDoseRecirc` | Fase 4 — ON/OFF al entrar/salir `RECIRCULATING` |
+
+**Archivos:**
+
+| Área | Archivo |
+|------|---------|
+| Coordinador | [`RelayCoordinator.h`](../../../ESP-HIDROWAVE-main/include/RelayCoordinator.h), [`RelayCoordinator.cpp`](../../../ESP-HIDROWAVE-main/src/RelayCoordinator.cpp) |
+| Integración | [`HydroSystemCore.cpp`](../../../ESP-HIDROWAVE-main/src/HydroSystemCore.cpp) |
+| Recirc callback | [`HydroControl.cpp`](../../../ESP-HIDROWAVE-main/src/HydroControl.cpp) |
+| Reglas locales | [`DecisionEngine.cpp`](../../../ESP-HIDROWAVE-main/src/DecisionEngine.cpp) |
+| Config NVS | claves `circ_slave_mac`, `circ_relay_id` (default relay 7) |
+
+**Verdad operativa:** coordinador + `TrustedSlave` en master. **Espejo cloud:** `syncAllRelayStatesToSupabase()` sin cambiar rol.
+
+**Qué NO hace:** setpoints EC/pH, interlocks P1 (`holdAutoDosingForTankScript`), poll Supabase para decidir ON/OFF en tiempo real.
 
 ### Explícitamente fuera de scope
 
@@ -589,8 +702,8 @@ Ejecutar en `ESP32_HIDRO_269844` (o device de prueba) antes de automatizar chang
 ### 10.2 Changeout con Auto EC/pH ON
 
 - [ ] Con Auto EC/pH activos, disparar `CHANGEOUT_W01_W02`.
-- [ ] Durante drain parcial: documentar si hubo dosaje no deseado (gap interlock P1).
-- [ ] Si hubo dosaje: desactivar Auto EC/pH manual antes de P1 (workaround Fase 1).
+- [ ] Durante drain parcial: **sin** dosaje no deseado (hold P1 en serial).
+- [ ] ~~Si hubo dosaje: desactivar Auto EC/pH manual~~ — solo si firmware pre-17/jun.
 - [ ] `chained_events` dispara `INITIAL_FILL_DOSE` tras drain.
 - [ ] Post-fill: EC/pH corrigen undershoot dentro de tolerancia en < 3 ciclos.
 
@@ -608,17 +721,83 @@ Ejecutar en `ESP32_HIDRO_269844` (o device de prueba) antes de automatizar chang
 - [ ] Simular sensor nivel pegado: script aborta por `max_duration_ms`, no loop infinito.
 - [ ] Válvulas en estado seguro tras timeout (documentar estado observado).
 
-### 10.5 Convivencia P4 + P1 + P2/P3
+### 10.5 Convivencia P4 + P1 + P2/P3 + RelayCoordinator
 
 - [ ] `SCHEDULE_*` circulación (priority 25) no bloquea script P1 (priority 85+).
-- [ ] Durante recirc Auto EC, badge UI muestra recirc > flash relé circulación P4.
+- [ ] Durante recirc Auto EC/pH: serial `[COORD] Post-dose recirc ON` y relé circulación slave ON (si `circ_slave_mac` configurado en NVS).
+- [ ] Al fin de `tempo_recirculacao`: serial `[COORD] Post-dose recirc OFF` — bomba OFF **solo si** owner recirc (P4 activo no debe apagarse: `[COORD] release skipped`).
+- [ ] `getObservedState` slave: `relay_slaves` coherente con ACK ESP-NOW tras recirc ON (poll ≤10 s).
+- [ ] Badge UI recirc post-dosis no implica pulso P4 independiente (estados distintos en `ec_operation_*` vs `relay_slaves`).
 - [ ] Sin conflicto `relay-allocation` en válvulas compartidas (ver `src/lib/relay-allocation.ts`).
+- [ ] P4 ON durante recirc post-dosis: refcount owner — no OFF prematuro al terminar timer EC/pH.
 
 ### 10.6 Gates de cierre
 
 - [ ] `node scripts/verify-e2e-schema.js` OK (si se valida telemetría post-proceso).
 - [ ] Decision Engine: al menos un `rule_executions` o equivalente serial por script probado.
 - [ ] Documentar desviaciones en issue/checkpoint.
+
+### 10.7 Verificación interlocks firmware (post 17/jun/2026)
+
+Ejecutar con Auto EC/pH **ON** (`auto_enabled=true`) — ya no hace falta desactivar manualmente antes de P1.
+
+| Escenario | Acción | Serial / resultado esperado |
+|-----------|--------|----------------------------|
+| Nivel bajo | Simular `water_level_ok=false` (MQTT o tanque vacío) | `[AUTO EC] Pausado — nível de água baixo` y sin filas nuevas en `nutrient_dosages` / `ph_dosages` |
+| Comando rule P1 | Enviar `relay_commands` con `command_type=rule`, `priority=80+` | `🔒 [INTERLOCK P1] Auto EC/pH pausados` |
+| Post-hold | Esperar fin del hold (~120 s default) | Auto EC/pH reanudan evaluación en siguiente `intervalo_auto_*` |
+| Changeout | Disparar script drenaje+fill con priority 85 | Sin dosaje químico durante ventana hold |
+| UI dev | `npm run dev` — panel pH sin candado inicial | Controles editables sin contraseña admin |
+
+- [ ] Nivel bajo bloquea dosaje (§10.7 fila 1).
+- [ ] Comando rule priority ≥ 80 activa hold P1 (§10.7 fila 2).
+- [ ] Tras hold, corrección química normal (§10.2 post-fill).
+
+---
+
+## 13. Mapa de interlocks — ahora vs después (17/jun/2026)
+
+Un **interlock** es una regla del tipo «no hagas X hasta que Y». Protege el sistema; en bancada puede confundir si la doc y el código no coinciden.
+
+### Resumen en lenguaje llano
+
+| | **Antes (jun/2026)** | **Después (implementado / objetivo)** |
+|---|----------------------|----------------------------------------|
+| Avisos UI pH | Banners ámbar (preview diverge, ESP neste ciclo) | Eliminados — solo badges + debug JSON |
+| Auto EC/pH en P1 | Operador apagaba manualmente | Hold automático si `priority >= 80` |
+| Nivel bajo | UI decía «bloqueado» pero firmware dosaba igual | `checkAutoEC`/`checkAutoPH` respetan `tankLevelOk` |
+| G5 EC↔pH | Relajado en dev (`PH_PROTOTYPE_RELAX_GUARDS=1`) | Prod: pH espera EC idle (`=0`) |
+| Candado pH UI | Bloqueado por default | Dev: desbloqueado; prod: operador elige |
+| Matriz relés | Bloquea selects conflictivos | Se mantiene — seguridad hardware |
+
+### Firmware — tabla detallada
+
+| Interlock | Ahora | Después | Archivo |
+|-----------|-------|---------|---------|
+| G5 EC→pH | Relajado (dev) | Activo en prod | `HydroControl.cpp`, `Config.h` |
+| Sensores inválidos | Relajado (`HIDRO_DEV_RELAX_SENSORS=1`) | Estricto en prod | `checkAutoEC`, `checkAutoPH` |
+| `water_level_ok` | Solo Decision Engine | **+ Auto EC/pH** | `isAutoDosingPausedByInterlock()` |
+| P1 vs P2/P3 | Manual OFF | **Hold automático** | `holdAutoDosingForTankScript()` |
+| `ph_low_control` | Off si Auto pH ON | Igual | `DecisionEngine.cpp` |
+| Recirc post-dosis | ON/OFF slave vía RelayCoordinator | Mutex owner P4 vs recirc | `RelayCoordinator`, `tempo_recirculacao` |
+| Verdad relés distribuidos | Fragmentada | **RelayCoordinator** unifica actuación | `RelayCoordinator.cpp` |
+
+### UI — tabla detallada
+
+| Interlock | Ahora | Después |
+|-----------|-------|---------|
+| Candados admin EC/Reglas | Desbloqueados por default | Igual; prod puede bloquear con admin |
+| Candado panel pH | Bloqueado por default | **Dev: desbloqueado** (`PhControllerPanel`) |
+| `relay-allocation` | Conflictos en selects | Se mantiene |
+| `canActivateAutoEc` | Requiere nutrientes | Se mantiene |
+
+### Qué NO relajar
+
+1. No dosar con tanque vacío (`tankLevelOk`).
+2. P1 pausa dosaje químico (hold priority ≥ 80).
+3. G5 en producción.
+4. Matriz de relés (un relé, un dueño).
+5. Mutex `ph_low_control` vs Auto pH.
 
 ---
 
@@ -637,6 +816,8 @@ Ejecutar en `ESP32_HIDRO_269844` (o device de prueba) antes de automatizar chang
 ## 12. Criterios de éxito de este handoff
 
 - [x] Un dev traduce pantallas Aurora (Fill, Drain, Changeout) a JSON `decision_rules` sin adivinar.
-- [x] Queda claro qué es manual hoy vs roadmap Fase 1–3.
+- [x] Queda claro qué es manual hoy vs roadmap Fase 1–4.
+- [x] Fase 4 documentada: recirc física post-dosis vía slave (obligatoria futura; hoy dead-time + P4).
+- [x] Fase 5 RelayCoordinator documentada e implementada en firmware master.
 - [x] No se promete UI schedule multi-semana ni tipos de acción nuevos.
 - [x] Checklist bancada §10 reproducible antes de changeout en producción.

@@ -1,4 +1,5 @@
 /** Fallback REST si Realtime pierde eventos. */
+import { isSentinelHydroRow } from '@/lib/realtime/hydro-sensor';
 export const HYDRO_EC_FALLBACK_MS = 30 * 1000;
 
 /** EC plausível para hidroponia (µS/cm) — alinhado ao interlock firmware. */
@@ -24,13 +25,18 @@ export function isPlausibleEc(ec: number | null | undefined): ec is number {
 export function resolveEc(
   row: { ec?: number | null; ec_raw?: number | null; tds?: number | null } | null | undefined
 ): number | null {
-  if (!row) return null;
+  if (!row || isSentinelHydroRow(row)) return null;
   if (row.ec_raw != null && !Number.isNaN(Number(row.ec_raw))) {
     const raw = Number(row.ec_raw);
-    return Number.isFinite(raw) ? raw : null;
+    if (Number.isFinite(raw) && raw !== 0) return raw;
+    if (raw === 0) return null;
   }
-  if (row.ec != null && !Number.isNaN(Number(row.ec))) return Number(row.ec);
-  return ecFromTds(row.tds);
+  if (row.ec != null && !Number.isNaN(Number(row.ec))) {
+    const ec = Number(row.ec);
+    return ec !== 0 ? ec : null;
+  }
+  const fromTds = ecFromTds(row.tds);
+  return fromTds !== 0 ? fromTds : null;
 }
 
 /** EC com QC — retorna null se inválido (interlock Auto EC / dosagem). */
@@ -46,17 +52,7 @@ export function resolveEcPlausible(
  * Prioridade: coluna `ec`, depois TDS × 2. Aceita 0 como valor válido.
  */
 export function resolveEcForDisplay(
-  row: { ec?: number | null; tds?: number | null } | null | undefined
+  row: { ec?: number | null; ec_raw?: number | null; tds?: number | null } | null | undefined
 ): number | null {
-  if (!row) return null;
-
-  if (row.ec !== null && row.ec !== undefined && !Number.isNaN(Number(row.ec))) {
-    return Number(row.ec);
-  }
-
-  if (row.tds !== null && row.tds !== undefined && !Number.isNaN(Number(row.tds))) {
-    return Number(row.tds) * 2;
-  }
-
-  return null;
+  return resolveEc(row);
 }

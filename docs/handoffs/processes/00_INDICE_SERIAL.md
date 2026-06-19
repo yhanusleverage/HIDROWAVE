@@ -25,7 +25,7 @@ flowchart LR
   S01 -.->|post-fill| PH
 ```
 
-**S01** documenta el ciclo de cultivo (Fill, Drain, Changeout, Schedule) y su mapeo desde guías tipo Aurora/Nuravine al modelo HIDROWAVE. Leer **antes** de armar scripts P1 en bancada; validar coordinación con [ph/S09_EC_PH_COORDENACAO.md](../ph/S09_EC_PH_COORDINACAO.md) tras el primer changeout.
+**S01** documenta el ciclo de cultivo (Fill, Drain, Changeout, Schedule) y su mapeo desde guías tipo Aurora/Nuravine al modelo HIDROWAVE. Leer **antes** de armar scripts P1 en bancada; validar coordinación con [ph/S09_EC_PH_COORDENACAO.md](../ph/S09_EC_PH_COORDINACAO.md) tras el primer changeout. **Roadmap:** Fase 2 interlocks ✅; Fase 3 RPC opcional; Fase 4 recirc física ✅; **Fase 5** RelayCoordinator (Actuator Arbiter) ✅.
 
 ---
 

@@ -69,7 +69,7 @@ flowchart TB
 | **Auto pH** | ~100% eventos | `verify:ph-dosages` OK; ver [S01_PH_DOSAGES_E2E.md](handoffs/ph/S01_PH_DOSAGES_E2E.md) |
 | **Dashboard + gráfico** | MVP ✅ | Fases 2–3 del plan gráfico **no** implementadas |
 | **Design system** | ~95% UI | Tokens aplicados; falta auditoría páginas residuales |
-| **Realtime / MQTT** | ~85% | EC + pH topics; ver `PRODUCTION_ROADMAP.md` |
+| **Realtime / MQTT** | ~95% | hydro INSERT + ph_raw Realtime OK 17/06; Fase 3 comandos Railway pendiente |
 | **Matriz relés** | ~80% | `relay-allocation.ts` + API conflictos; fase 2 reglas/manuales |
 | **Decision Engine** | ~35% | ESP32 carga/ejecuta reglas — macro pendiente; ver [S01_GROW_CYCLE_RULES_17JUN2026.md](handoffs/processes/S01_GROW_CYCLE_RULES_17JUN2026.md) para Fill/Drain/Changeout |
 | **Testes E2E / bancada** | ~15% | Checklists existen; ejecución sistemática falta |
@@ -164,12 +164,16 @@ flowchart TB
 
 ### 3.5 Firmware + bridge
 
-| Tarea | Archivo / doc |
-|-------|----------------|
-| Coordinación EC poll vs pH dosaje | `S09_EC_PH_COORDENACAO.md`, `HydroSystemCore.cpp` |
-| Bridge pH dose + operation | `infra/mqtt/bridge/index.js`, `S07_BRIDGE_MQTT.md` |
-| Decision Engine en ESP32 | `STATUS_PROJETO_COMPLETO.md` § Próximos pasos |
-| `reboot_count` heartbeat | Parcial ~90% |
+| Tarea | Archivo / doc | Estado |
+|-------|----------------|--------|
+| Bridge hydro `ph_raw` + whitelist INSERT | `infra/mqtt/bridge/index.js` | ✅ 17/06 |
+| Skip HTTPS hydro si MQTT conectado | `HydroSystemCore.cpp` ~L309 | ✅ |
+| Coordinación EC poll vs pH dosaje | `S09_EC_PH_COORDENACAO.md` | ⏳ bancada |
+| Bridge pH dose + operation | `S07_BRIDGE_MQTT.md` | ✅ |
+| Railway build deploy | `route.ts` prefer-const, `tsconfig` exclude scripts | ✅ jun/2026 |
+| Fase 3 MQTT comandos en Railway | `mqtt-command-publish.ts`, env `MQTT_*` | ⏳ ver Fase 3 handoff |
+| Decision Engine en ESP32 | `STATUS_PROJETO_COMPLETO.md` § Próximos pasos | macro |
+| `reboot_count` heartbeat | Parcial ~90% | |
 
 ---
 
@@ -177,6 +181,10 @@ flowchart TB
 
 | Script / check | Cuándo |
 |----------------|--------|
+| `ADD_HYDRO_RAW_DISPLAY_COLUMNS.sql` | Columnas ph_raw / ec_raw |
+| `BACKFILL_HYDRO_PH_RAW.sql` | Filas legacy sin ph_raw |
+| `ALLOW_NULL_HYDRO_SENSOR_COLUMNS.sql` | Opcional — telemetría parcial sin defaults 0 |
+| `npm run verify:hydro-raw` | Post-bridge hydro INSERT |
 | `ENABLE_REALTIME_REPLICATION.sql` | Si Realtime no actualiza |
 | `VERIFICAR_PH_DOSAGES_E2E.sql` | Post-migración pH |
 | `VERIFICAR_RELAY_COMMANDS_STUCK.sql` | Comandos manual pending stuck |
@@ -226,8 +234,8 @@ El ESP leía `relay_commands` pero hacía PATCH en `relay_commands_master` / `re
 
 | Dato | Realtime WSS | Fallback poll | Hook / archivo |
 |------|-------------|---------------|----------------|
-| Sensores (pH, EC, temp) tarjetas | Sí | 60s+ | `dashboard/page.tsx` |
-| Histórico gráficos | No | REST periódico | dashboard |
+| Sensores (pH, EC, temp) tarjetas | Sí — `ph_raw` prioridad | 60s+ | `dashboard/page.tsx`, `resolvePh()` |
+| Histórico gráficos | Sí — INSERT hydro | REST periódico | `ph_display_clamped` en chart |
 | `device_status` (online) | Sí | 90s | `useDevicesWithRealtime` |
 | `relay_master` ON/timer | Sí | 60s | automacao |
 | `relay_master` ph/ec operation | Sí | 5s | `usePhOperationState`, `useEcOperationState` |
@@ -302,4 +310,4 @@ scripts/verify-hydro-chart.ts
 
 ---
 
-**Próxima actualización:** tras commit local + cierre gate S01 o S08 pH — anotar aquí el gate pasado y fecha.
+**Próxima actualización:** 17/jun/2026 — gates cerrados: V3, V4, bridge hydro INSERT + ph_raw Realtime. Pendiente: Fase 3 MQTT Railway, S08 bancada KPI, Decision Engine macro.

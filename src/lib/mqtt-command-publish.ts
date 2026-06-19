@@ -20,6 +20,9 @@ export async function publishRelayCommandMqtt(
   const port = parseInt(process.env.MQTT_PORT || '1883', 10);
 
   if (!host || !user || !pass) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[MQTT CMD] skip — defina MQTT_HOST + MQTT_PUBLISH_USER/PASS (ver docs/RAILWAY_MQTT_ENV.md)');
+    }
     return { ok: false, skipped: true };
   }
 

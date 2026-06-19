@@ -231,10 +231,12 @@ Fluxo manual: `POST /api/esp-now/command` → `createRelayCommandProd` → ESP v
 
 ### Checklist ops pendente (bancada)
 
-1. Limpar stuck: [`scripts/LIMPAR_RELAY_COMMANDS_STUCK.sql`](../scripts/LIMPAR_RELAY_COMMANDS_STUCK.sql) ou `node scripts/cleanup-relay-stuck.js --ids=97,98,99`
-2. Reflash ESP32 se firmware ACK antigo (`SupabaseClient.cpp` → `relay_commands`)
-3. Dosificar na tabela EC → serial `[CMD https]` + mapa sem «Manual pendente» em ~5s
-4. Verificar: `node scripts/verify-relay-rpc.js --dry-run`
+1. Railway MQTT: [`docs/RAILWAY_MQTT_ENV.md`](RAILWAY_MQTT_ENV.md) — env `MQTT_*` para latencia &lt;2s
+2. KPI 10 comandos: [`scripts/BANCADA_MANUAL_COMMANDS_KPI.md`](../scripts/BANCADA_MANUAL_COMMANDS_KPI.md)
+3. Limpar stuck: [`scripts/VERIFICAR_RELAY_COMMANDS_STUCK.sql`](../scripts/VERIFICAR_RELAY_COMMANDS_STUCK.sql) ou `LIMPAR_RELAY_COMMANDS_STUCK.sql`
+4. Reflash ESP32 com firmware ACK actual + late-bind `masterManager` (`HydroStateManager::setMasterManager`)
+5. Dosificar na tabela EC → serial `[CMD mqtt]` ou `[CMD https]` + mapa sem «Manual pendente» em ~5s
+6. Verificar: `node scripts/verify-relay-rpc.js --dry-run`
 
 **Nota:** botão Dosificar na mini-tabela pH (Actuação) fica para fase posterior, após validar o ciclo `relay_commands` em bancada. Nomes pH já seguem padrão EC via `saveMasterLocalRelayName` (14/6).
 

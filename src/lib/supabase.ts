@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { supabaseAnonKey, supabaseUrl } from './env';
+import { hasHydroSensorReading, mergeHydroMeasurements } from '@/lib/realtime/hydro-ph';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -83,6 +84,21 @@ export async function getLatestHydroData(deviceId: string): Promise<HydroMeasure
       console.log('✅ [SUPABASE] Water Level OK:', data.water_level_ok);
       console.log('✅ [SUPABASE] Created At:', data.created_at);
       console.log('✅ [SUPABASE] Dados completos:', JSON.stringify(data, null, 2));
+
+      if (!hasHydroSensorReading(data)) {
+        const { data: recentRows } = await supabase
+          .from('hydro_measurements')
+          .select('*')
+          .eq('device_id', deviceId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        const lastWithSensor = (recentRows ?? []).find((row) => hasHydroSensorReading(row));
+        if (lastWithSensor) {
+          const merged = mergeHydroMeasurements(lastWithSensor, data);
+          console.log('ℹ️ [SUPABASE] Última fila solo-niveles — PV de fila', lastWithSensor.id);
+          return merged;
+        }
+      }
     } else {
       console.warn('⚠️ [SUPABASE] ========== NENHUM DADO HIDROPÔNICO ENCONTRADO ==========');
       console.warn('⚠️ [SUPABASE] A tabela hydro_measurements está vazia ou não retornou dados');
@@ -163,20 +179,15 @@ export async function getHydroDataHistory(deviceId: string, limit: number = 24):
       return [];
     }
 
-    const count = Array.isArray(data) ? data.length : 0;
-    console.log(`✅ [SUPABASE] Histórico hidropônico: ${count} registros encontrados`);
-    
-    if (count > 0) {
-      console.log('✅ [SUPABASE] Primeiro registro:', {
-        id: data[0].id,
-        temperature: data[0].temperature,
-        ph: data[0].ph,
-        tds: data[0].tds,
-        created_at: data[0].created_at
-      });
+    const rows = data || [];
+    const sensorRows = rows.filter((row) => hasHydroSensorReading(row));
+    if (sensorRows.length > 0) {
+      console.log(`✅ [SUPABASE] Histórico hidropônico: ${sensorRows.length} com PV sensor (${rows.length} total)`);
+      return sensorRows;
     }
 
-    return data || [];
+    console.log(`✅ [SUPABASE] Histórico hidropônico: ${rows.length} registros (sem PV sensor)`);
+    return rows;
   } catch (err) {
     console.error('❌ [SUPABASE] Exceção ao buscar histórico hidropônico:', err);
     return [];

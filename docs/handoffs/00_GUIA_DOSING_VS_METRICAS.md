@@ -53,8 +53,9 @@ Estado prod referencia (jun/2026):
 |------|-------|------|
 | V1 | `nutrient_dosages` | OK — cientos de filas |
 | V2 | `ph_dosages` | OK — cientos de filas |
-| V3 | `ec_controller_metrics` | Tabla OK; filas tras flash |
-| V4 | `ph_controller_metrics` | Tabla OK; filas tras flash |
+| V3 | `ec_controller_metrics` | Tabla OK; filas tras flash — **cerrado bancada** 17/06 |
+| V4 | `ph_controller_metrics` | Tabla OK; filas tras flash — **cerrado bancada** 17/06 |
+| — | `hydro_measurements` (`ph_raw`) | Realtime cards/charts — **cerrado** 17/06 |
 
 ---
 
@@ -68,6 +69,7 @@ Ejecutar en orden. No saltar V3/V4 si V1/V2 fallan — comparten bridge y firmwa
 | **V2** | pH eventos | `npm run verify:ph-dosages` → [ph/S01](ph/S01_PH_DOSAGES_E2E.md) |
 | **V3** | EC métricas | `npm run verify:controller-metrics` → [ec/S02](ec/S02_EC_CONTROLLER_METRICS.md) |
 | **V4** | pH métricas | mismo verify + [ph/S02](ph/S02_PH_CONTROLLER_METRICS.md) |
+| **Hydro** | Telemetría → cards/charts | `npm run verify:hydro-raw` + [HANDOFF_DEV_RELAX_SENSORS_17JUN2026.md](../HANDOFF_DEV_RELAX_SENSORS_17JUN2026.md) |
 
 Validación global schema:
 
@@ -112,7 +114,10 @@ sudo journalctl -u hidrowave-bridge -f
 | `INSERT ph_dosages` | V2 OK |
 | `INSERT ec_controller_metrics` | V3 OK |
 | `INSERT ph_controller_metrics` | V4 OK |
-| `Rejected ... ec_metric` | Payload inválido — ver serial |
+| `INSERT hydro_measurements … ph_raw=` | Telemetría → Realtime cards/charts |
+| `Supabase insert failed … 'ec' column` | Bridge viejo — redeploy; whitelist sin `ec` |
+| `null value in column "temperature"` | Bridge sin defaults legacy — redeploy `applyLegacyHydroNotNullDefaults` |
+| `Rejected … ec_metric` | Payload inválido — ver serial |
 | Subscribe con `ec_metric` pero sin INSERT | Bridge sin handlers — redeploy [`S03_BRIDGE_METRICS.md`](ec/S03_BRIDGE_METRICS.md) |
 | Subscribe sin `ec_metric` | Bridge desactualizado — redeploy + ACL |
 
@@ -126,8 +131,11 @@ Patch idempotente: [`patch-acl-metric-topics.sh`](../../ESP-HIDROWAVE-main/infra
 |---------|-------|
 | Última dosagem `-- ml` | V1 — `nutrient_dosages` + Realtime |
 | PhDosageDetail vacío | V2 — `ph_dosages` |
-| Dashboard sin gráfico métricas | V3/V4 — tablas con filas + poll 60s |
+| Dashboard sin gráfico métricas | V3/V4 — tablas con filas + Realtime/poll |
+| Cards pH sin actualizar | `hydro_measurements` INSERT + Realtime; `ph_raw` NOT NULL |
 | Badges stuck | `relay_master.ec_operation_*` / `ph_operation_*` |
+
+**Actuadores vs métricas:** Auto EC/pH publican **métricas** (`ec_controller_metrics`, `ph_controller_metrics`) y **estado operacional** (`ec_operation_*`, `ph_operation_*`). La bomba de circulación slave es **capa I/O** — la coordina `RelayCoordinator` en firmware master (Fase 5 S01); el espejo cloud es `relay_slaves`, no tablas de dosagem.
 
 ---
 
@@ -179,5 +187,6 @@ Relacionado:
 npm run verify:nutrient-dosages    # V1
 npm run verify:ph-dosages          # V2
 npm run verify:controller-metrics  # V3 + V4 tablas
+npm run verify:hydro-raw           # hydro_measurements ph_raw reciente
 npm run verify:e2e-schema          # schema global
 ```

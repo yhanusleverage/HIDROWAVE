@@ -147,7 +147,7 @@ export default function PhControllerPanel({
   const [expanded, setExpanded] = useState(true);
   const [equationHExpanded, setEquationHExpanded] = useState(false);
   const [showPhConfigPreview, setShowPhConfigPreview] = useState(false);
-  const [locked, setLocked] = useState(true);
+  const [locked, setLocked] = useState(() => process.env.NODE_ENV !== 'development');
   const justSavedRef = useRef(false);
 
   const [phSetpoint, setPhSetpoint] = useState(6.0);

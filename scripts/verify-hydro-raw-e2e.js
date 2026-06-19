@@ -82,7 +82,17 @@ async function main() {
     }
 
     const hasPhRaw = data.some((r) => r.ph_raw != null);
-    ok = record('ph_raw populated', hasPhRaw, hasPhRaw ? 'at least one row' : 'all NULL — bridge INSERT failing?') && ok;
+    const hasSensorRow = data.some(
+      (r) =>
+        r.ph_raw != null ||
+        r.temperature_raw != null ||
+        (r.ph !== 0 && r.ph != null) ||
+        (r.tds != null && r.tds !== 0)
+    );
+    ok = record('ph_raw populated', hasPhRaw, hasPhRaw ? 'at least one row' : 'all NULL — bridge levels-only or ESP sin ph') && ok;
+    if (!hasPhRaw && hasSensorRow) {
+      console.log('  (tip: filas recientes pueden ser levels-only; buscar fila con ph_raw en SQL)');
+    }
   }
 
   console.log('\nSQL: VERIFICAR_HYDRO_RAW_COLUMNS.sql');
