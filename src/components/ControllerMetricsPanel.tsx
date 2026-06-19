@@ -37,7 +37,9 @@ import {
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { hydroCrosshairPlugin } from '@/lib/hydro-chart';
 
-const METRICS_FALLBACK_MS = 120_000;
+import { HYDRO_EC_FALLBACK_MS } from '@/lib/realtime/hydro-ec';
+
+const METRICS_FALLBACK_MS = HYDRO_EC_FALLBACK_MS;
 
 ChartJS.register(
   CategoryScale,
@@ -134,6 +136,9 @@ export default function ControllerMetricsPanel({
       onPh: (row) => {
         setPhRows((prev) => appendMetricRow(prev, row));
         setLoading(false);
+      },
+      onSubscribed: () => {
+        if (!cancelled) load();
       },
     });
 

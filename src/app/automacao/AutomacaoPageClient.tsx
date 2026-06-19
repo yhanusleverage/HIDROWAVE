@@ -65,6 +65,7 @@ import {
 import { parseConfigApiError, sanitizeEcNumericFields } from '@/lib/controller-config-api';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { MetricRow } from '@/components/ui/MetricRow';
+import ControllerMetricsPanel from '@/components/ControllerMetricsPanel';
 
 const SectionSkeleton = ({ className = 'h-32' }: { className?: string }) => (
   <div className={`animate-pulse rounded-lg bg-dark-surface border border-dark-border ${className}`} />
@@ -92,10 +93,6 @@ const NutrientDosageDetail = dynamic(
   () => import('@/components/NutrientDosageDetail').then((m) => m.NutrientDosageDetail),
   { loading: () => <SectionSkeleton className="h-16" /> }
 );
-
-const ControllerMetricsPanel = dynamic(() => import('@/components/ControllerMetricsPanel'), {
-  loading: () => <SectionSkeleton className="h-48" />,
-});
 
 /** Mínimo ml/L por nutriente na tabela nutricional (Auto EC). Para excluir um nutriente, remova a linha. */
 const MIN_NUTRIENT_ML_PER_LITER = 0.1;

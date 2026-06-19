@@ -1,9 +1,9 @@
 import { supabase } from '@/lib/supabase';
-import type { EcControllerMetricRow, PhControllerMetricRow } from '@/lib/controller-metrics';
+import { METRICS_LIMIT, type EcControllerMetricRow, type PhControllerMetricRow } from '@/lib/controller-metrics';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 const METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
-const METRICS_MAX_ROWS = 120;
+const METRICS_MAX_ROWS = METRICS_LIMIT;
 
 function trimMetricsRows<T extends { id?: number; created_at?: string }>(rows: T[]): T[] {
   const cutoff = Date.now() - METRICS_WINDOW_MS;
@@ -35,6 +35,7 @@ export function subscribeControllerMetrics(
   handlers: {
     onEc?: (row: EcControllerMetricRow) => void;
     onPh?: (row: PhControllerMetricRow) => void;
+    onSubscribed?: () => void;
   }
 ): () => void {
   const channelName = `hidrowave-controller-metrics-${deviceId}`;
@@ -75,6 +76,7 @@ export function subscribeControllerMetrics(
   channel.subscribe((status) => {
     if (status === 'SUBSCRIBED') {
       console.log('[Realtime] controller-metrics SUBSCRIBED', deviceId);
+      handlers.onSubscribed?.();
     }
     if (status === 'CHANNEL_ERROR') {
       console.warn('[Realtime] controller-metrics CHANNEL_ERROR');

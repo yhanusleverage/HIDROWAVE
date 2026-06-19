@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import dynamic from 'next/dynamic';
 import NavLink from '@/components/NavLink';
 import toast from 'react-hot-toast';
 import { hwToast } from '@/lib/control-toast';
@@ -58,12 +57,7 @@ import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { MetricRow } from '@/components/ui/MetricRow';
 import { HW_TEXT } from '@/lib/design-tokens';
-
-const ControllerMetricsPanel = dynamic(() => import('@/components/ControllerMetricsPanel'), {
-  loading: () => (
-    <p className="text-xs text-dark-textSecondary py-4 text-center">Carregando métricas de ciclo…</p>
-  ),
-});
+import ControllerMetricsPanel from '@/components/ControllerMetricsPanel';
 
 export interface RelayAllocationBridge {
   buildRegistry: (

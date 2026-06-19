@@ -5,9 +5,13 @@ import { BeakerIcon } from '@heroicons/react/24/outline';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { HW_TEXT } from '@/lib/design-tokens';
 import OperationStateBadges from '@/components/OperationStateBadges';
+import { AutoControlStatusMetrics } from '@/components/AutoControlStatusMetrics';
 import { useLastDosage } from '@/hooks/useLastDosage';
 import { useEcOperationState } from '@/hooks/useEcOperationState';
 import { useEcConfig } from '@/hooks/useEcConfig';
+import { useHydroEcReading } from '@/hooks/useHydroEcReading';
+import { ecErrorAbs } from '@/lib/ec-control-display';
+import { formatSensorValue } from '@/lib/format-sensor-value';
 
 interface EcAutoStatusCardProps {
   deviceId: string;
@@ -17,6 +21,12 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
   const active = Boolean(deviceId?.trim());
   const ecConfig = useEcConfig(deviceId, active);
   const configReady = active && !ecConfig.isLoading;
+  const { ec: ecAtual } = useHydroEcReading(deviceId, active);
+  const ecError =
+    ecAtual != null && ecConfig.ec_setpoint > 0
+      ? ecErrorAbs(ecConfig.ec_setpoint, ecAtual)
+      : null;
+
   const { totalMl, isLoading: dosageLoading, available } = useLastDosage(
     deviceId,
     active
@@ -42,6 +52,11 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
     !isDosando &&
     !isAguardandoRecirculacao &&
     (isEcCheckPending || nextCheckInSec > 0);
+
+  const limitHint =
+    ecConfig.ec_setpoint > 0
+      ? `Limite inferior: ${ecConfig.ec_setpoint - ecConfig.tolerance} µS/cm`
+      : undefined;
 
   return (
     <section className="mb-8">
@@ -73,42 +88,37 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
           accent="emerald"
         />
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm mt-4">
-          <div>
-            <p className="text-dark-textSecondary mb-0.5">Última dosagem</p>
-            <p className={`text-lg font-semibold tabular-nums ${HW_TEXT.ec}`}>
-              {dosageLoading && totalMl == null
-                ? '…'
-                : totalMl != null
-                  ? `${totalMl.toFixed(2)} ml`
-                  : '-- ml'}
-            </p>
-            {!available && (
-              <p className="text-xs text-amber-400/80 mt-1">
-                Tabela nutrient_dosages ausente
-              </p>
-            )}
-          </div>
-          <div>
-            <p className="text-dark-textSecondary mb-0.5">Setpoint</p>
-            <p className={`text-lg font-semibold tabular-nums ${HW_TEXT.ec}`}>
-              {ecConfig.ec_setpoint > 0
-                ? `${ecConfig.ec_setpoint} µS/cm`
-                : '--'}
-            </p>
-          </div>
-          <div>
-            <p className="text-dark-textSecondary mb-0.5">Banda morta / intervalo</p>
-            <p className={`text-lg font-semibold tabular-nums ${HW_TEXT.ec}`}>
-              {ecConfig.tolerance} µS/cm · {ecConfig.intervalo_auto_ec}s
-            </p>
-            {ecConfig.ec_setpoint > 0 && (
-              <p className="text-xs text-dark-textSecondary mt-0.5">
-                Limite: {ecConfig.ec_setpoint - ecConfig.tolerance} µS/cm
-              </p>
-            )}
-          </div>
-        </div>
+        <AutoControlStatusMetrics
+          accent="ec"
+          metrics={[
+            {
+              label: 'EC Atual',
+              value: ecAtual != null ? `${formatSensorValue(ecAtual, 0)} µS/cm` : '--',
+            },
+            {
+              label: 'Erro (|EC − SP|)',
+              value: ecError != null ? `${formatSensorValue(ecError, 0)} µS/cm` : '--',
+            },
+            {
+              label: 'Última dosagem',
+              value:
+                totalMl != null ? `${totalMl.toFixed(2)} ml` : '-- ml',
+              loading: dosageLoading && totalMl == null,
+            },
+            {
+              label: 'Setpoint',
+              value: ecConfig.ec_setpoint > 0 ? `${ecConfig.ec_setpoint} µS/cm` : '--',
+            },
+          ]}
+          footer={{
+            bandLabel: `${ecConfig.tolerance} µS/cm · ${ecConfig.intervalo_auto_ec}s`,
+            recircSec: ecConfig.tempo_recirculacao,
+            limitHint,
+          }}
+          dosageHint={
+            !available ? <span>Tabela nutrient_dosages ausente</span> : undefined
+          }
+        />
       </InstrumentCard>
     </section>
   );

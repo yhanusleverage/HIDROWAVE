@@ -26,7 +26,7 @@ export type PhControllerMetricRow = {
   created_at: string;
 };
 
-const METRICS_LIMIT = 120;
+export const METRICS_LIMIT = 120;
 const METRICS_HOURS = 24;
 
 function sinceIso(hours: number): string {
@@ -41,18 +41,18 @@ export async function fetchEcControllerMetrics(
     const { data, error } = await supabase
       .from('ec_controller_metrics')
       .select(
-        'device_id, ec_setpoint, ec_actual, ec_error, dosage_ml, dosage_time_seconds, adjustment_needed, adjustment_applied, created_at'
+        'id, device_id, ec_setpoint, ec_actual, ec_error, dosage_ml, dosage_time_seconds, adjustment_needed, adjustment_applied, created_at'
       )
       .eq('device_id', deviceId)
       .gte('created_at', sinceIso(hours))
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(METRICS_LIMIT);
 
     if (error) {
       if (isSupabaseMissingTableError(error)) return [];
       throw error;
     }
-    return (data ?? []) as EcControllerMetricRow[];
+    return ((data ?? []) as EcControllerMetricRow[]).reverse();
   } catch {
     return [];
   }
@@ -66,18 +66,18 @@ export async function fetchPhControllerMetrics(
     const { data, error } = await supabase
       .from('ph_controller_metrics')
       .select(
-        'device_id, ph_setpoint, ph_before, error_h, dose_real_ml, adjustment_needed, adjustment_applied, created_at'
+        'id, device_id, ph_setpoint, ph_before, error_h, dose_real_ml, adjustment_needed, adjustment_applied, created_at'
       )
       .eq('device_id', deviceId)
       .gte('created_at', sinceIso(hours))
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(METRICS_LIMIT);
 
     if (error) {
       if (isSupabaseMissingTableError(error)) return [];
       throw error;
     }
-    return (data ?? []) as PhControllerMetricRow[];
+    return ((data ?? []) as PhControllerMetricRow[]).reverse();
   } catch {
     return [];
   }

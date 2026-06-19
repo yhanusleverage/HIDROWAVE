@@ -5,6 +5,7 @@ import { BeakerIcon } from '@heroicons/react/24/outline';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { HW_TEXT } from '@/lib/design-tokens';
 import OperationStateBadges from '@/components/OperationStateBadges';
+import { AutoControlStatusMetrics } from '@/components/AutoControlStatusMetrics';
 import { usePhConfig } from '@/hooks/usePhConfig';
 import { usePhOperationState } from '@/hooks/usePhOperationState';
 import { useHydroEcReading } from '@/hooks/useHydroEcReading';
@@ -117,6 +118,11 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
     !isAguardandoRecirculacao &&
     nextCheckInSec > 0;
 
+  const limitHint =
+    phConfig.ph_setpoint > 0
+      ? `Limite: pH ${(phConfig.ph_setpoint - phConfig.ph_tolerance).toFixed(2)} – ${(phConfig.ph_setpoint + phConfig.ph_tolerance).toFixed(2)}`
+      : undefined;
+
   return (
     <section className="mb-8">
       <div className="flex items-center justify-between mb-4">
@@ -152,47 +158,35 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
           accent="violet"
         />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mt-4">
-          <div>
-            <p className="text-dark-textSecondary mb-0.5">pH Atual</p>
-            <p className={`text-lg font-semibold tabular-nums ${HW_TEXT.ph}`}>
-              {phAtual != null ? formatSensorValue(phAtual, 2) : '--'}
-            </p>
-          </div>
-          <div>
-            <p className="text-dark-textSecondary mb-0.5">Erro (|pH − SP|)</p>
-            <p className={`text-lg font-semibold tabular-nums ${HW_TEXT.ph}`}>
-              {phError != null ? formatSensorValue(phError, 2) : '--'}
-            </p>
-          </div>
-          <div>
-            <p className="text-dark-textSecondary mb-0.5">Última dosagem</p>
-            <p className={`text-lg font-semibold tabular-nums ${HW_TEXT.ph}`}>
-              {dosageLoading && lastDosageMl == null
-                ? '…'
-                : lastDosageMl != null
-                  ? `${lastDosageMl.toFixed(2)} ml`
-                  : '-- ml'}
-            </p>
-          </div>
-          <div>
-            <p className="text-dark-textSecondary mb-0.5">Setpoint</p>
-            <p className={`text-lg font-semibold tabular-nums ${HW_TEXT.ph}`}>
-              {phConfig.ph_setpoint > 0 ? `pH ${phConfig.ph_setpoint.toFixed(1)}` : '--'}
-            </p>
-          </div>
-          <div>
-            <p className="text-dark-textSecondary mb-0.5">Banda morta / intervalo</p>
-            <p className={`text-lg font-semibold tabular-nums ${HW_TEXT.ph}`}>
-              ± {phConfig.ph_tolerance.toFixed(2)} · {phConfig.intervalo_auto_ph}s
-            </p>
-            {phConfig.ph_setpoint > 0 && (
-              <p className="text-xs text-dark-textSecondary mt-0.5">
-                Recirculação: {phConfig.tempo_recirculacao}s
-              </p>
-            )}
-          </div>
-        </div>
+        <AutoControlStatusMetrics
+          accent="ph"
+          metrics={[
+            {
+              label: 'pH Atual',
+              value: phAtual != null ? formatSensorValue(phAtual, 2) : '--',
+            },
+            {
+              label: 'Erro (|pH − SP|)',
+              value: phError != null ? formatSensorValue(phError, 2) : '--',
+            },
+            {
+              label: 'Última dosagem',
+              value:
+                lastDosageMl != null ? `${lastDosageMl.toFixed(2)} ml` : '-- ml',
+              loading: dosageLoading && lastDosageMl == null,
+            },
+            {
+              label: 'Setpoint',
+              value:
+                phConfig.ph_setpoint > 0 ? `pH ${phConfig.ph_setpoint.toFixed(1)}` : '--',
+            },
+          ]}
+          footer={{
+            bandLabel: `± ${phConfig.ph_tolerance.toFixed(2)} · ${phConfig.intervalo_auto_ph}s`,
+            recircSec: phConfig.tempo_recirculacao,
+            limitHint,
+          }}
+        />
       </InstrumentCard>
     </section>
   );

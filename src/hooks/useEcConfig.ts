@@ -9,6 +9,7 @@ export interface EcConfigSnapshot {
   intervalo_auto_ec: number;
   ec_setpoint: number;
   tolerance: number;
+  tempo_recirculacao: number;
   isLoading: boolean;
 }
 
@@ -19,6 +20,7 @@ const DEFAULT: EcConfigSnapshot = {
   intervalo_auto_ec: 300,
   ec_setpoint: 0,
   tolerance: 50,
+  tempo_recirculacao: 60,
   isLoading: true,
 };
 
@@ -42,6 +44,7 @@ export function useEcConfig(deviceId: string, enabled = true): EcConfigSnapshot 
         intervalo_auto_ec: Number(data.intervalo_auto_ec) || 300,
         ec_setpoint: Number(data.ec_setpoint) || 0,
         tolerance: Number(data.tolerance) || 50,
+        tempo_recirculacao: Number(data.tempo_recirculacao) || 60,
         isLoading: false,
       });
     } catch {

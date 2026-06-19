@@ -420,20 +420,20 @@ export default function DashboardPage() {
               <span className="text-xs text-dark-textSecondary ml-2">(Carregando...)</span>
             )}
           </h2>
-          {loadingCharts ? (
-            <BrandLoading
-              message="Carregando histórico para gráficos..."
-              size={40}
-              className="py-12 bg-dark-surface rounded-lg border border-dark-border"
-            />
-          ) : (
-            <div className="grid grid-cols-1 gap-6">
+          <div className="grid grid-cols-1 gap-6">
+            {loadingCharts ? (
+              <BrandLoading
+                message="Carregando histórico hidropônico..."
+                size={40}
+                className="py-12 bg-dark-surface rounded-lg border border-dark-border"
+              />
+            ) : (
               <HydroMonitoringChart history={hydroHistory} />
-              {selectedDeviceId ? (
-                <ControllerMetricsChart deviceId={selectedDeviceId} />
-              ) : null}
-            </div>
-          )}
+            )}
+            {selectedDeviceId ? (
+              <ControllerMetricsChart deviceId={selectedDeviceId} />
+            ) : null}
+          </div>
         </section>
 
         {/* ✅ Seção de Sensores - Carga independiente */}
