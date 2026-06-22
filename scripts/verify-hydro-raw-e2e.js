@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Verificación E2E hydro_measurements (ph_raw, INSERT reciente)
+ * Verificación E2E hydro_measurements — EC único (solo columna ec en inserts nuevos)
  * Uso: node scripts/verify-hydro-raw-e2e.js
  */
 
@@ -46,6 +46,10 @@ function record(name, pass, detail) {
   return pass;
 }
 
+function isNullOrZero(v) {
+  return v == null || v === 0;
+}
+
 async function main() {
   let ok = true;
 
@@ -60,6 +64,9 @@ async function main() {
 
   if (error) {
     console.error('FAIL hydro query:', error.message);
+    if (error.message.includes('column') && error.message.includes('ec')) {
+      console.error('  → Ejecute ADD_HYDRO_EC_COLUMN.sql en Supabase SQL Editor');
+    }
     process.exit(1);
   }
 
@@ -82,7 +89,7 @@ async function main() {
     }
 
     const hasPhRaw = data.some((r) => r.ph_raw != null);
-    const hasEc = data.some((r) => r.ec != null && r.ec !== 0);
+    const hasEc = newest.ec != null && newest.ec !== 0;
     const hasSensorRow = data.some(
       (r) =>
         r.ph_raw != null ||
@@ -92,24 +99,43 @@ async function main() {
         (r.ec_raw != null && r.ec_raw !== 0) ||
         (r.tds != null && r.tds !== 0)
     );
+
     ok = record('ph_raw populated', hasPhRaw, hasPhRaw ? 'at least one row' : 'all NULL — bridge levels-only or ESP sin ph') && ok;
     ok =
       record(
-        'ec populated',
+        'ec populated (newest)',
         hasEc || !hasSensorRow,
         hasEc
-          ? 'at least one row with ec'
+          ? `ec=${newest.ec} µS/cm`
           : hasSensorRow
-            ? 'sensor rows without ec — run ADD_HYDRO_EC_COLUMN.sql + redeploy bridge'
+            ? 'sensor row without ec — deploy bridge + ADD_HYDRO_EC_COLUMN.sql'
             : 'no sensor rows (levels-only OK)'
       ) && ok;
+
+    const ecSingleWrite =
+      !hasSensorRow ||
+      (hasEc && isNullOrZero(newest.tds) && isNullOrZero(newest.ec_raw));
+    ok =
+      record(
+        'ec single-write (tds/ec_raw null on newest)',
+        ecSingleWrite,
+        ecSingleWrite
+          ? 'only ec column active'
+          : `newest still has tds=${newest.tds ?? '-'} ec_raw=${newest.ec_raw ?? '-'} — deploy bridge + HYDRO_EC_SINGLE_WRITE.sql`
+      ) && ok;
+
     if (!hasPhRaw && hasSensorRow) {
       console.log('  (tip: filas recientes pueden ser levels-only; buscar fila con ph_raw en SQL)');
     }
   }
 
-  console.log('\nSQL: VERIFICAR_HYDRO_RAW_COLUMNS.sql');
-  console.log('\n' + (ok ? 'E2E hydro raw OK' : 'E2E hydro INCOMPLETE — check bridge journalctl + ALLOW_NULL_HYDRO_SENSOR_COLUMNS.sql'));
+  console.log('\nSQL: scripts/HYDRO_EC_SINGLE_WRITE.sql + VERIFICAR_HYDRO_RAW_COLUMNS.sql');
+  console.log(
+    '\n' +
+      (ok
+        ? 'E2E hydro EC único OK'
+        : 'E2E hydro INCOMPLETE — deploy bridge, HYDRO_EC_SINGLE_WRITE.sql, journalctl')
+  );
   process.exit(ok ? 0 : 2);
 }
 
