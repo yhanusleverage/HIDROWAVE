@@ -28,7 +28,7 @@ export default function TargetRuleIdField({
   placeholder = 'Ex: RULE_001',
   fieldId = 'target-rule',
   inputClassName = 'w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500',
-  hintClassName = 'text-xs text-gray-500 mt-1',
+  hintClassName = 'text-xs text-dark-textSecondary/80 mt-1',
 }: TargetRuleIdFieldProps) {
   const filteredRules = availableRules.filter((rule) => rule.rule_id !== excludeRuleId);
   const customValue =

@@ -11,7 +11,7 @@ interface DelayEditorProps {
 export default function DelayEditor({ instruction, onChange }: DelayEditorProps) {
   return (
     <div>
-      <label className="block text-xs text-gray-400 mb-1">Duração (ms)</label>
+      <label className="block text-xs text-dark-textSecondary mb-1">Duração (ms)</label>
       <input
         type="number"
         min="0"

@@ -2065,7 +2065,7 @@ export default function AutomacaoPageClient() {
                 <div>
                   <p className="text-xs text-dark-textSecondary mb-1">📊 Estatísticas</p>
                   <p className="text-sm font-medium text-dark-text">
-                    <span className="text-aqua-400">{activeRules}</span> ativas / <span className="text-gray-400">{inactiveRules}</span> inativas
+                    <span className="text-aqua-400">{activeRules}</span> ativas / <span className="text-dark-textSecondary">{inactiveRules}</span> inativas
                   </p>
                 </div>
                 {selectedMaster?.is_online && (
@@ -2084,7 +2084,7 @@ export default function AutomacaoPageClient() {
         </div>
       </header>
       
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         {/* Box de Estatísticas */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="bg-dark-card border border-aqua-500/30 rounded-lg shadow-lg p-4 sm:p-6">
@@ -2423,7 +2423,7 @@ export default function AutomacaoPageClient() {
                                               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                                 <span className={`
                                                   text-xs font-bold transition-colors duration-300
-                                                  ${isRelayOn ? 'text-white' : 'text-gray-300'}
+                                                  ${isRelayOn ? 'text-white' : 'text-dark-textSecondary'}
                                                 `}>
                                                   {isRelayOn ? 'ON' : 'OFF'}
                                                 </span>
@@ -2457,7 +2457,7 @@ export default function AutomacaoPageClient() {
                                                     ? 'bg-aqua-500/20 text-aqua-400 border-2 border-aqua-500/40'
                                                     : relayTimers.get(relayKey) || relayCycles.get(relayKey)?.enabled
                                                       ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30'
-                                                      : 'bg-dark-surface hover:bg-dark-border text-gray-400 hover:text-aqua-400 border border-dark-border'
+                                                      : 'bg-dark-surface hover:bg-dark-border text-dark-textSecondary hover:text-aqua-400 border border-dark-border'
                                                   }
                                                   ${!isLocked && 'cursor-pointer active:scale-95'}
                                                 `}
@@ -2492,7 +2492,7 @@ export default function AutomacaoPageClient() {
                                                     flex-1 py-1.5 px-2 text-xs font-medium rounded transition-all
                                                     ${showTimerInput === relayKey
                                                       ? 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/40'
-                                                      : 'bg-dark-surface text-gray-400 hover:text-aqua-400 border border-transparent'
+                                                      : 'bg-dark-surface text-dark-textSecondary hover:text-aqua-400 border border-transparent'
                                                     }
                                                   `}
                                                 >
@@ -2507,7 +2507,7 @@ export default function AutomacaoPageClient() {
                                                     flex-1 py-1.5 px-2 text-xs font-medium rounded transition-all
                                                     ${showCycleInput === relayKey
                                                       ? 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/40'
-                                                      : 'bg-dark-surface text-gray-400 hover:text-aqua-400 border border-transparent'
+                                                      : 'bg-dark-surface text-dark-textSecondary hover:text-aqua-400 border border-transparent'
                                                     }
                                                   `}
                                                 >
@@ -2540,7 +2540,7 @@ export default function AutomacaoPageClient() {
                                                       className="flex-1 px-2 py-1.5 bg-dark-surface border border-dark-border rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-aqua-500"
                                                       autoFocus
                                                     />
-                                                    <span className="text-xs text-gray-400">s</span>
+                                                    <span className="text-xs text-dark-textSecondary">s</span>
                                                     <button
                                                       onClick={() => {
                                                         setRelayTimers(prev => {
@@ -2555,7 +2555,7 @@ export default function AutomacaoPageClient() {
                                                       <XMarkIcon className="w-3.5 h-3.5" />
                                                     </button>
                                                   </div>
-                                                  <p className="text-xs text-gray-500">Timer: desliga após X segundos</p>
+                                                  <p className="text-xs text-dark-textSecondary/80">Timer: desliga após X segundos</p>
                                                 </div>
                                               )}
 
@@ -2563,7 +2563,7 @@ export default function AutomacaoPageClient() {
                                               {showCycleInput === relayKey && (
                                                 <div className="space-y-3">
                                                   <div className="space-y-2">
-                                                    <label className="text-xs text-gray-400">ON (segundos)</label>
+                                                    <label className="text-xs text-dark-textSecondary">ON (segundos)</label>
                                                     <input
                                                       type="number"
                                                       min="1"
@@ -2583,7 +2583,7 @@ export default function AutomacaoPageClient() {
                                                     />
                                                   </div>
                                                   <div className="space-y-2">
-                                                    <label className="text-xs text-gray-400">OFF (segundos)</label>
+                                                    <label className="text-xs text-dark-textSecondary">OFF (segundos)</label>
                                                     <input
                                                       type="number"
                                                       min="1"
@@ -2642,7 +2642,7 @@ export default function AutomacaoPageClient() {
                                                       <XMarkIcon className="w-4 h-4" />
                                                     </button>
                                                   </div>
-                                                  <p className="text-xs text-gray-500">Ciclo: alterna ON/OFF automaticamente</p>
+                                                  <p className="text-xs text-dark-textSecondary/80">Ciclo: alterna ON/OFF automaticamente</p>
                                                 </div>
                                               )}
                                             </div>
@@ -2868,15 +2868,15 @@ export default function AutomacaoPageClient() {
             {selectedDeviceId && selectedDeviceId !== 'default_device' && (
               <div className="mt-4 pt-4 border-t border-dark-border">
                 <div className="flex justify-between items-center mb-4">
-                  <p className="text-sm text-gray-400">
+                  <p className="text-sm text-dark-textSecondary">
                     📋 Regras de Script Sequencial ({rules.filter(r => r.rule_json?.script?.instructions && r.enabled).length} ativas / {rules.filter(r => r.rule_json?.script?.instructions && !r.enabled).length} inativas)
                   </p>
                 </div>
 
                 {loading ? (
-                  <div className="text-center py-8 text-gray-400">Carregando...</div>
+                  <div className="text-center py-8 text-dark-textSecondary">Carregando...</div>
                 ) : rules.filter(r => r.rule_json?.script?.instructions).length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 bg-dark-surface border border-dark-border rounded-lg">
+                  <div className="text-center py-8 text-dark-textSecondary bg-dark-surface border border-dark-border rounded-lg">
                     Nenhum script sequencial ativo. Crie uma regra com instruções sequenciais.
                   </div>
                 ) : (
@@ -2917,27 +2917,27 @@ export default function AutomacaoPageClient() {
                                 </span>
                               </div>
                               {script.description && (
-                                <p className="text-xs text-gray-400 mt-1">{script.description || script.rule_description}</p>
+                                <p className="text-xs text-dark-textSecondary mt-1">{script.description || script.rule_description}</p>
                               )}
-                              <p className="text-xs text-gray-500 mt-1">
+                              <p className="text-xs text-dark-textSecondary/80 mt-1">
                                 Sequential Script
                               </p>
 
                               {/* Preview das instruções - Linha circular do script */}
                               {script.rule_json?.script?.instructions && (
-                                <div className="mt-2 text-xs text-gray-400 space-y-1 font-mono">
+                                <div className="mt-2 text-xs text-dark-textSecondary space-y-1 font-mono">
                                   {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
                                     <div key={idx} className="text-aqua-300">
                                       {idx + 1}. {formatInstructionType(instr.type)}
                                       {instr.condition && (
-                                        <span className="ml-2 text-gray-400">
+                                        <span className="ml-2 text-dark-textSecondary">
                                           {instr.condition.sensor} {instr.condition.operator} {instr.condition.value}
                                         </span>
                                       )}
                                     </div>
                                   ))}
                                   {script.rule_json.script.instructions.length > 2 && (
-                                    <div className="text-gray-500 italic">
+                                    <div className="text-dark-textSecondary/80 italic">
                                       ... e mais {script.rule_json.script.instructions.length - 2} instrução(ões)
                                     </div>
                                   )}
@@ -2945,7 +2945,7 @@ export default function AutomacaoPageClient() {
                               )}
 
                               <div className="mt-3 flex gap-2 flex-wrap items-center">
-                                <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded border border-blue-500/30">
+                                <span className="text-xs bg-aqua-500/15 text-aqua-300 px-2 py-1 rounded border border-aqua-500/40">
                                   Prioridade: {script.priority || 50}
                                 </span>
                                 {/* ✅ rule_id - Fácil de copiar */}
@@ -3004,7 +3004,7 @@ export default function AutomacaoPageClient() {
                         </div>
                       ))}
                       {rules.filter(r => r.rule_json?.script?.instructions && r.enabled).length === 0 && (
-                        <div className="text-center py-6 text-gray-500 bg-dark-surface/30 border border-dark-border rounded-lg text-xs">
+                        <div className="text-center py-6 text-dark-textSecondary/80 bg-dark-surface/30 border border-dark-border rounded-lg text-xs">
                           Nenhuma regra ativa
                         </div>
                       )}
@@ -3046,27 +3046,27 @@ export default function AutomacaoPageClient() {
                                   </span>
                                 </div>
                                 {script.description && (
-                                  <p className="text-xs text-gray-400 mt-1">{script.description || script.rule_description}</p>
+                                  <p className="text-xs text-dark-textSecondary mt-1">{script.description || script.rule_description}</p>
                                 )}
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-xs text-dark-textSecondary/80 mt-1">
                                   Sequential Script
                                 </p>
 
                                 {/* Preview das instruções - Linha circular do script */}
                                 {script.rule_json?.script?.instructions && (
-                                  <div className="mt-2 text-xs text-gray-400 space-y-1 font-mono">
+                                  <div className="mt-2 text-xs text-dark-textSecondary space-y-1 font-mono">
                                   {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
                                       <div key={idx} className="text-aqua-300">
                                         {idx + 1}. {formatInstructionType(instr.type)}
                                         {instr.condition && (
-                                          <span className="ml-2 text-gray-400">
+                                          <span className="ml-2 text-dark-textSecondary">
                                             {instr.condition.sensor} {instr.condition.operator} {instr.condition.value}
                                           </span>
                                         )}
                                       </div>
                                     ))}
                                     {script.rule_json.script.instructions.length > 2 && (
-                                      <div className="text-gray-500 italic">
+                                      <div className="text-dark-textSecondary/80 italic">
                                         ... e mais {script.rule_json.script.instructions.length - 2} instrução(ões)
                                       </div>
                                     )}
@@ -3074,7 +3074,7 @@ export default function AutomacaoPageClient() {
                                 )}
 
                                 <div className="mt-3 flex gap-2 flex-wrap items-center">
-                                  <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded border border-blue-500/30">
+                                  <span className="text-xs bg-aqua-500/15 text-aqua-300 px-2 py-1 rounded border border-aqua-500/40">
                                     Prioridade: {script.priority || 50}
                                   </span>
                                   {/* ✅ rule_id - Fácil de copiar */}
@@ -3133,7 +3133,7 @@ export default function AutomacaoPageClient() {
                           </div>
                         ))}
                       {rules.filter(r => r.rule_json?.script?.instructions && !r.enabled).length === 0 && (
-                        <div className="text-center py-6 text-gray-500 bg-dark-surface/30 border border-dark-border rounded-lg text-xs">
+                        <div className="text-center py-6 text-dark-textSecondary/80 bg-dark-surface/30 border border-dark-border rounded-lg text-xs">
                           Nenhuma regra inativa
                         </div>
                       )}
@@ -3696,7 +3696,7 @@ export default function AutomacaoPageClient() {
                         <small className="text-xs text-dark-textSecondary text-center block mt-1">Minutos</small>
                       </div>
                     </div>
-                    <small className="text-xs text-gray-400 mt-2 block">
+                    <small className="text-xs text-dark-textSecondary mt-2 block">
                       Formato: HH:MM (ex: 00:01 = 1 minuto, 01:30 = 1 hora e 30 minutos)
                     </small>
                   </div>
@@ -4197,7 +4197,7 @@ export default function AutomacaoPageClient() {
             As regras automáticas executadas aparecerão aqui. Nenhuma execução registrada ainda.
           </p>
         </div>
-      </main>
+      </div>
 
       <CreateRuleModal
         isOpen={isModalOpen}
@@ -4248,7 +4248,7 @@ export default function AutomacaoPageClient() {
             {/* Content - JSON formateado */}
             <div className="flex-1 overflow-y-auto p-6">
               <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-                <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-words overflow-x-auto">
+                <pre className="text-xs text-dark-textSecondary font-mono whitespace-pre-wrap break-words overflow-x-auto">
                   {JSON.stringify({
                     device_id: selectedDeviceId,
                     rule_id: jsonPreviewRule.rule_id || `RULE_${jsonPreviewRule.id}`,
@@ -4270,7 +4270,7 @@ export default function AutomacaoPageClient() {
                 <p className="text-xs text-aqua-300 mb-2">
                   💡 Este é o JSON completo que será enviado/salvo no Supabase (tabela decision_rules)
                 </p>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-dark-textSecondary">
                   Este formato é o mesmo que aparece no console.log quando a regra é criada.
                 </p>
               </div>
@@ -4309,7 +4309,7 @@ export default function AutomacaoPageClient() {
             {/* Content - JSON formateado */}
             <div className="flex-1 overflow-y-auto p-6">
               <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-                <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-words overflow-x-auto">
+                <pre className="text-xs text-dark-textSecondary font-mono whitespace-pre-wrap break-words overflow-x-auto">
                   {JSON.stringify(getECConfigJson(), null, 2)}
                 </pre>
               </div>
@@ -4319,10 +4319,10 @@ export default function AutomacaoPageClient() {
                 <p className="text-xs text-purple-300 mb-2">
                   💡 Este é o JSON completo que será enviado/salvo no Supabase (tabela ec_config_view)
                 </p>
-                <p className="text-xs text-gray-400 mb-2">
+                <p className="text-xs text-dark-textSecondary mb-2">
                   Este formato é o mesmo que aparece no console.log quando a configuração é salva.
                 </p>
-                <div className="mt-3 space-y-1 text-xs text-gray-400">
+                <div className="mt-3 space-y-1 text-xs text-dark-textSecondary">
                   <p><strong className="text-purple-300">device_id:</strong> ID do dispositivo Master</p>
                   <p><strong className="text-purple-300">base_dose:</strong> EC base em µS/cm</p>
                   <p><strong className="text-purple-300">flow_rate:</strong> Taxa de vazão da bomba (ml/s)</p>

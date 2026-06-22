@@ -132,7 +132,7 @@ export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardP
             {/* Content - JSON formateado */}
             <div className="flex-1 overflow-y-auto p-6">
               <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-                <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-words overflow-x-auto">
+                <pre className="text-xs text-dark-textSecondary font-mono whitespace-pre-wrap break-words overflow-x-auto">
                   {JSON.stringify(getFullRuleJson(), null, 2)}
                 </pre>
               </div>
@@ -142,7 +142,7 @@ export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardP
                 <p className="text-xs text-aqua-300 mb-2">
                   💡 Este é o JSON completo que será enviado/salvo no Supabase (tabela decision_rules)
                 </p>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-dark-textSecondary">
                   Este formato é o mesmo que aparece no console.log quando a regra é criada.
                 </p>
               </div>

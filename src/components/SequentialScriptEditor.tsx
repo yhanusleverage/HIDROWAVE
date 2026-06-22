@@ -321,7 +321,7 @@ export default function SequentialScriptEditor({
           onClick={onClose}
           className="p-2 hover:bg-dark-surface rounded-lg transition-colors"
         >
-          <XMarkIcon className="w-5 h-5 text-gray-400" />
+          <XMarkIcon className="w-5 h-5 text-dark-textSecondary" />
         </button>
       </div>
 
@@ -330,17 +330,17 @@ export default function SequentialScriptEditor({
         {/* Fluxo Procedural - Descrição */}
         <div className="bg-aqua-500/10 border border-aqua-500/30 rounded-lg p-3 mb-4">
           <p className="text-xs text-aqua-300 font-medium mb-1">📋 Fluxo Procedural (de cima para baixo):</p>
-          <p className="text-xs text-gray-400 leading-relaxed">
+          <p className="text-xs text-dark-textSecondary leading-relaxed">
             <span className="text-aqua-400 font-semibold">1. Condições</span> → 
             <span className="text-purple-400 font-semibold"> 2. Ações</span> → 
             <span className="text-yellow-400 font-semibold"> 3. Eventos Encadeados</span> → 
-            <span className="text-gray-300 font-semibold"> 4. Config Avançada</span>
+            <span className="text-dark-textSecondary font-semibold"> 4. Config Avançada</span>
           </p>
         </div>
 
         {/* Nome */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
+          <label className="block text-sm font-medium text-dark-textSecondary mb-1">
             Nome da Função
           </label>
           <input
@@ -354,7 +354,7 @@ export default function SequentialScriptEditor({
 
         {/* Descrição */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">Descrição</label>
+          <label className="block text-sm font-medium text-dark-textSecondary mb-1">Descrição</label>
           <textarea
             value={ruleDescription}
             onChange={(e) => setRuleDescription(e.target.value)}
@@ -375,7 +375,7 @@ export default function SequentialScriptEditor({
               {expandedAdvanced ? (
                 <ChevronUpIcon className="w-5 h-5 text-aqua-400" />
               ) : (
-                <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
               )}
               <Cog6ToothIcon className="w-5 h-5 text-aqua-400" />
               <span className="text-sm font-medium text-white">Configurações Avançadas</span>
@@ -386,7 +386,7 @@ export default function SequentialScriptEditor({
             <div className="p-4 border-t border-dark-border space-y-4 bg-dark-surface/30">
               {/* Prioridade */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-dark-textSecondary mb-2">
                   Prioridade (0-100)
                 </label>
                 <input
@@ -398,11 +398,11 @@ export default function SequentialScriptEditor({
                   className="w-full h-2 bg-dark-border rounded-lg appearance-none cursor-pointer accent-aqua-500"
                 />
                 <div className="flex justify-between items-center mt-1">
-                  <span className="text-xs text-gray-400">0</span>
+                  <span className="text-xs text-dark-textSecondary">0</span>
                   <span className="text-sm font-semibold text-aqua-400">{priority}</span>
-                  <span className="text-xs text-gray-400">100</span>
+                  <span className="text-xs text-dark-textSecondary">100</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-dark-textSecondary/80 mt-1">
                   Valor + mais importante. Default 50.
                 </p>
               </div>
@@ -423,7 +423,7 @@ export default function SequentialScriptEditor({
 
               {/* Cooldown */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-dark-textSecondary mb-2">
                   Cooldown (segundos)
                 </label>
                 <input
@@ -433,14 +433,14 @@ export default function SequentialScriptEditor({
                   onChange={(e) => setCooldown(parseInt(e.target.value) || 60)}
                   className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-aqua-500"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-dark-textSecondary/80 mt-1">
                   Tempo mínimo entre execuções da mesma regra.
                 </p>
               </div>
 
               {/* Limite por Hora */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-dark-textSecondary mb-2">
                   Limite por Hora
                 </label>
                 <input
@@ -450,7 +450,7 @@ export default function SequentialScriptEditor({
                   onChange={(e) => setMaxExecutionsPerHour(parseInt(e.target.value) || 10)}
                   className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-aqua-500"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-dark-textSecondary/80 mt-1">
                   Número máximo de execuções por hora.
                 </p>
               </div>
@@ -460,7 +460,7 @@ export default function SequentialScriptEditor({
 
         {/* Instruções */}
         <div className="border-t border-dark-border pt-4">
-          <label className="block text-sm font-medium text-gray-300 mb-3">
+          <label className="block text-sm font-medium text-dark-textSecondary mb-3">
             📝 INSTRUÇÕES (Ordem de Execução)
           </label>
 
@@ -481,7 +481,7 @@ export default function SequentialScriptEditor({
                       className="p-1 hover:bg-dark-surface rounded disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Mover para cima"
                     >
-                      <ArrowUpIcon className="w-4 h-4 text-gray-400" />
+                      <ArrowUpIcon className="w-4 h-4 text-dark-textSecondary" />
                     </button>
                     <button
                       onClick={() => moveInstruction(index, 'down')}
@@ -489,7 +489,7 @@ export default function SequentialScriptEditor({
                       className="p-1 hover:bg-dark-surface rounded disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Mover para baixo"
                     >
-                      <ArrowDownIcon className="w-4 h-4 text-gray-400" />
+                      <ArrowDownIcon className="w-4 h-4 text-dark-textSecondary" />
                     </button>
                     <button
                       onClick={() => removeInstruction(index)}
@@ -530,11 +530,11 @@ export default function SequentialScriptEditor({
                 {instr.type === 'switch' && (
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs text-gray-400 mb-2">{SWITCH_LABEL}</label>
+                      <label className="block text-xs text-dark-textSecondary mb-2">{SWITCH_LABEL}</label>
                       
                       {/* Seleção de Modo: Ciclo ou Timer */}
                       <div className="mb-3">
-                        <label className="block text-xs text-gray-400 mb-1">Modo</label>
+                        <label className="block text-xs text-dark-textSecondary mb-1">Modo</label>
                         <select
                           value={instr.switch_mode || 'timer'}
                           onChange={(e) => {
@@ -558,7 +558,7 @@ export default function SequentialScriptEditor({
                       {/* Configuração de Timer */}
                       {instr.switch_mode === 'timer' && (
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">Duração (ms)</label>
+                          <label className="block text-xs text-dark-textSecondary mb-1">Duração (ms)</label>
                           <input
                             type="number"
                             min="0"
@@ -572,7 +572,7 @@ export default function SequentialScriptEditor({
                             className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                             placeholder="1000"
                           />
-                          <p className="text-xs text-gray-500 mt-1">Tempo que o switch ficará ativo</p>
+                          <p className="text-xs text-dark-textSecondary/80 mt-1">Tempo que o switch ficará ativo</p>
                         </div>
                       )}
 
@@ -581,7 +581,7 @@ export default function SequentialScriptEditor({
                         <div className="space-y-2">
                           <div className="grid grid-cols-3 gap-2 items-end">
                             <div>
-                              <label className="block text-xs text-gray-400 mb-1">ON ⏰</label>
+                              <label className="block text-xs text-dark-textSecondary mb-1">ON ⏰</label>
                               <input
                                 type="text"
                                 value={instr.cycle_on_time || msToTime(instr.cycle_on_ms || 5000)}
@@ -622,7 +622,7 @@ export default function SequentialScriptEditor({
                               <ArrowPathIcon className="w-8 h-8 text-aqua-400 animate-spin-slow" />
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-400 mb-1">OFF ⏰</label>
+                              <label className="block text-xs text-dark-textSecondary mb-1">OFF ⏰</label>
                               <input
                                 type="text"
                                 value={instr.cycle_off_time || msToTime(instr.cycle_off_ms || 5000)}
@@ -661,7 +661,7 @@ export default function SequentialScriptEditor({
                             </div>
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-400 mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
                             <input
                               type="number"
                               min="0"
@@ -683,7 +683,7 @@ export default function SequentialScriptEditor({
                 )}
 
                 {instr.type === 'return' && (
-                  <div className="text-sm text-gray-400 italic">Retornar do loop</div>
+                  <div className="text-sm text-dark-textSecondary italic">Retornar do loop</div>
                 )}
               </div>
             ))}
@@ -736,7 +736,7 @@ export default function SequentialScriptEditor({
                 {expandedChainedEvents ? (
                   <ChevronUpIcon className="w-5 h-5 text-aqua-400" />
                 ) : (
-                  <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                  <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
                 )}
                 <PaperClipIcon className="w-5 h-5 text-purple-400" />
                 <span className="text-sm font-medium text-white">Eventos Encadeados</span>
@@ -745,7 +745,7 @@ export default function SequentialScriptEditor({
 
             {expandedChainedEvents && (
               <div className="p-4 border-t border-dark-border space-y-4 bg-dark-surface/30">
-                <p className="text-xs text-gray-400 mb-3">
+                <p className="text-xs text-dark-textSecondary mb-3">
                   Quando esta regra executar, disparar outras regras:
                 </p>
 
@@ -771,7 +771,7 @@ export default function SequentialScriptEditor({
 
                       <div className="space-y-2">
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">
+                          <label className="block text-xs text-dark-textSecondary mb-1">
                             ID da Regra Alvo
                           </label>
                           <TargetRuleIdField
@@ -789,7 +789,7 @@ export default function SequentialScriptEditor({
                         </div>
 
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">
+                          <label className="block text-xs text-dark-textSecondary mb-1">
                             Disparar Quando
                           </label>
                           <select
@@ -807,7 +807,7 @@ export default function SequentialScriptEditor({
                         </div>
 
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">
+                          <label className="block text-xs text-dark-textSecondary mb-1">
                             Espera (ms)
                           </label>
                           <input
@@ -846,12 +846,12 @@ export default function SequentialScriptEditor({
 
         {/* Configurações do Loop */}
         <div className="border-t border-dark-border pt-4">
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-sm font-medium text-dark-textSecondary mb-2">
             Configurações do Loop
           </label>
           <div className="space-y-2">
             <div>
-              <label className="text-xs text-gray-400">Intervalo entre execuções (ms)</label>
+              <label className="text-xs text-dark-textSecondary">Intervalo entre execuções (ms)</label>
               <input
                 type="number"
                 value={loopInterval}
@@ -860,7 +860,7 @@ export default function SequentialScriptEditor({
               />
             </div>
             <div>
-              <label className="text-xs text-gray-400">Máximo de iterações: <span className="text-aqua-400">0 = Perpétuo</span></label>
+              <label className="text-xs text-dark-textSecondary">Máximo de iterações: <span className="text-aqua-400">0 = Perpétuo</span></label>
               <input
                 type="number"
                 min="0"

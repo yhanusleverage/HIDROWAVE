@@ -1,5 +1,10 @@
+import { trimMetricsRows, METRICS_LIMIT } from '@/lib/controller-metrics-fifo';
 import { supabase } from './supabase';
 import { isSupabaseMissingTableError } from './db-schema';
+
+export { METRICS_LIMIT };
+
+const METRICS_HOURS = 24;
 
 export type EcControllerMetricRow = {
   id?: number;
@@ -26,9 +31,6 @@ export type PhControllerMetricRow = {
   created_at: string;
 };
 
-export const METRICS_LIMIT = 120;
-const METRICS_HOURS = 24;
-
 function sinceIso(hours: number): string {
   return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 }
@@ -52,7 +54,7 @@ export async function fetchEcControllerMetrics(
       if (isSupabaseMissingTableError(error)) return [];
       throw error;
     }
-    return ((data ?? []) as EcControllerMetricRow[]).reverse();
+    return trimMetricsRows(((data ?? []) as EcControllerMetricRow[]).reverse());
   } catch {
     return [];
   }
@@ -77,7 +79,7 @@ export async function fetchPhControllerMetrics(
       if (isSupabaseMissingTableError(error)) return [];
       throw error;
     }
-    return ((data ?? []) as PhControllerMetricRow[]).reverse();
+    return trimMetricsRows(((data ?? []) as PhControllerMetricRow[]).reverse());
   } catch {
     return [];
   }

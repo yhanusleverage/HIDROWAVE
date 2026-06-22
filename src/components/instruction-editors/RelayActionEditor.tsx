@@ -103,8 +103,8 @@ export default function RelayActionEditor({
       {/* Duração (opcional) - Abaixo do layout horizontal */}
       <div className="flex items-end space-x-2">
         <div className="flex-1">
-          <label className="block text-xs text-gray-400 mb-1">
-            Duração (segundos) <span className="text-gray-500">(opcional)</span>
+          <label className="block text-xs text-dark-textSecondary mb-1">
+            Duração (segundos) <span className="text-dark-textSecondary/80">(opcional)</span>
           </label>
           <input
             type="number"

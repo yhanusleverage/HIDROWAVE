@@ -223,6 +223,7 @@ function baseChartOptions(): ChartOptions<'line'> {
   return {
     responsive: true,
     maintainAspectRatio: false,
+    animation: { duration: 0 },
     interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: {

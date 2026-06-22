@@ -19,10 +19,9 @@ function MainContent({ children }: { children: React.ReactNode }) {
       {pending && <PageNavOverlay />}
       <Sidebar />
       <main
-        className="relative flex-1 transition-all duration-300 ease-in-out min-h-screen"
-        style={{
-          marginLeft: isExpanded ? '256px' : '80px',
-        }}
+        className={`relative flex-1 transition-all duration-300 ease-in-out min-h-screen ${
+          isExpanded ? 'ml-64' : 'ml-20'
+        }`}
       >
         <div className={pending ? 'opacity-0 pointer-events-none' : 'animate-page-enter'}>
           {children}
@@ -52,4 +51,3 @@ export default function LayoutContent({ children }: { children: React.ReactNode 
     </ProtectedRoute>
   );
 }
-

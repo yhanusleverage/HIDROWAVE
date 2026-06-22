@@ -1,34 +1,14 @@
 import { supabase } from '@/lib/supabase';
-import { METRICS_LIMIT, type EcControllerMetricRow, type PhControllerMetricRow } from '@/lib/controller-metrics';
+import type { EcControllerMetricRow, PhControllerMetricRow } from '@/lib/controller-metrics';
+import {
+  appendMetricRow,
+  METRICS_MAX_ROWS,
+  trimMetricsRows,
+} from '@/lib/controller-metrics-fifo';
 import { addSharedChannelListener } from '@/lib/realtime/channel';
 
-const METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
-const METRICS_MAX_ROWS = METRICS_LIMIT;
-
-function trimMetricsRows<T extends { id?: number; created_at?: string }>(rows: T[]): T[] {
-  const cutoff = Date.now() - METRICS_WINDOW_MS;
-  const filtered = rows.filter((r) => {
-    if (!r.created_at) return true;
-    const t = new Date(r.created_at).getTime();
-    return !Number.isNaN(t) && t >= cutoff;
-  });
-  return filtered.slice(-METRICS_MAX_ROWS);
-}
-
-function appendMetricRow<T extends { id?: number; created_at?: string }>(
-  prev: T[],
-  row: T
-): T[] {
-  if (row.id != null && prev.some((r) => r.id === row.id)) return prev;
-  if (
-    row.created_at &&
-    prev.length > 0 &&
-    prev[prev.length - 1].created_at === row.created_at
-  ) {
-    return prev;
-  }
-  return trimMetricsRows([...prev, row]);
-}
+export { appendMetricRow, trimMetricsRows, METRICS_MAX_ROWS };
+export { sortMetricsByTime } from '@/lib/controller-metrics-fifo';
 
 type ControllerMetricsListener = {
   onEc?: (row: EcControllerMetricRow) => void;
@@ -86,5 +66,3 @@ export function subscribeControllerMetrics(
       })
   );
 }
-
-export { appendMetricRow, trimMetricsRows, METRICS_MAX_ROWS };

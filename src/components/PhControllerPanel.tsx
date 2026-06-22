@@ -1268,7 +1268,7 @@ export default function PhControllerPanel({
 
             <div className="flex-1 overflow-y-auto p-6">
               <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-                <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-words overflow-x-auto">
+                <pre className="text-xs text-dark-textSecondary font-mono whitespace-pre-wrap break-words overflow-x-auto">
                   {JSON.stringify(phConfigJson, null, 2)}
                 </pre>
               </div>
@@ -1277,7 +1277,7 @@ export default function PhControllerPanel({
                 <p className="text-xs text-violet-300 mb-2">
                   💡 JSON enviado/salvo em ph_config_view + preview de estado MQTT (_debug)
                 </p>
-                <div className="mt-3 space-y-1 text-xs text-gray-400">
+                <div className="mt-3 space-y-1 text-xs text-dark-textSecondary">
                   <p><strong className="text-violet-300">ph_setpoint / ph_tolerance:</strong> SP e banda morta (domínio pH)</p>
                   <p><strong className="text-violet-300">s (ml/unid pH):</strong> Sensibilidade da calibragem; u = A × |e| × s</p>
                   <p><strong className="text-violet-300">intervalo_auto_ph:</strong> Intervalo entre verificações (s)</p>

@@ -133,7 +133,7 @@ export default function IfInstructionEditor({
     <div className="space-y-3">
       {/* Condição */}
       <div className="border border-dark-border rounded-lg p-3 bg-dark-surface/30">
-        <label className="block text-xs text-gray-400 mb-2">Condição (Se)</label>
+        <label className="block text-xs text-dark-textSecondary mb-2">Condição (Se)</label>
         <div className="grid grid-cols-3 gap-2">
           <select
             value={instruction.condition?.sensor || 'water_level'}
@@ -189,7 +189,7 @@ export default function IfInstructionEditor({
 
       {/* THEN */}
       <div>
-        <label className="block text-xs text-gray-400 mb-2">Então (se verdadeiro):</label>
+        <label className="block text-xs text-dark-textSecondary mb-2">Então (se verdadeiro):</label>
         <div className="space-y-2 ml-4 border-l-2 border-green-500/30 pl-3">
           {(instruction.then || []).map((thenInstr, idx) => (
             <div
@@ -219,11 +219,11 @@ export default function IfInstructionEditor({
               {thenInstr.type === 'switch' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs text-gray-400 mb-2">{SWITCH_LABEL}</label>
+                    <label className="block text-xs text-dark-textSecondary mb-2">{SWITCH_LABEL}</label>
                     
                     {/* Seleção de Modo: Ciclo ou Timer */}
                     <div className="mb-3">
-                      <label className="block text-xs text-gray-400 mb-1">Modo</label>
+                      <label className="block text-xs text-dark-textSecondary mb-1">Modo</label>
                       <select
                         value={thenInstr.switch_mode || 'timer'}
                         onChange={(e) => {
@@ -247,7 +247,7 @@ export default function IfInstructionEditor({
                     {/* Configuração de Timer */}
                     {thenInstr.switch_mode === 'timer' && (
                       <div>
-                        <label className="block text-xs text-gray-400 mb-1">Duração (ms)</label>
+                        <label className="block text-xs text-dark-textSecondary mb-1">Duração (ms)</label>
                         <input
                           type="number"
                           min="0"
@@ -261,7 +261,7 @@ export default function IfInstructionEditor({
                           className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                           placeholder="1000"
                         />
-                        <p className="text-xs text-gray-500 mt-1">Tempo que o switch ficará ativo</p>
+                        <p className="text-xs text-dark-textSecondary/80 mt-1">Tempo que o switch ficará ativo</p>
                       </div>
                     )}
 
@@ -270,7 +270,7 @@ export default function IfInstructionEditor({
                       <div className="space-y-2">
                         <div className="grid grid-cols-3 gap-2 items-end">
                           <div>
-                            <label className="block text-xs text-gray-400 mb-1">ON ⏰</label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">ON ⏰</label>
                             <input
                               type="text"
                               value={thenInstr.cycle_on_time || msToTime(thenInstr.cycle_on_ms || 5000)}
@@ -311,7 +311,7 @@ export default function IfInstructionEditor({
                             <ArrowPathIcon className="w-8 h-8 text-aqua-400 animate-spin-slow" />
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-400 mb-1">OFF ⏰</label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">OFF ⏰</label>
                             <input
                               type="text"
                               value={thenInstr.cycle_off_time || msToTime(thenInstr.cycle_off_ms || 5000)}
@@ -350,7 +350,7 @@ export default function IfInstructionEditor({
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
+                          <label className="block text-xs text-dark-textSecondary mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
                           <input
                             type="number"
                             min="0"
@@ -388,7 +388,7 @@ export default function IfInstructionEditor({
               )}
 
               {thenInstr.type === 'return' && (
-                <div className="text-xs text-gray-400 italic">Retornar do loop</div>
+                <div className="text-xs text-dark-textSecondary italic">Retornar do loop</div>
               )}
             </div>
           ))}
@@ -435,8 +435,8 @@ export default function IfInstructionEditor({
 
       {/* Senão (opcional) */}
       <div>
-        <label className="block text-xs text-gray-400 mb-2">
-          Senão (se falso) <span className="text-gray-500">(opcional)</span>:
+        <label className="block text-xs text-dark-textSecondary mb-2">
+          Senão (se falso) <span className="text-dark-textSecondary/80">(opcional)</span>:
         </label>
         <div className="space-y-2 ml-4 border-l-2 border-orange-500/30 pl-3">
           {(instruction.else || []).map((elseInstr, idx) => (
@@ -467,11 +467,11 @@ export default function IfInstructionEditor({
               {elseInstr.type === 'switch' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs text-gray-400 mb-2">{SWITCH_LABEL}</label>
+                    <label className="block text-xs text-dark-textSecondary mb-2">{SWITCH_LABEL}</label>
                     
                     {/* Seleção de Modo: Ciclo ou Timer */}
                     <div className="mb-3">
-                      <label className="block text-xs text-gray-400 mb-1">Modo</label>
+                      <label className="block text-xs text-dark-textSecondary mb-1">Modo</label>
                       <select
                         value={elseInstr.switch_mode || 'timer'}
                         onChange={(e) => {
@@ -495,7 +495,7 @@ export default function IfInstructionEditor({
                     {/* Configuração de Timer */}
                     {elseInstr.switch_mode === 'timer' && (
                       <div>
-                        <label className="block text-xs text-gray-400 mb-1">Duração (ms)</label>
+                        <label className="block text-xs text-dark-textSecondary mb-1">Duração (ms)</label>
                         <input
                           type="number"
                           min="0"
@@ -509,7 +509,7 @@ export default function IfInstructionEditor({
                           className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                           placeholder="1000"
                         />
-                        <p className="text-xs text-gray-500 mt-1">Tempo que o switch ficará ativo</p>
+                        <p className="text-xs text-dark-textSecondary/80 mt-1">Tempo que o switch ficará ativo</p>
                       </div>
                     )}
 
@@ -518,7 +518,7 @@ export default function IfInstructionEditor({
                       <div className="space-y-2">
                         <div className="grid grid-cols-3 gap-2 items-end">
                           <div>
-                            <label className="block text-xs text-gray-400 mb-1">ON ⏰</label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">ON ⏰</label>
                             <input
                               type="text"
                               value={elseInstr.cycle_on_time || msToTime(elseInstr.cycle_on_ms || 5000)}
@@ -559,7 +559,7 @@ export default function IfInstructionEditor({
                             <ArrowPathIcon className="w-8 h-8 text-aqua-400 animate-spin-slow" />
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-400 mb-1">OFF ⏰</label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">OFF ⏰</label>
                             <input
                               type="text"
                               value={elseInstr.cycle_off_time || msToTime(elseInstr.cycle_off_ms || 5000)}
@@ -598,7 +598,7 @@ export default function IfInstructionEditor({
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
+                          <label className="block text-xs text-dark-textSecondary mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
                           <input
                             type="number"
                             min="0"
@@ -636,7 +636,7 @@ export default function IfInstructionEditor({
               )}
 
               {elseInstr.type === 'return' && (
-                <div className="text-xs text-gray-400 italic">Retornar do loop</div>
+                <div className="text-xs text-dark-textSecondary italic">Retornar do loop</div>
               )}
             </div>
           ))}

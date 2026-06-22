@@ -124,7 +124,7 @@ export function DocsShell({
             />
           </div>
 
-          <main className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0">
             <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6 sm:p-8">
               {page.sections.map((section) => (
                 <DocsSection key={section.id} section={section} />
@@ -164,7 +164,7 @@ export function DocsShell({
 
               <DocsNextPrev prev={page.prev} next={page.next} />
             </div>
-          </main>
+          </div>
 
           <DocsToc sections={page.sections} label={labels.onThisPage} />
         </div>

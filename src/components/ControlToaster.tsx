@@ -2,7 +2,7 @@
 
 import { Toaster } from 'react-hot-toast';
 
-/** Toaster global — tema escuro industrial para toasts simples (toast.success/error legados). */
+/** Toaster global — usa variáveis CSS do tema HydroWave. */
 export default function ControlToaster() {
   return (
     <Toaster
@@ -12,8 +12,8 @@ export default function ControlToaster() {
       toastOptions={{
         duration: 4000,
         style: {
-          background: '#0f1e3a',
-          color: '#e0f2fe',
+          background: 'var(--hw-surface-1)',
+          color: 'var(--foreground)',
           border: '1px solid #1e3a5f',
           borderRadius: '8px',
           padding: '12px 14px',
@@ -22,17 +22,17 @@ export default function ControlToaster() {
           maxWidth: '22rem',
         },
         success: {
-          iconTheme: { primary: '#34d399', secondary: '#0f1e3a' },
-          style: { borderLeft: '3px solid #34d399' },
+          iconTheme: { primary: 'var(--hw-domain-ec)', secondary: 'var(--hw-surface-1)' },
+          style: { borderLeft: '3px solid var(--hw-domain-ec)' },
         },
         error: {
           duration: 5000,
-          iconTheme: { primary: '#f87171', secondary: '#0f1e3a' },
-          style: { borderLeft: '3px solid #f87171' },
+          iconTheme: { primary: 'var(--hw-intent-danger)', secondary: 'var(--hw-surface-1)' },
+          style: { borderLeft: '3px solid var(--hw-intent-danger)' },
         },
         loading: {
-          iconTheme: { primary: '#26c6da', secondary: '#0f1e3a' },
-          style: { borderLeft: '3px solid #26c6da', fontFamily: 'ui-monospace, monospace' },
+          iconTheme: { primary: 'var(--hw-domain-brand)', secondary: 'var(--hw-surface-1)' },
+          style: { borderLeft: '3px solid var(--hw-domain-brand)', fontFamily: 'ui-monospace, monospace' },
         },
       }}
     />

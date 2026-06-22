@@ -533,7 +533,7 @@ export default function CropCalendar({
   const getTaskColor = (type: CropTask['type']) => {
     switch (type) {
       case 'dosagem':
-        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+        return 'bg-aqua-500/15 text-aqua-400 border-aqua-500/40';
       case 'manutencao':
         return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
       case 'monitoramento':
@@ -543,7 +543,7 @@ export default function CropCalendar({
       case 'plantio':
         return 'bg-aqua-500/20 text-aqua-400 border-aqua-500/30';
       default:
-        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+        return 'bg-dark-surface text-dark-textSecondary border-dark-border';
     }
   };
 
@@ -555,7 +555,7 @@ export default function CropCalendar({
       case 'medium':
         return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
       case 'low':
-        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+        return 'bg-dark-surface text-dark-textSecondary border-dark-border';
     }
   };
 
@@ -912,7 +912,7 @@ export default function CropCalendar({
         <div className="flex flex-wrap items-center gap-4 text-xs">
           <span className="text-dark-textSecondary font-medium">Legenda:</span>
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded bg-blue-500/20 border border-blue-500/30"></div>
+            <div className="w-3 h-3 rounded bg-aqua-500/15 border border-aqua-500/40"></div>
             <span className="text-dark-textSecondary">Dosagem</span>
           </div>
           <div className="flex items-center gap-1">
@@ -1257,7 +1257,7 @@ export default function CropCalendar({
                               placeholder="0 = no dia do alarme"
                               className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none text-sm"
                             />
-                            <small className="text-xs text-gray-400 mt-1 block">
+                            <small className="text-xs text-dark-textSecondary mt-1 block">
                               {daysBefore === 0 
                                 ? 'Alarme será disparado no dia e hora especificados' 
                                 : `Alarme será disparado ${daysBefore} dia(s) antes da data especificada`}

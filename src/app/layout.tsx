@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import Sidebar from '@/components/Sidebar';
 import { SidebarProvider } from '@/contexts/SidebarContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import LayoutContent from '@/components/LayoutContent';
@@ -22,7 +21,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({

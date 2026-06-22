@@ -1,13 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import SensorCard from '@/components/SensorCard';
-import RelayControl from '@/components/RelayControl';
-import HydroMonitoringChart from '@/components/HydroMonitoringChart';
-import ControllerMetricsChart from '@/components/ControllerMetricsChart';
-import CropCalendar from '@/components/CropCalendar';
-import { EcAutoStatusCard } from '@/components/EcAutoStatusCard';
-import { PhAutoStatusCard } from '@/components/PhAutoStatusCard';
 import { toast } from 'react-hot-toast';
 import { HydroMeasurement, EnvironmentMeasurement } from '@/lib/supabase';
 import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
@@ -17,14 +10,18 @@ import {
 } from '@/lib/realtime/chart-history';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { getPollingInterval, loadSettings, saveSettings, type Settings } from '@/lib/settings';
-import { formatSensorValue } from '@/lib/format-sensor-value';
-import { resolvePh, resolvePhForDisplay, hasHydroSensorReading, mergeHydroMeasurements } from '@/lib/realtime/hydro-ph';
+import { resolvePh, hasHydroSensorReading, mergeHydroMeasurements } from '@/lib/realtime/hydro-ph';
 import { resolveEcForDisplay } from '@/lib/realtime/hydro-ec';
 import { resolveTemperatureForDisplay } from '@/lib/realtime/hydro-sensor';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
-import BrandLoading from '@/components/BrandLoading';
 import QuemSomosTeaser from '@/components/QuemSomosTeaser';
+import { DashboardChartsSection } from '@/components/dashboard/DashboardChartsSection';
+import { DashboardSensorsSection } from '@/components/dashboard/DashboardSensorsSection';
+import {
+  DashboardAutoControlSection,
+  DashboardCropSection,
+} from '@/components/dashboard/DashboardAutoControlSection';
 import { 
   AdjustmentsHorizontalIcon,
   XMarkIcon
@@ -401,7 +398,7 @@ export default function DashboardPage() {
       </div>
       
       {/* Conteúdo Principal */}
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <QuemSomosTeaser />
         {error && (
           <div className="bg-red-900/30 border border-red-500 text-red-300 px-4 py-3 rounded mb-6" role="alert">
@@ -410,197 +407,30 @@ export default function DashboardPage() {
           </div>
         )}
         
-        {/* ✅ Seção de Gráficos - acima dos valores atuais */}
-        <section className="mb-8">
-          <h2 className="text-xl font-bold mb-4 text-dark-text flex items-center gap-2">
-            <span className="text-2xl">📈</span>
-            Gráficos de Monitoramento
-            {loadingCharts && (
-              <span className="text-xs text-dark-textSecondary ml-2">(Carregando...)</span>
-            )}
-          </h2>
-          <div className="grid grid-cols-1 gap-6">
-            {loadingCharts ? (
-              <BrandLoading
-                message="Carregando histórico hidropônico..."
-                size={40}
-                className="py-12 bg-dark-surface rounded-lg border border-dark-border"
-              />
-            ) : (
-              <HydroMonitoringChart history={hydroHistory} />
-            )}
-            {selectedDeviceId ? (
-              <ControllerMetricsChart deviceId={selectedDeviceId} />
-            ) : null}
-          </div>
-        </section>
+        <DashboardChartsSection
+          loadingCharts={loadingCharts}
+          hydroHistory={hydroHistory}
+          selectedDeviceId={selectedDeviceId}
+        />
 
-        {/* ✅ Seção de Sensores - Carga independiente */}
-        <section className="mb-8">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-dark-text flex items-center gap-2">
-                  <span className="text-2xl">📊</span>
-                  Sensores
-                </h2>
-                {/* ✅ INDICADOR DE STATUS DOS DADOS */}
-                <div className="flex items-center gap-2 text-xs">
-                  {hydroData ? (
-                    hasHydroSensorReading(hydroData) ? (
-                      <span className="px-2 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded">
-                        ✅ Hydro OK
-                      </span>
-                    ) : (
-                      <span className="px-2 py-1 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded">
-                        ✅ Niveles (sem pH/EC/temp)
-                      </span>
-                    )
-                  ) : (
-                    <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded">
-                      ⚠️ Sem Hydro
-                    </span>
-                  )}
-                  {environmentData ? (
-                    <span className="px-2 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded">
-                      ✅ Env OK
-                    </span>
-                  ) : (
-                    <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded">
-                      ⚠️ Sem Env
-                    </span>
-                  )}
-                </div>
-              </div>
-              {loadingSensors ? (
-                <BrandLoading message="Carregando sensores..." className="py-12" />
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {/* Card Temperatura da Água con botón */}
-                  <div className="relative">
-                    <SensorCard 
-                      title="Temperatura da Água" 
-                      value={
-                        displayTemp !== null
-                          ? formatSensorValue(displayTemp, 1)
-                          : '--'
-                      } 
-                      unit="°C"
-                      status={
-                        displayTemp !== null
-                          ? (displayTemp < 18 || displayTemp > 26) 
-                          ? 'warning' 
-                            : 'normal'
-                          : 'normal'
-                      }
-                    />
-                    <button
-                      onClick={() => setShowTempConfig(true)}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-dark-surface hover:bg-yellow-500/20 border border-yellow-500/30 hover:border-yellow-500/50 transition-colors"
-                      title="Configurar umbrales de Temperatura"
-                    >
-                      <AdjustmentsHorizontalIcon className="h-4 w-4 text-yellow-400 hover:text-yellow-300" />
-                    </button>
-                  </div>
-                  
-                  {/* Card pH con botón */}
-                  <div className="relative">
-                    <SensorCard 
-                      title="pH" 
-                      domain="ph"
-                      value={
-                        displayPh !== null
-                          ? formatSensorValue(displayPh, 2)
-                          : '--'
-                      }
-                      status={displayPh !== null ? getPHStatus(displayPh) : 'normal'}
-                    />
-                    <button
-                      onClick={() => setShowPHConfig(true)}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-dark-surface hover:bg-yellow-500/20 border border-yellow-500/30 hover:border-yellow-500/50 transition-colors"
-                      title="Configurar umbrales de pH"
-                    >
-                      <AdjustmentsHorizontalIcon className="h-4 w-4 text-yellow-400 hover:text-yellow-300" />
-                    </button>
-                  </div>
-                  
-                  {/* Card EC con botón */}
-                  <div className="relative">
-                    <SensorCard 
-                      title="EC" 
-                      domain="ec"
-                      value={
-                        (() => {
-                          // ✅ Usar función helper compartida para calcular EC
-                          const ecValue = hydroData ? calculateEC(hydroData) : null;
-                          return ecValue !== null ? formatSensorValue(ecValue, 0) : '--';
-                        })()
-                      } 
-                      unit="µS/cm"
-                      status={
-                        (() => {
-                          // ✅ Usar función helper compartida para calcular EC
-                          const ecValue = hydroData ? calculateEC(hydroData) : null;
-                          return ecValue !== null ? getECStatus(ecValue) : 'normal';
-                        })()
-                      }
-                    />
-                    <button
-                      onClick={() => setShowECConfig(true)}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-dark-surface hover:bg-yellow-500/20 border border-yellow-500/30 hover:border-yellow-500/50 transition-colors"
-                      title="Configurar umbrales de EC"
-                    >
-                      <AdjustmentsHorizontalIcon className="h-4 w-4 text-yellow-400 hover:text-yellow-300" />
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              {/* ✅ DEBUG: Mostrar dados brutos em desenvolvimento */}
-              {process.env.NODE_ENV === 'development' && (
-                <div className="mt-4 p-4 bg-dark-surface border border-dark-border rounded-lg">
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-dark-textSecondary hover:text-dark-text">
-                      🔍 Debug: Dados Recebidos (Clique para expandir)
-                    </summary>
-                    <div className="mt-2 space-y-2">
-                      <div>
-                        <strong className="text-aqua-400">Hydro Data:</strong>
-                        <pre className="mt-1 p-2 bg-dark-bg rounded text-dark-textSecondary overflow-auto">
-                          {JSON.stringify(hydroData, null, 2)}
-                        </pre>
-                      </div>
-                      <div>
-                        <strong className="text-aqua-400">Environment Data:</strong>
-                        <pre className="mt-1 p-2 bg-dark-bg rounded text-dark-textSecondary overflow-auto">
-                          {JSON.stringify(environmentData, null, 2)}
-                        </pre>
-                      </div>
-                      <div>
-                        <strong className="text-aqua-400">Hydro History Count:</strong> {hydroHistory.length}
-                      </div>
-                      <div>
-                        <strong className="text-aqua-400">Env History Count:</strong> {envHistory.length}
-                      </div>
-                    </div>
-                  </details>
-                </div>
-              )}
-            </section>
+        <DashboardSensorsSection
+          loadingSensors={loadingSensors}
+          hydroData={hydroData}
+          environmentData={environmentData}
+          displayTemp={displayTemp}
+          displayPh={displayPh}
+          calculateEC={calculateEC}
+          getECStatus={getECStatus}
+          getPHStatus={getPHStatus}
+          onOpenEcConfig={() => setShowECConfig(true)}
+          onOpenTempConfig={() => setShowTempConfig(true)}
+          onOpenPhConfig={() => setShowPHConfig(true)}
+        />
 
-            {selectedDeviceId && (
-              <>
-                <EcAutoStatusCard deviceId={selectedDeviceId} />
-                <PhAutoStatusCard deviceId={selectedDeviceId} />
-              </>
-            )}
-            
-            {/* Seção de Calendário de Cultivo */}
-            <section className="mb-8">
-              <CropCalendar
-                deviceId={selectedDeviceId}
-                userEmail={userEmail || ''}
-              />
-            </section>
-      </main>
+        <DashboardAutoControlSection selectedDeviceId={selectedDeviceId} />
+
+        <DashboardCropSection selectedDeviceId={selectedDeviceId} userEmail={userEmail || ''} />
+      </div>
 
       {/* ✅ Modal de Configuração de Umbrales de EC */}
       {showECConfig && (

@@ -78,7 +78,7 @@ const menuItems: MenuItem[] = [
     iconSolid: BookOpenIconSolid,
   },
   {
-    name: 'Support',
+    name: 'Suporte',
     href: '/support',
     icon: AcademicCapIcon,
     iconSolid: AcademicCapIconSolid,
@@ -113,15 +113,21 @@ export default function Sidebar() {
   const { isExpanded, setIsExpanded } = useSidebar();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pathname = usePathname();
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    // Em mobile, sempre começar retraído
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      setIsExpanded(false);
-    }
-  }, []);
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setIsExpanded(false);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, [setIsExpanded]);
 
   const handleMouseEnter = () => {
+    if (isMobile) return;
     // Limpar timeout se existir
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -131,13 +137,12 @@ export default function Sidebar() {
   };
 
   const handleMouseLeave = () => {
+    if (isMobile) return;
     // Delay para retrair após o mouse sair (apenas em desktop)
-    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
       timeoutRef.current = setTimeout(() => {
         setIsExpanded(false);
         timeoutRef.current = null;
       }, 500);
-    }
   };
 
   // Limpar timeout ao desmontar
@@ -154,13 +159,21 @@ export default function Sidebar() {
   };
 
   return (
+    <>
+      {isMobile && isExpanded && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          aria-label="Fechar menu"
+          onClick={() => setIsExpanded(false)}
+        />
+      )}
     <aside
       className={`fixed left-0 top-0 h-full bg-gradient-to-b from-dark-surface via-primary-900 to-aqua-900 border-r border-dark-border text-white transition-all duration-300 ease-in-out z-50 shadow-2xl ${
         isExpanded ? 'w-64' : 'w-20'
       }`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      style={{ marginLeft: 0 }}
     >
       {/* Logo/Header */}
       <div
@@ -178,7 +191,8 @@ export default function Sidebar() {
         <button
           onClick={toggleSidebar}
           className="p-2 rounded-lg hover:bg-dark-card transition-colors flex-shrink-0"
-          aria-label="Toggle sidebar"
+          aria-label={isExpanded ? 'Recolher menu' : 'Expandir menu'}
+          aria-expanded={isExpanded}
         >
           <svg
             className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-0' : 'rotate-180'}`}
@@ -212,7 +226,7 @@ export default function Sidebar() {
                   <Icon className={`w-6 h-6 flex-shrink-0 ${hwNavIconClasses(item.href, isActive)}`} />
                   <span
                     className={`font-medium transition-opacity duration-200 ${
-                      isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'
+                      isExpanded ? 'opacity-100' : 'sr-only'
                     }`}
                   >
                     {item.name}
@@ -234,6 +248,7 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   );
 }
 

@@ -152,7 +152,7 @@ export default function PlanosPage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-12">
+      <div className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-12">
         <section>
           <h2 className="text-lg font-semibold text-dark-text mb-4">Planos comerciais</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -300,7 +300,7 @@ export default function PlanosPage() {
             </Link>
           </div>
         </section>
-      </main>
+      </div>
     </div>
   );
 }

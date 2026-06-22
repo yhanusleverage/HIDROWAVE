@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, ChevronUpIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { DeviceStatus } from '@/lib/automation';
 import { resolveDeviceOnline } from '@/lib/realtime/device-status';
 import { HW_TEXT } from '@/lib/design-tokens';
@@ -20,6 +20,13 @@ import {
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { subscribeRelayCommandUpdates } from '@/lib/realtime/relay-commands';
 import { applyRelayCommandAck, type PendingRelayCommand } from '@/lib/relay-pending-commands';
+import { HwModal } from '@/components/ui/HwModal';
+import {
+  ChartBarIcon,
+  Cog6ToothIcon,
+  BoltIcon,
+  SignalIcon,
+} from '@heroicons/react/24/outline';
 
 interface DeviceControlPanelProps {
   device: DeviceStatus;
@@ -576,54 +583,48 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-dark-card border border-dark-border rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-dark-border sticky top-0 bg-dark-card z-10">
-          <div>
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">
-              {device.device_name || device.device_id}
-            </h2>
-            <p className="text-dark-textSecondary mt-1">
-              {device.location || 'Localização não especificada'}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-dark-textSecondary hover:text-dark-text transition-colors"
-          >
-            <XMarkIcon className="w-6 h-6" />
-          </button>
-        </div>
+    <HwModal
+      open={isOpen}
+      onClose={onClose}
+      title={device.device_name || device.device_id}
+      size="full"
+    >
+      <p className="text-dark-textSecondary text-sm mb-4">
+        {device.location || 'Localização não especificada'}
+      </p>
 
-        {/* Tabs */}
-        <div className="flex border-b border-dark-border">
-          {(['status', 'rules', 'local', 'slaves'] as const).map(tab => (
+        <div role="tablist" aria-orientation="horizontal" className="flex flex-wrap border-b border-dark-border mb-4">
+          {([
+            { id: 'status' as const, label: 'Status', icon: ChartBarIcon },
+            { id: 'rules' as const, label: 'Regras', icon: Cog6ToothIcon },
+            { id: 'local' as const, label: 'Relés Locais', icon: BoltIcon },
+            { id: 'slaves' as const, label: 'Slaves ESP-NOW', icon: SignalIcon },
+          ]).map(({ id, label, icon: Icon }) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-6 py-3 font-medium transition-colors ${
-                activeTab === tab
-                  ? 'bg-aqua-500/20 text-aqua-400 border-b-2 border-aqua-500'
-                  : 'text-dark-textSecondary hover:text-dark-text'
+              key={id}
+              type="button"
+              role="tab"
+              id={`device-tab-${id}`}
+              aria-selected={activeTab === id}
+              aria-controls={`device-panel-${id}`}
+              onClick={() => setActiveTab(id)}
+              className={`px-6 py-3 font-medium transition-colors flex items-center gap-2 border-b-2 -mb-px focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua-500 ${
+                activeTab === id
+                  ? 'bg-aqua-500/20 text-aqua-400 border-aqua-500'
+                  : 'text-dark-textSecondary hover:text-dark-text border-transparent'
               }`}
             >
-              {tab === 'status' && '📊 Status'}
-              {tab === 'rules' && '⚙️ Regras'}
-              {tab === 'local' && '🔌 Relés Locais'}
-              {tab === 'slaves' && '📡 Slaves ESP-NOW'}
+              <Icon className="w-4 h-4" />
+              {label}
             </button>
           ))}
         </div>
 
-        {/* Content */}
-        <div className="p-6">
+        <div className="p-0">
           {/* TAB 1: STATUS */}
           {activeTab === 'status' && (
-            <div className="space-y-4">
+            <div role="tabpanel" id="device-panel-status" aria-labelledby="device-tab-status" className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
                   <p className="text-sm text-dark-textSecondary mb-1">Status</p>
@@ -910,7 +911,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
 
           {/* TAB 2: REGRAS */}
           {activeTab === 'rules' && (
-            <div className="space-y-4">
+            <div role="tabpanel" id="device-panel-rules" aria-labelledby="device-tab-rules" className="space-y-4">
               {/* Box de Regras de Automação */}
               <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6">
                 <h3 className="text-lg font-semibold text-dark-text mb-4">
@@ -1391,7 +1392,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
 
           {/* TAB 3: RELÉS LOCAIS (PCF8574) - APENAS BOTÕES DE TESTE */}
           {activeTab === 'local' && (
-            <div className="space-y-4">
+            <div role="tabpanel" id="device-panel-local" aria-labelledby="device-tab-local" className="space-y-4">
               <div className="mb-4">
                 <h3 className="text-lg font-semibold text-dark-text mb-2">
                   Relés PCF8574 Locais (HydroControl)
@@ -1433,7 +1434,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
 
           {/* TAB 4: SLAVES ESP-NOW */}
           {activeTab === 'slaves' && (
-            <div className="space-y-4">
+            <div role="tabpanel" id="device-panel-slaves" aria-labelledby="device-tab-slaves" className="space-y-4">
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-dark-text mb-2">
@@ -1925,8 +1926,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
           </div>
         )}
         </div>
-      </div>
-    </div>
+    </HwModal>
   );
 }
 

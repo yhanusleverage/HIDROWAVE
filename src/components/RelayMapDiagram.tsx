@@ -75,7 +75,7 @@ export default function RelayMapDiagram({
               <div className="flex items-center justify-between mb-2">
                 <span className="font-medium text-dark-text">Relé {relay.id}</span>
                 <span className={`w-3 h-3 rounded-full ${
-                  relay.state === 'on' ? 'bg-green-500' : 'bg-gray-500'
+                  relay.state === 'on' ? 'bg-green-500' : 'bg-dark-border'
                 }`} />
               </div>
               <div className="text-sm text-dark-textSecondary">
@@ -129,7 +129,7 @@ export default function RelayMapDiagram({
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-dark-text">Relé {relay.id}</span>
                     <span className={`w-3 h-3 rounded-full ${
-                      relayObj.state === 'on' ? 'bg-green-500' : 'bg-gray-500'
+                      relayObj.state === 'on' ? 'bg-green-500' : 'bg-dark-border'
                     }`} />
                   </div>
                   <div className="text-sm text-dark-textSecondary">
@@ -152,7 +152,7 @@ export default function RelayMapDiagram({
             <div>
               <span className="text-dark-textSecondary">Estado:</span>
               <span className={`ml-2 ${
-                selectedRelay.state === 'on' ? 'text-green-500' : 'text-gray-500'
+                selectedRelay.state === 'on' ? 'text-green-500' : 'text-dark-textSecondary/80'
               }`}>
                 {selectedRelay.state.toUpperCase()}
               </span>

@@ -115,7 +115,7 @@ export default function FundamentosPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         {/* Legenda de cores */}
         <div className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-4 sm:p-5 mb-6">
           <h2 className="text-sm font-semibold text-dark-text mb-3">{translations.colorLegend.title}</h2>
@@ -266,7 +266,7 @@ export default function FundamentosPage() {
         <div className="bg-dark-surface border border-dark-border rounded-lg p-4 text-center">
           <p className="text-lg font-semibold text-dark-text">{translations.footer.text}</p>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

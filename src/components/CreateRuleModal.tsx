@@ -18,6 +18,8 @@ import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import TargetRuleIdField from '@/components/TargetRuleIdField';
+import { HwModal } from '@/components/ui/HwModal';
+import { HwButton } from '@/components/ui/HwButton';
 interface Relay {
   id: number;
   name: string;
@@ -534,26 +536,22 @@ export default function CreateRuleModal({
     onClose();
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-dark-card border border-dark-border rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-dark-border">
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">
-            {editingRule ? '✏️ Editar Regra - Motor de Decisão' : '➕ Nova Regra - Motor de Decisão'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-dark-textSecondary hover:text-dark-text transition-colors"
-          >
-            <XMarkIcon className="w-6 h-6" />
-          </button>
+    <HwModal
+      open={isOpen}
+      onClose={onClose}
+      title={editingRule ? 'Editar Regra - Motor de Decisão' : 'Nova Regra - Motor de Decisão'}
+      size="xl"
+      footer={
+        <div className="flex justify-end gap-3">
+          <HwButton variant="secondary" onClick={onClose}>
+            Cancelar
+          </HwButton>
+          <HwButton onClick={handleSave}>Salvar Regra</HwButton>
         </div>
-
-        {/* Content */}
-        <div className="p-6 space-y-4">
+      }
+    >
+        <div className="space-y-4">
           {/* Fluxo Procedural - Descrição */}
           <div className="bg-aqua-500/10 border border-aqua-500/30 rounded-lg p-3 mb-4">
             <p className="text-sm text-aqua-300 font-medium mb-1 text-center">📋 Fluxo Procedural (de cima para baixo):</p>
@@ -561,7 +559,7 @@ export default function CreateRuleModal({
               <span className="text-aqua-400 font-semibold">1. Condições</span> → 
               <span className="text-purple-400 font-semibold"> 2. Ações</span> → 
               <span className="text-yellow-400 font-semibold"> 3. Eventos Encadeados</span> → 
-              <span className="text-gray-300 font-semibold"> 4. Config Avançada</span>
+              <span className="text-dark-textSecondary font-semibold"> 4. Config Avançada</span>
             </p>
           </div>
 
@@ -817,7 +815,7 @@ export default function CreateRuleModal({
                         className="p-1 hover:bg-dark-surface rounded disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Mover para cima"
                       >
-                        <ArrowUpIcon className="w-4 h-4 text-gray-400" />
+                        <ArrowUpIcon className="w-4 h-4 text-dark-textSecondary" />
                       </button>
                       <button
                         onClick={() => moveInstruction(index, 'down')}
@@ -825,7 +823,7 @@ export default function CreateRuleModal({
                         className="p-1 hover:bg-dark-surface rounded disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Mover para baixo"
                       >
-                        <ArrowDownIcon className="w-4 h-4 text-gray-400" />
+                        <ArrowDownIcon className="w-4 h-4 text-dark-textSecondary" />
                       </button>
                       <button
                         onClick={() => removeInstruction(index)}
@@ -865,11 +863,11 @@ export default function CreateRuleModal({
                   {instr.type === 'switch' && (
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-xs text-gray-400 mb-2">{SWITCH_LABEL}</label>
+                        <label className="block text-xs text-dark-textSecondary mb-2">{SWITCH_LABEL}</label>
                         
                         {/* Seleção de Modo: Ciclo ou Timer */}
                         <div className="mb-3">
-                          <label className="block text-xs text-gray-400 mb-1">Modo</label>
+                          <label className="block text-xs text-dark-textSecondary mb-1">Modo</label>
                           <select
                             value={instr.switch_mode || 'timer'}
                             onChange={(e) => {
@@ -893,7 +891,7 @@ export default function CreateRuleModal({
                         {/* Configuração de Timer */}
                         {instr.switch_mode === 'timer' && (
                           <div>
-                            <label className="block text-xs text-gray-400 mb-1">Duração (ms)</label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">Duração (ms)</label>
                             <input
                               type="number"
                               min="0"
@@ -907,7 +905,7 @@ export default function CreateRuleModal({
                               className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                               placeholder="1000"
                             />
-                            <p className="text-xs text-gray-500 mt-1">Tempo que o switch ficará ativo</p>
+                            <p className="text-xs text-dark-textSecondary/80 mt-1">Tempo que o switch ficará ativo</p>
                           </div>
                         )}
 
@@ -916,7 +914,7 @@ export default function CreateRuleModal({
                           <div className="space-y-2">
                             <div className="grid grid-cols-3 gap-2 items-end">
                               <div>
-                                <label className="block text-xs text-gray-400 mb-1">ON ⏰</label>
+                                <label className="block text-xs text-dark-textSecondary mb-1">ON ⏰</label>
                                 <input
                                   type="text"
                                   value={instr.cycle_on_time || msToTime(instr.cycle_on_ms || 5000)}
@@ -957,7 +955,7 @@ export default function CreateRuleModal({
                                 <ArrowPathIcon className="w-8 h-8 text-aqua-400 animate-spin-slow" />
                               </div>
                               <div>
-                                <label className="block text-xs text-gray-400 mb-1">OFF ⏰</label>
+                                <label className="block text-xs text-dark-textSecondary mb-1">OFF ⏰</label>
                                 <input
                                   type="text"
                                   value={instr.cycle_off_time || msToTime(instr.cycle_off_ms || 5000)}
@@ -996,7 +994,7 @@ export default function CreateRuleModal({
                               </div>
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-400 mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
+                              <label className="block text-xs text-dark-textSecondary mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
                               <input
                                 type="number"
                                 min="0"
@@ -1074,7 +1072,7 @@ export default function CreateRuleModal({
                   {expandedChainedEventsSequential ? (
                     <ChevronUpIcon className="w-5 h-5 text-aqua-400" />
                   ) : (
-                    <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                    <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
                   )}
                   <PaperClipIcon className="w-5 h-5 text-purple-400" />
                   <span className="text-sm font-medium text-dark-text">Eventos Encadeados</span>
@@ -1226,7 +1224,7 @@ export default function CreateRuleModal({
                 {expandedAdvanced ? (
                   <ChevronUpIcon className="w-5 h-5 text-aqua-400" />
                 ) : (
-                  <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                  <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
                 )}
                 <Cog6ToothIcon className="w-5 h-5 text-aqua-400" />
                 <span className="text-sm font-medium text-dark-text">Configurações Avançadas</span>
@@ -1304,23 +1302,6 @@ export default function CreateRuleModal({
             )}
           </div>
         </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end space-x-4 p-6 border-t border-dark-border">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg font-medium transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-6 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-aqua-500/50"
-          >
-            Salvar Regra
-          </button>
-        </div>
-      </div>
-    </div>
+    </HwModal>
   );
 }

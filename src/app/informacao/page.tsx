@@ -106,7 +106,7 @@ export default function InformacaoPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <NavLink
             href="/automacao"
@@ -270,7 +270,7 @@ export default function InformacaoPage() {
             Ver planos e serviços comerciais →
           </NavLink>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

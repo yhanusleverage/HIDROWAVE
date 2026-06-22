@@ -241,7 +241,7 @@ export default function CalibragemPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto py-8 px-4 sm:px-6 space-y-8">
+      <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 space-y-8">
         <div className="flex gap-2 border-b border-dark-border pb-2">
           <button
             type="button"
@@ -507,7 +507,7 @@ export default function CalibragemPage() {
         </section>
           </>
         )}
-      </main>
+      </div>
     </div>
   );
 }

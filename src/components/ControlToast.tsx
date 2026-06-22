@@ -16,6 +16,7 @@ export type ControlToastCategory =
   | 'SISTEMA'
   | 'RELÉ'
   | 'AUTO EC'
+  | 'DILUIÇÃO EC'
   | 'AUTO PH'
   | 'REGRA'
   | 'DISPOSITIVO'

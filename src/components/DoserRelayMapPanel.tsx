@@ -12,6 +12,8 @@ import { HW_BG_SUBTLE, HW_RELAY_OWNER_ACCENT, HW_TEXT, type HwAccent } from '@/l
 
 const OWNER_LABELS: Record<RelayOwnerKind, string> = {
   ec_nutrient: 'Auto EC',
+  ec_dilution_drain: 'Drenagem EC',
+  ec_dilution_fill: 'Enchimento EC',
   ph_up: 'pH+',
   ph_down: 'pH−',
   runtime_active: 'Em uso',

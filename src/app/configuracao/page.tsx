@@ -168,7 +168,7 @@ export default function ConfiguracaoPage() {
         </div>
       </header>
       
-      <main className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         {/* Conexão com Supabase */}
         <div className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center space-x-3 mb-4">
@@ -464,7 +464,7 @@ export default function ConfiguracaoPage() {
             </p>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

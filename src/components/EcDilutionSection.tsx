@@ -227,7 +227,7 @@ export function EcDilutionSection({
             autoActiveLabel="Auto diluição ativo"
             autoInactiveLabel="Auto diluição inativo"
             isLoading={config.isLoading}
-            isDiluting={dilutionState.isDraining}
+            isDosando={dilutionState.isDraining}
             dosandoLabel="Drenando"
             isReplacing={dilutionState.isFilling}
             replacingLabel="Reponendo"
@@ -236,7 +236,7 @@ export function EcDilutionSection({
               dilutionState.operationRemainingSec > 0
             }
             operationRemainingSec={dilutionState.operationRemainingSec}
-            accent="wait"
+            accent="emerald"
           />
         </div>
         {onToggleLock && (

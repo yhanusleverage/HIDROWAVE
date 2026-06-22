@@ -102,6 +102,8 @@ export const HW_NAV_ICON_TINT: Record<string, HwAccent> = {
 /** Owner de relé → acento. */
 export const HW_RELAY_OWNER_ACCENT: Record<string, HwAccent> = {
   ec_nutrient: 'ec',
+  ec_dilution_drain: 'ec',
+  ec_dilution_fill: 'ec',
   ph_up: 'ph',
   ph_down: 'ph',
   runtime_active: 'wait',
@@ -115,12 +117,21 @@ export const HW_TOAST_CATEGORY_ACCENT: Record<string, HwAccent> = {
   SISTEMA: 'brand',
   RELÉ: 'warn',
   'AUTO EC': 'ec',
+  'DILUIÇÃO EC': 'ec',
   'AUTO PH': 'ph',
   REGRA: 'brand',
   DISPOSITIVO: 'wait',
   CALIBRAGEM: 'ph',
   ALERTA: 'warn',
 };
+
+/** Escala tipográfica unificada. */
+export const HW_HEADING_LG = 'text-3xl font-bold text-dark-text';
+export const HW_HEADING_MD = 'text-2xl font-bold text-dark-text';
+export const HW_HEADING_SM = 'text-lg font-semibold text-dark-text';
+export const HW_LABEL = 'text-sm text-dark-textSecondary';
+export const HW_METRIC = 'text-3xl font-bold tabular-nums text-dark-text';
+export const HW_BODY = 'text-base text-dark-text';
 
 export function hwNavActiveClasses(isActive: boolean): string {
   return isActive

@@ -106,7 +106,7 @@ export default function WhileInstructionEditor({
     <div className="space-y-3">
       {/* Condição */}
       <div className="border border-dark-border rounded-lg p-3 bg-dark-surface/30">
-        <label className="block text-xs text-gray-400 mb-2">Condição (LOOP)</label>
+        <label className="block text-xs text-dark-textSecondary mb-2">Condição (LOOP)</label>
         <div className="grid grid-cols-3 gap-2">
           <select
             value={currentSensor}
@@ -174,7 +174,7 @@ export default function WhileInstructionEditor({
 
       {/* Body (instruções dentro do WHILE) */}
       <div>
-        <label className="block text-xs text-gray-400 mb-2">
+        <label className="block text-xs text-dark-textSecondary mb-2">
           Instruções dentro do LOOP:
         </label>
         <div className="space-y-2 ml-4 border-l-2 border-aqua-500/30 pl-3">
@@ -206,11 +206,11 @@ export default function WhileInstructionEditor({
               {bodyInstr.type === 'switch' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs text-gray-400 mb-2">{SWITCH_LABEL}</label>
+                    <label className="block text-xs text-dark-textSecondary mb-2">{SWITCH_LABEL}</label>
                     
                     {/* Seleção de Modo: Ciclo ou Timer */}
                     <div className="mb-3">
-                      <label className="block text-xs text-gray-400 mb-1">Modo</label>
+                      <label className="block text-xs text-dark-textSecondary mb-1">Modo</label>
                       <select
                         value={bodyInstr.switch_mode || 'timer'}
                         onChange={(e) => {
@@ -234,7 +234,7 @@ export default function WhileInstructionEditor({
                     {/* Configuração de Timer */}
                     {bodyInstr.switch_mode === 'timer' && (
                       <div>
-                        <label className="block text-xs text-gray-400 mb-1">Duração (ms)</label>
+                        <label className="block text-xs text-dark-textSecondary mb-1">Duração (ms)</label>
                         <input
                           type="number"
                           min="0"
@@ -248,7 +248,7 @@ export default function WhileInstructionEditor({
                           className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                           placeholder="1000"
                         />
-                        <p className="text-xs text-gray-500 mt-1">Tempo que o relé ficará no estado alternado</p>
+                        <p className="text-xs text-dark-textSecondary/80 mt-1">Tempo que o relé ficará no estado alternado</p>
                       </div>
                     )}
 
@@ -257,7 +257,7 @@ export default function WhileInstructionEditor({
                       <div className="space-y-2">
                         <div className="grid grid-cols-3 gap-2 items-end">
                           <div>
-                            <label className="block text-xs text-gray-400 mb-1">ON ⏰</label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">ON ⏰</label>
                             <input
                               type="text"
                               pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}"
@@ -280,7 +280,7 @@ export default function WhileInstructionEditor({
                             <ArrowPathIcon className="w-8 h-8 text-aqua-400 animate-spin-slow" />
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-400 mb-1">OFF ⏰</label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">OFF ⏰</label>
                             <input
                               type="text"
                               pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}"
@@ -301,7 +301,7 @@ export default function WhileInstructionEditor({
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
+                          <label className="block text-xs text-dark-textSecondary mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
                           <input
                             type="number"
                             min="0"
@@ -339,7 +339,7 @@ export default function WhileInstructionEditor({
               )}
 
               {bodyInstr.type === 'return' && (
-                <div className="text-xs text-gray-400 italic">Retornar do loop</div>
+                <div className="text-xs text-dark-textSecondary italic">Retornar do loop</div>
               )}
             </div>
           ))}
@@ -386,7 +386,7 @@ export default function WhileInstructionEditor({
 
       {/* Espera entre iterações */}
       <div>
-        <label className="block text-xs text-gray-400 mb-1">
+        <label className="block text-xs text-dark-textSecondary mb-1">
           Espera entre iterações (ms)
         </label>
         <input

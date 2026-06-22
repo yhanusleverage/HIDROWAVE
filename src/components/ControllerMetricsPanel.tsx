@@ -17,6 +17,7 @@ import { formatSensorValue } from '@/lib/format-sensor-value';
 import {
   fetchEcControllerMetrics,
   fetchPhControllerMetrics,
+  METRICS_LIMIT,
   type EcControllerMetricRow,
   type PhControllerMetricRow,
 } from '@/lib/controller-metrics';
@@ -33,6 +34,7 @@ import {
 import {
   appendMetricRow,
   subscribeControllerMetrics,
+  trimMetricsRows,
 } from '@/lib/realtime/controller-metrics';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { hydroCrosshairPlugin } from '@/lib/hydro-chart';
@@ -119,8 +121,8 @@ export default function ControllerMetricsPanel({
         fetchPhControllerMetrics(deviceId),
       ]);
       if (!cancelled) {
-        setEcRows(ec);
-        setPhRows(ph);
+        setEcRows(trimMetricsRows(ec));
+        setPhRows(trimMetricsRows(ph));
         setLoading(false);
       }
     }
@@ -170,6 +172,13 @@ export default function ControllerMetricsPanel({
   const phChart = useMemo(() => buildPhMetricsChartData(displayPh), [displayPh]);
   const phOptions = useMemo(() => buildPhMetricsChartOptions(displayPh), [displayPh]);
 
+  const ecChartKey = displayEc.length
+    ? `${displayEc.length}-${displayEc[displayEc.length - 1]?.created_at ?? ''}`
+    : 'ec-empty';
+  const phChartKey = displayPh.length
+    ? `${displayPh.length}-${displayPh[displayPh.length - 1]?.created_at ?? ''}`
+    : 'ph-empty';
+
   const showEc = tab === 'ec' || tab === 'both';
   const showPh = tab === 'ph' || tab === 'both';
   const hasData = displayEc.length > 0 || displayPh.length > 0;
@@ -188,7 +197,9 @@ export default function ControllerMetricsPanel({
                 Demo local
               </span>
             )}
-            <span className="text-xs font-normal text-dark-textSecondary">últimas 24 h</span>
+            <span className="text-xs font-normal text-dark-textSecondary">
+              últimos {METRICS_LIMIT} ticks · ventana 24h
+            </span>
           </div>
         </div>
       }
@@ -244,8 +255,8 @@ export default function ControllerMetricsPanel({
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   <KpiChip
-                    label="Ticks 24h"
-                    value={ecSummary.tickCount}
+                    label="Pontos (FIFO)"
+                    value={`${ecSummary.tickCount} / ${METRICS_LIMIT}`}
                   />
                   <KpiChip
                     label="Erro atual"
@@ -270,7 +281,7 @@ export default function ControllerMetricsPanel({
                 </div>
               </div>
               <div style={{ height: CHART_HEIGHT }} className="relative w-full">
-                <Line data={ecChart} options={ecOptions} />
+                <Line key={ecChartKey} data={ecChart} options={ecOptions} />
               </div>
               {ecSummary.lastAt && (
                 <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
@@ -300,7 +311,10 @@ export default function ControllerMetricsPanel({
                   Auto pH — domínio H
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  <KpiChip label="Ticks 24h" value={phSummary.tickCount} />
+                  <KpiChip
+                    label="Pontos (FIFO)"
+                    value={`${phSummary.tickCount} / ${METRICS_LIMIT}`}
+                  />
                   <KpiChip
                     label="error_h"
                     value={
@@ -323,7 +337,7 @@ export default function ControllerMetricsPanel({
                 </div>
               </div>
               <div style={{ height: CHART_HEIGHT }} className="relative w-full">
-                <Line data={phChart} options={phOptions} />
+                <Line key={phChartKey} data={phChart} options={phOptions} />
               </div>
               {phSummary.lastAt && (
                 <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">

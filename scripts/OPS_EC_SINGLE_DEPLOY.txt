@@ -1,0 +1,20 @@
+Orden de deploy — EC único en hydro_measurements
+================================================
+
+1. Supabase SQL Editor (en orden):
+   - scripts/ADD_HYDRO_EC_COLUMN.sql
+   - scripts/HYDRO_EC_SINGLE_WRITE.sql
+
+2. Bridge Ubuntu (/opt/hidrowave-bridge):
+   BRIDGE_HOST=ubuntu@TU_IP BRIDGE_KEY=~/clave.pem \
+     bash ESP-HIDROWAVE-main/infra/mqtt/bridge/scripts/deploy-to-server.sh
+
+3. Flash firmware ESP32 (PlatformIO upload)
+
+4. Verificar:
+   cd HIDROWAVE-main && npm run verify:hydro-raw
+
+   SQL:
+   SELECT created_at, ec, ec_raw, tds FROM hydro_measurements
+   WHERE device_id = 'ESP32_HIDRO_269844' ORDER BY created_at DESC LIMIT 3;
+   -- Esperado: ec=NNN, ec_raw=NULL, tds=NULL

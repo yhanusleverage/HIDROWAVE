@@ -20,7 +20,7 @@ export default function Home() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-gradient-to-br from-dark-bg via-primary-900 to-aqua-900">
+    <div className="flex min-h-screen flex-col items-center justify-center p-8 bg-gradient-to-br from-dark-bg via-primary-900 to-aqua-900">
       <div className="max-w-3xl w-full bg-dark-card border border-dark-border rounded-lg shadow-2xl p-8 text-center">
         <div className="mb-8">
           <BrandLogo
@@ -78,6 +78,6 @@ export default function Home() {
           </Link>
         </p>
       </div>
-    </main>
+    </div>
   );
 }

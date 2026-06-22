@@ -127,7 +127,7 @@ export default function QuemSomosContent() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto py-10 px-4 sm:px-6 lg:px-8 space-y-14">
+      <div className="max-w-5xl mx-auto py-10 px-4 sm:px-6 lg:px-8 space-y-14">
         <section>
           <InstrumentCard accent="brand" tinted>
             <div className="flex items-start gap-4">
@@ -299,7 +299,7 @@ export default function QuemSomosContent() {
             HydroWave — eletrônica, hidráulica, química, nutrição e ambiente em harmonia.
           </p>
         </footer>
-      </main>
+      </div>
     </>
   );
 }
