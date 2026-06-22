@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a1628;
+  --foreground: #e0f2fe;
+  --hw-surface-0: #0a1628;
+  --hw-surface-1: #0f1e3a;
+  --hw-surface-2: #152547;
+  --hw-domain-brand: #26c6da;
+  --hw-domain-ec: #34d399;
+  --hw-domain-ph: #a78bfa;
+  --hw-domain-wait: #22d3ee;
+  --hw-intent-warn: #fbbf24;
+  --hw-intent-danger: #f87171;
+  --hw-intent-ok: #4ade80;
+}
+
+@layer components {
+  .hw-instrument-card {
+    @apply rounded-lg border border-t-2 bg-dark-surface border-dark-border p-4;
+  }
+  .hw-section-brand {
+    @apply border-l-4 border-l-aqua-500 pl-3;
+  }
+  .hw-section-ec {
+    @apply border-l-4 border-l-emerald-500 pl-3;
+  }
+  .hw-section-ph {
+    @apply border-l-4 border-l-violet-500 pl-3;
+  }
+}
+
+body {
+  background: #0a1628;
+  color: #e0f2fe;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+* {
+  @apply border-dark-border;
+}

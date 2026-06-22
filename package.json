@@ -1,0 +1,44 @@
+{
+  "name": "hydrowave",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:clean": "node -e \"const fs=require('fs');['.next','node_modules/.cache'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true})}catch(e){}})\" && next dev",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
+    "lint": "next lint",
+    "verify:nutrient-dosages": "node scripts/verify-nutrient-dosages-e2e.js",
+    "verify:ph-dosages": "node scripts/verify-ph-dosages-e2e.js",
+    "verify:controller-metrics": "node scripts/verify-controller-metrics-e2e.js",
+    "verify:hydro-raw": "node scripts/verify-hydro-raw-e2e.js",
+    "verify:controller-metrics-chart": "npx tsx scripts/verify-controller-metrics-chart.ts",
+    "verify:e2e-schema": "node scripts/verify-e2e-schema.js",
+    "verify:mqtt-publish-env": "node scripts/verify-mqtt-publish-env.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.0.18",
+    "@supabase/supabase-js": "^2.39.8",
+    "chart.js": "^4.4.1",
+    "mqtt": "^5.15.1",
+    "next": "^15.5.7",
+    "react": "^18.2.0",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.3.27",
+    "@types/react-dom": "^18.3.7",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.5.7",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.3.5",
+    "typescript": "^5.0.4"
+  }
+}

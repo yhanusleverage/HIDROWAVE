@@ -1,0 +1,9 @@
+# Variáveis para colar no Railway Dashboard (serviço HIDROWAVE frontend)
+# NÃO commitar com password real — usar Dashboard ou secrets do Railway.
+#
+# Após gravar: Redeploy → GET /api/health/mqtt-env → mqttPublishConfigured: true
+
+MQTT_HOST=99.79.36.220
+MQTT_PORT=1883
+MQTT_PUBLISH_USER=hidrowave
+MQTT_PUBLISH_PASS=<mesmo que secrets.ini mqtt_pass / ACL Mosquitto>
