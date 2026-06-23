@@ -15,6 +15,8 @@
     "verify:controller-metrics-chart": "npx tsx scripts/verify-controller-metrics-chart.ts",
     "verify:e2e-schema": "node scripts/verify-e2e-schema.js",
     "verify:mqtt-publish-env": "node scripts/verify-mqtt-publish-env.js",
+    "verify:relay-rpc": "node scripts/verify-relay-rpc.js",
+    "verify:relay-command": "node scripts/verify-relay-rpc.js",
     "verify:design-tokens": "node scripts/check-design-tokens.js"
   },
   "engines": {

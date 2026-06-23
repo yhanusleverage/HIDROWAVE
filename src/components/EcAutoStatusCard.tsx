@@ -37,6 +37,7 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
     operationRemainingSec,
     nextCheckInSec,
     isEcCheckPending,
+    operationInterrupted,
   } = useEcOperationState(deviceId, configReady, {
     intervalCeilingSec: ecConfig.intervalo_auto_ec,
     autoEnabled: ecConfig.auto_enabled,
@@ -86,6 +87,7 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
           nextCheckInSec={nextCheckInSec}
           nextCheckLabel="Próxima verificação EC"
           accent="emerald"
+          operationInterrupted={operationInterrupted}
         />
 
         <AutoControlStatusMetrics

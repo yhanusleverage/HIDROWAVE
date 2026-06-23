@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     }
 
     // Salvar nome do relé na tabela relay_names
-    const success = await saveSlaveRelayName(
+    const result = await saveSlaveRelayName(
       master_device_id,
       slave_mac_address,
       slave_name || '',
@@ -61,9 +61,12 @@ export async function POST(request: Request) {
       device_id // Passar device_id do slave
     );
 
-    if (!success) {
+    if (!result.ok) {
       return NextResponse.json(
-        { error: 'Erro ao salvar nome do relé' },
+        {
+          error: result.error || 'Erro ao salvar nome do relé',
+          code: result.code,
+        },
         { status: 500 }
       );
     }

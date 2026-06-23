@@ -12,10 +12,10 @@
 UI → INSERT relay_commands (target_device_id = MAC slave)
   → notifyDeviceRelayCommand → MQTT hidrowave/MASTER/command (JSON v1)
   → Master ESP subscribe → ESP-NOW → Slave
-  → Master HTTPS markCommandSent/completed
+  → Master MQTT command_ack + relay/state → bridge → complete_relay_command (Supabase)
 ```
 
-O **bridge** (`bridge_internal`) **não** participa — só lê telemetria.
+O **bridge** consome `command_ack` e `relay/state` para fechar `relay_commands` e atualizar `relay_slaves`.
 
 ---
 
@@ -76,9 +76,11 @@ Porta **1883** aberta para Railway e para o teu IP em dev.
 
 ## Fase C — Supabase / UI
 
+> **Prerrequisito Supabase:** desplegar [`scripts/PRODUCTION_RPC_GET_AND_LOCK_SLAVE.sql`](../scripts/PRODUCTION_RPC_GET_AND_LOCK_SLAVE.sql) completo en SQL Editor. MQTT acelera la entrega; **sin RPC correcta ni MQTT ni poll HTTPS entregan comandos slave.** Ver [`docs/COMANDOS_SLAVE_RPC.md`](COMANDOS_SLAVE_RPC.md).
+
 1. Slave em `relay_slaves` com MAC `AA:BB:CC:DD:EE:FF`
 2. UI painel ESP-NOW → `POST /api/esp-now/command`:
-   - `master_device_id`: ex. `ESP32_HIDRO_269844`
+   - `master_device_id`: ex. `ESP32_HIDRO_1A575C`
    - `slave_mac_address`: MAC do slave
    - `relay_number`: 0–7
    - `action`: `on` / `off`
@@ -92,16 +94,17 @@ SQL `PRODUCTION_RELAY_COMMANDS_TARGET.sql` se `target_device_id` falhar.
 ### Logs Railway
 
 ```
-[MQTT CMD] published id=… → hidrowave/ESP32_HIDRO_269844/command
+[MQTT CMD] published id=… → hidrowave/ESP32_HIDRO_1A575C/command
 ```
 
 ### Serial master
 
 ```
-[MQTT] rx command topic=hidrowave/ESP32_HIDRO_269844/command
-[CMD mqtt] id=… slave R0 on … tgt=AA:BB:…
-📡 [ESP-NOW] Comando para slave: AA:BB:…
-✅ Slave encontrado: …
+[MQTT] rx command topic=hidrowave/ESP32_HIDRO_1A575C/command
+[CMD mqtt] id=… slave R0 on … tgt=14:33:5C:38:BF:60
+📡 [ESP-NOW] Comando para slave: 14:33:5C:38:BF:60
+[MQTT] command_ack id=… relay=0 state=1
+[bridge] RPC complete_relay_command id=…
 ```
 
 ### Supabase
@@ -109,7 +112,7 @@ SQL `PRODUCTION_RELAY_COMMANDS_TARGET.sql` se `target_device_id` falhar.
 ```sql
 SELECT id, relay_number, target_device_id, status, updated_at
 FROM relay_commands
-WHERE device_id = 'ESP32_HIDRO_269844'
+WHERE device_id = 'ESP32_HIDRO_1A575C'
 ORDER BY created_at DESC LIMIT 5;
 ```
 
@@ -130,11 +133,13 @@ node scripts/test-publish-slave-command.js
 
 | Sintoma | Causa provável | Ação |
 |---------|----------------|------|
+| `[RPC SLAVE] Array recebido: 0` com pending visible | RPC stub en Supabase | Ejecutar `PRODUCTION_RPC_GET_AND_LOCK_SLAVE.sql` completo — ver [COMANDOS_SLAVE_RPC.md](COMANDOS_SLAVE_RPC.md) |
 | Sem `[MQTT CMD] published` (Railway) | `MQTT_*` ausente | Fase A Railway |
 | Publish OK, sem `[MQTT] rx` no ESP | ACL / firewall / WiFi | ACL `hidrowave` write; ESP online |
 | RX OK, `masterManager nullptr` | Init order | Reflash + serial boot |
 | RX OK, `Slave não encontrado` | MAC errado / slave offline | `relay_slaves`, ESP-NOW discovery |
-| Só HTTPS ~60s | MQTT push não configurado | Configurar Railway env |
+| RX OK, `relay_index ausente` | Payload legacy ou JSON inválido | Ver serial `[MQTT CMD] payload`; reflashear firmware com parser v2 |
+| Pending após ~60s MQTT OK | Poll HTTPS desativado + comando não executado | Corrigir payload MQTT; ver `COMMAND_POLL_DISABLED_IF_MQTT_OK` |
 
 ---
 
@@ -148,6 +153,7 @@ node scripts/test-publish-slave-command.js
 
 ## Relacionado
 
+- [`docs/COMANDOS_SLAVE_RPC.md`](COMANDOS_SLAVE_RPC.md) — **RPC slave obligatoria** (prerrequisito MQTT y HTTPS)
 - [`ESP-HIDROWAVE-main/docs/mqtt/HANDOFF_FASE3_COMANDOS_HIBRIDOS.md`](../../ESP-HIDROWAVE-main/docs/mqtt/HANDOFF_FASE3_COMANDOS_HIBRIDOS.md)
 - [`scripts/BANCADA_MANUAL_COMMANDS_KPI.md`](../scripts/BANCADA_MANUAL_COMMANDS_KPI.md) — KPI master + slave
 - [`scripts/verify-slave-espnow-readiness.sql`](../scripts/verify-slave-espnow-readiness.sql)

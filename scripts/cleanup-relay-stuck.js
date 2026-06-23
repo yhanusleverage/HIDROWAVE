@@ -36,9 +36,10 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const DEVICE_ID = process.env.VERIFY_DEVICE_ID || 'ESP32_HIDRO_269844';
 const dryRun = process.argv.includes('--dry-run');
 const cleanAll = process.argv.includes('--all');
+const markCompleted = process.argv.includes('--completed');
 
 const idsArg = process.argv.find((a) => a.startsWith('--ids='));
-const DEFAULT_IDS = [79, 80, 81, 97, 98, 99, 100];
+const DEFAULT_IDS = [131, 132, 133, 134, 135];
 const ids = idsArg
   ? idsArg
       .slice(6)
@@ -88,13 +89,21 @@ async function main() {
     process.exit(0);
   }
 
+  const updatePayload = markCompleted
+    ? {
+        status: 'completed',
+        error_message: null,
+        completed_at: new Date().toISOString(),
+      }
+    : {
+        status: 'failed',
+        error_message: 'stuck pending/sent — limpeza manual Jun/2026',
+        completed_at: new Date().toISOString(),
+      };
+
   let updateQuery = supabase
     .from('relay_commands')
-    .update({
-      status: 'failed',
-      error_message: 'stuck pending/sent — limpeza manual Jun/2026',
-      completed_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq('device_id', DEVICE_ID)
     .in('status', ['pending', 'sent']);
 

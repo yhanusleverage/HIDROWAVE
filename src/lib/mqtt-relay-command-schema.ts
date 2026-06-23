@@ -153,3 +153,44 @@ export function mqttCommandTopic(deviceId: string): string {
   }
   return `hidrowave/${deviceId}/command`;
 }
+
+/** hidrowave/{id}/command_ack — ESP → bridge → complete_relay_command */
+export type MqttCommandAckMessageV1 = {
+  v: typeof MQTT_CMD_SCHEMA_VERSION;
+  device_id: string;
+  ts: number;
+  id: number;
+  status: 'completed' | 'failed';
+  relay_index: number;
+  action?: MqttRelayAction;
+  current_state: boolean;
+  slave_mac_address?: string;
+  relay_states?: boolean[];
+  espnow_id?: number;
+};
+
+export function mqttCommandAckTopic(deviceId: string): string {
+  if (!validateDeviceId(deviceId)) {
+    throw new Error(`[MQTT CMD schema] device_id inválido: ${deviceId}`);
+  }
+  return `hidrowave/${deviceId}/command_ack`;
+}
+
+/** hidrowave/{id}/relay/state — doc mqtt/04 §3.4 */
+export type MqttRelayStateMessageV1 = {
+  v: typeof MQTT_CMD_SCHEMA_VERSION;
+  device_id: string;
+  ts: number;
+  master?: number[];
+  slave_mac_address?: string;
+  relay_states?: boolean[];
+  relay_has_timers?: boolean[];
+  relay_remaining_times?: number[];
+};
+
+export function mqttRelayStateTopic(deviceId: string): string {
+  if (!validateDeviceId(deviceId)) {
+    throw new Error(`[MQTT CMD schema] device_id inválido: ${deviceId}`);
+  }
+  return `hidrowave/${deviceId}/relay/state`;
+}

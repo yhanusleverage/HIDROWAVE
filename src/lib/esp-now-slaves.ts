@@ -6,6 +6,16 @@ import {
   getRelayNamesFromSupabase,
 } from './esp32-api';
 
+function formatSlaveLastSeen(lastSeen: number | string | undefined): string | undefined {
+  if (lastSeen == null) return undefined;
+  if (typeof lastSeen === 'number') {
+    const ms = lastSeen < 1e12 ? lastSeen * 1000 : lastSeen;
+    return new Date(ms).toISOString();
+  }
+  const parsed = new Date(lastSeen);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
 interface RuleAction {
   relay_ids?: number[];
   relay_names?: string[];
@@ -122,7 +132,7 @@ export async function getESPNOWSlaves(
         status: esp32Slave.is_online ? 'online' : 'offline',
         relays,
         device_id: esp32Slave.device_id,
-        last_seen: new Date(esp32Slave.last_seen).toISOString(),
+        last_seen: formatSlaveLastSeen(esp32Slave.last_seen),
         ip_address: undefined, // Não disponível do ESP32 Master
         firmware_version: undefined, // Não disponível do ESP32 Master
       };
@@ -135,6 +145,12 @@ export async function getESPNOWSlaves(
   }
 }
 
+export type SaveSlaveRelayNameResult = {
+  ok: boolean;
+  error?: string;
+  code?: string;
+};
+
 /**
  * Salva nome personalizado de relé de slave em relay_slaves.relay_names
  */
@@ -145,7 +161,7 @@ export async function saveSlaveRelayName(
   relayId: number,
   relayName: string,
   deviceId?: string
-): Promise<boolean> {
+): Promise<SaveSlaveRelayNameResult> {
   try {
     let slaveDeviceId = deviceId;
 
@@ -156,8 +172,7 @@ export async function saveSlaveRelayName(
     }
 
     if (!slaveDeviceId) {
-      console.error('Device ID do slave não encontrado');
-      return false;
+      return { ok: false, error: 'Device ID do slave não encontrado' };
     }
 
     const { data: existing, error: fetchError } = await supabase
@@ -168,7 +183,14 @@ export async function saveSlaveRelayName(
 
     if (fetchError) {
       console.error('Erro ao buscar relay_slaves:', fetchError);
-      return false;
+      return { ok: false, error: fetchError.message, code: fetchError.code };
+    }
+
+    if (!existing) {
+      return {
+        ok: false,
+        error: `Slave ${slaveDeviceId} ainda não existe em relay_slaves (aguarde sync do firmware)`,
+      };
     }
 
     const relay_names = patchSlaveRelayNamesArray(
@@ -177,25 +199,30 @@ export async function saveSlaveRelayName(
       existing?.relay_names
     );
 
-    const { error } = await supabase.from('relay_slaves').upsert(
-      {
-        device_id: slaveDeviceId,
-        master_device_id: masterDeviceId,
+    const { data: updated, error } = await supabase
+      .from('relay_slaves')
+      .update({
         relay_names,
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'device_id' }
-    );
+      })
+      .eq('device_id', slaveDeviceId)
+      .select('device_id')
+      .maybeSingle();
 
     if (error) {
       console.error('Erro ao salvar nome do relé slave:', error);
-      return false;
+      return { ok: false, error: error.message, code: error.code };
     }
 
-    return true;
+    if (!updated) {
+      return { ok: false, error: 'Nenhuma linha atualizada em relay_slaves' };
+    }
+
+    return { ok: true };
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro desconhecido';
     console.error('Erro ao salvar nome do relé:', error);
-    return false;
+    return { ok: false, error: message };
   }
 }
 

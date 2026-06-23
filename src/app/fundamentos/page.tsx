@@ -224,6 +224,11 @@ export default function FundamentosPage() {
               <p className="text-sm text-dark-textSecondary leading-relaxed">
                 {translations.notes.note2.content}
               </p>
+              {translations.notes.note2.addendum && (
+                <p className="text-sm text-dark-textSecondary/90 leading-relaxed mt-3 border-l-2 border-amber-500/40 pl-3">
+                  {translations.notes.note2.addendum}
+                </p>
+              )}
             </div>
 
             <div id="nota-3" className="bg-dark-surface/50 rounded-lg p-4 border border-cyan-600/40 scroll-mt-24">

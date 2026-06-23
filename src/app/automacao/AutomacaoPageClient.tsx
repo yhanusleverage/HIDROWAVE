@@ -2245,6 +2245,12 @@ export default function AutomacaoPageClient() {
                                 <h5 className="text-sm font-semibold text-aqua-400 mb-3 flex items-center">
                                   ⚡ Controle Manual Rápido
                                 </h5>
+                                {slave.status === 'offline' && (
+                                  <p className="text-xs text-red-400/90 mb-3 flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-red-400 flex-shrink-0" />
+                                    Slave offline — aguarde reconexão para enviar comandos
+                                  </p>
+                                )}
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                   {slave.relays.map(relay => {
                                     const relayKey = `${slave.macAddress}-${relay.id}`;
@@ -2252,6 +2258,8 @@ export default function AutomacaoPageClient() {
                                     const isRelayOn = relayStates.get(relayKey) ?? realState;
                                     const isLoading = loadingRelays.get(relayKey) || false;
                                     const isLocked = lockedSlaves.get(slave.macAddress) ?? false;
+                                    const isSlaveOffline = slave.status === 'offline';
+                                    const controlsDisabled = isLocked || isSlaveOffline;
                                     // ✅ Verificar se tem timer ativo
                                     const hasTimer = relay.has_timer || false;
                                     const remainingTime = relay.remaining_time || 0;
@@ -2260,7 +2268,7 @@ export default function AutomacaoPageClient() {
                                       <div
                                         key={relay.id}
                                         className={`bg-dark-card border rounded-lg p-3 ${
-                                          isLocked ? 'border-red-500/30 opacity-60' : 'border-dark-border'
+                                          controlsDisabled ? 'border-red-500/30 opacity-60' : 'border-dark-border'
                                         }`}
                                       >
                                         <div className="flex items-center justify-between mb-2">
@@ -2286,7 +2294,13 @@ export default function AutomacaoPageClient() {
                                             title={isRelayOn ? 'Ligado' : 'Desligado'}
                                           />
                                         </div>
-                                        {isLocked && (
+                                        {isSlaveOffline && (
+                                          <div className="mb-2 text-xs text-red-400 flex items-center space-x-1">
+                                            <span className="w-2 h-2 rounded-full bg-red-400" />
+                                            <span>Offline</span>
+                                          </div>
+                                        )}
+                                        {isLocked && !isSlaveOffline && (
                                           <div className="mb-2 text-xs text-red-400 flex items-center space-x-1">
                                             <LockClosedIcon className="w-3 h-3" />
                                             <span>Bloqueado</span>
@@ -2388,10 +2402,10 @@ export default function AutomacaoPageClient() {
                                                   }
                                                 }
                                               }}
-                                              disabled={isLoading || isLocked}
+                                              disabled={isLoading || controlsDisabled}
                                               className={`
                                                 relative flex-1 h-9 rounded-lg transition-all duration-300 ease-in-out
-                                                ${isLocked 
+                                                ${controlsDisabled 
                                                   ? 'opacity-50 cursor-not-allowed' 
                                                   : 'cursor-pointer transform active:scale-95'
                                                 }
@@ -2399,10 +2413,18 @@ export default function AutomacaoPageClient() {
                                                   ? 'bg-gradient-to-r from-aqua-500 via-aqua-400 to-primary-500 shadow-lg shadow-aqua-500/30'
                                                   : 'bg-gradient-to-r from-gray-700 via-gray-600 to-gray-700'
                                                 }
-                                                ${!isLocked && !isRelayOn && 'hover:from-gray-600 hover:via-gray-500 hover:to-gray-600'}
-                                                ${!isLocked && isRelayOn && 'hover:shadow-xl hover:shadow-aqua-500/40'}
+                                                ${!controlsDisabled && !isRelayOn && 'hover:from-gray-600 hover:via-gray-500 hover:to-gray-600'}
+                                                ${!controlsDisabled && isRelayOn && 'hover:shadow-xl hover:shadow-aqua-500/40'}
                                               `}
-                                              title={isLocked ? 'Controles bloqueados' : isRelayOn ? 'Clique para desligar' : 'Clique para ligar'}
+                                              title={
+                                                isSlaveOffline
+                                                  ? 'Slave offline'
+                                                  : isLocked
+                                                    ? 'Controles bloqueados'
+                                                    : isRelayOn
+                                                      ? 'Clique para desligar'
+                                                      : 'Clique para ligar'
+                                              }
                                             >
                                               {/* Indicador interno del switch */}
                                               <div className={`                                                absolute top-1 w-7 h-7 rounded-md bg-white/90 shadow-lg
@@ -2438,7 +2460,7 @@ export default function AutomacaoPageClient() {
                                             </button>
 
                                             {/* Botón compacto de configuración (Timer/Ciclo) */}
-                                            {!isLocked && (
+                                            {!controlsDisabled && (
                                               <button
                                                 onClick={(e) => {
                                                   e.stopPropagation();
@@ -2459,7 +2481,7 @@ export default function AutomacaoPageClient() {
                                                       ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30'
                                                       : 'bg-dark-surface hover:bg-dark-border text-dark-textSecondary hover:text-aqua-400 border border-dark-border'
                                                   }
-                                                  ${!isLocked && 'cursor-pointer active:scale-95'}
+                                                  ${!controlsDisabled && 'cursor-pointer active:scale-95'}
                                                 `}
                                                 title={
                                                   relayCycles.get(relayKey)?.enabled
@@ -2542,15 +2564,18 @@ export default function AutomacaoPageClient() {
                                                     />
                                                     <span className="text-xs text-dark-textSecondary">s</span>
                                                     <button
-                                                      onClick={() => {
+                                                      type="button"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
                                                         setRelayTimers(prev => {
                                                           const next = new Map(prev);
                                                           next.delete(relayKey);
                                                           return next;
                                                         });
+                                                        setShowTimerInput(null);
                                                       }}
                                                       className="p-1.5 hover:bg-red-500/20 rounded text-red-400 transition-colors"
-                                                      title="Remover timer"
+                                                      title="Fechar e remover timer"
                                                     >
                                                       <XMarkIcon className="w-3.5 h-3.5" />
                                                     </button>
@@ -2628,7 +2653,9 @@ export default function AutomacaoPageClient() {
                                                       {relayCycles.get(relayKey)?.enabled ? '🟢 Ativo' : '▶️ Ativar Ciclo'}
                                                     </button>
                                                     <button
-                                                      onClick={() => {
+                                                      type="button"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
                                                         setRelayCycles(prev => {
                                                           const next = new Map(prev);
                                                           next.delete(relayKey);
@@ -2637,7 +2664,7 @@ export default function AutomacaoPageClient() {
                                                         setShowCycleInput(null);
                                                       }}
                                                       className="p-2 hover:bg-red-500/20 rounded text-red-400 transition-colors"
-                                                      title="Remover ciclo"
+                                                      title="Fechar e remover ciclo"
                                                     >
                                                       <XMarkIcon className="w-4 h-4" />
                                                     </button>

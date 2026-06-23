@@ -32,6 +32,8 @@ export interface OperationStateBadgesProps {
   nextCheckInSec?: number;
   nextCheckLabel?: string;
   accent?: 'emerald' | 'violet';
+  /** Ciclo Auto interrompido por reboot (fail-safe firmware) */
+  operationInterrupted?: boolean;
   /** header = pills compactas ao lado do título colapsável */
   variant?: 'default' | 'header';
 }
@@ -54,6 +56,7 @@ export default function OperationStateBadges({
   nextCheckInSec = 0,
   nextCheckLabel = 'Próxima verificação',
   accent = 'emerald',
+  operationInterrupted = false,
   variant = 'default',
 }: OperationStateBadgesProps) {
   const sizeClass = variant === 'header' ? 'text-xs px-2 py-0.5' : 'text-sm px-2.5 py-1';
@@ -78,6 +81,16 @@ export default function OperationStateBadges({
         )}
         {isLoading ? '…' : autoEnabled ? autoActiveLabel : autoInactiveLabel}
       </span>
+
+      {operationInterrupted && (
+        <span
+          className={`${badgeBase} ${sizeClass} ${HW_BADGE.danger}`}
+          title="Ciclo interrompido por reinício — aguarde nova medição antes de dosar"
+        >
+          <XCircleIcon className="w-3.5 h-3.5 shrink-0" aria-hidden />
+          Ciclo interrompido
+        </span>
+      )}
 
       {isDosando && (
         <span

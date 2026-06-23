@@ -45,6 +45,7 @@ type EcOperationRow = RelayMasterRow & {
   ec_next_check_in_sec?: number;
   ec_dilution_target_l?: number;
   ec_dilution_progress_l?: number;
+  last_operation_interrupted?: boolean;
 };
 
 function parseEcState(raw: string | undefined): EcOperationState {
@@ -201,6 +202,7 @@ export function useEcOperationState(
   options: UseEcOperationStateOptions = {}
 ) {
   const [snapshot, setSnapshot] = useState<EcOperationSnapshot>(initialSnapshot);
+  const [operationInterrupted, setOperationInterrupted] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const snapshotRef = useRef(snapshot);
   const deviceIdRef = useRef(deviceId);
@@ -227,6 +229,10 @@ export function useEcOperationState(
   }, []);
 
   const applyRow = useCallback((row: RelayMasterRow) => {
+    const r = row as EcOperationRow;
+    if (typeof r.last_operation_interrupted === 'boolean') {
+      setOperationInterrupted(r.last_operation_interrupted);
+    }
     const extracted = extractEcFields(row);
     if (!extracted) {
       return;
@@ -319,7 +325,7 @@ export function useEcOperationState(
     const { data, error } = await supabase
       .from('relay_master')
       .select(
-        'device_id, ec_operation_state, ec_operation_remaining_sec, ec_next_check_in_sec, doser_relay_states'
+        'device_id, ec_operation_state, ec_operation_remaining_sec, ec_next_check_in_sec, doser_relay_states, last_operation_interrupted'
       )
       .eq('device_id', deviceId.trim())
       .maybeSingle();
@@ -441,5 +447,6 @@ export function useEcOperationState(
     isDiluting: isDilutionState,
     isDraining: snapshot.state === 'diluting_draining',
     isReplacing: snapshot.state === 'diluting_filling',
+    operationInterrupted: operationInterrupted && displayState === 'idle',
   };
 }

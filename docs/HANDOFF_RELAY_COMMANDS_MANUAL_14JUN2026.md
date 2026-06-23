@@ -25,13 +25,21 @@ flowchart LR
     FW[HydroControl toggleRelay]
     Config --> FW
   end
-  subgraph manualPath [Dosificar_manual]
-    UI[Boton Dosificar]
-    DB[relay_commands pending]
-    RPC[get_and_lock_master_commands]
-    ESP[ESP processRelayCommand]
-    ACK[completed failed]
-    UI --> DB --> RPC --> ESP --> ACK
+  subgraph manualMaster [Manual_relé_local]
+    UI_M[Boton Dosificar master]
+    DB_M[relay_commands pending target vacío]
+    RPC_M[get_and_lock_master_commands]
+    ESP_M[ESP processRelayCommand local]
+    ACK_M[completed failed]
+    UI_M --> DB_M --> RPC_M --> ESP_M --> ACK_M
+  end
+  subgraph manualSlave [Manual_relé_slave_ESP-NOW]
+    UI_S[Toggle slave en automacao]
+    DB_S[relay_commands pending target MAC]
+    RPC_S[get_and_lock_slave_commands]
+    ESP_S[ESP ESP-NOW al slave]
+    ACK_S[completed failed]
+    UI_S --> DB_S --> RPC_S --> ESP_S --> ACK_S
   end
 ```
 
@@ -92,6 +100,7 @@ Status prod: `pending | sent | completed | failed`
 | Archivo | Cambio |
 |---------|--------|
 | `scripts/PRODUCTION_RPC_GET_AND_LOCK_MASTER.sql` | RPC prod sobre `relay_commands`; `pending`→`sent`; fix `created_at` en subquery |
+| `scripts/PRODUCTION_RPC_GET_AND_LOCK_SLAVE.sql` | RPC prod slave: `target_device_id = MAC`; sin esto `[RPC SLAVE]` devuelve `[]` — ver [COMANDOS_SLAVE_RPC.md](COMANDOS_SLAVE_RPC.md) |
 | `scripts/VERIFICAR_RELAY_COMMANDS_STUCK.sql` | Columnas + status prod |
 | `scripts/LIMPAR_RELAY_COMMANDS_STUCK.sql` | Preview + cleanup IDs 79–81, 97–99 |
 | `scripts/PRODUCTION_RPC_VERIFY.sql` | Checklist SQL |
@@ -130,6 +139,7 @@ RPC get_and_lock_master_commands → responde OK; 0 filas si no hay pending
 ## 6. Checklist para cerrar el problema
 
 1. Ejecutar RPC en Supabase (si no hecho): `scripts/PRODUCTION_RPC_GET_AND_LOCK_MASTER.sql`
+1b. Ejecutar RPC slave (si usas ESP-NOW): `scripts/PRODUCTION_RPC_GET_AND_LOCK_SLAVE.sql` — guía [COMANDOS_SLAVE_RPC.md](COMANDOS_SLAVE_RPC.md)
 2. Limpiar stuck 97–99 (y 79–81 si siguen): `scripts/LIMPAR_RELAY_COMMANDS_STUCK.sql` opción A, o:
    ```powershell
    node scripts/cleanup-relay-stuck.js --ids=97,98,99
@@ -173,6 +183,7 @@ Consola browser: `[Realtime] relay_commands registry SUBSCRIBED`
 
 | Síntoma | Siguiente sospechoso |
 |---------|---------------------|
+| `[RPC SLAVE] 0 comandos` con pending slave visible | RPC stub — `PRODUCTION_RPC_GET_AND_LOCK_SLAVE.sql` |
 | Sigue `sent` forever | ESP no hace poll o ACK PATCH falla — reflash + serial |
 | RPC 0 con pending visible | RLS o `target_device_id` no vacío |
 | Sin `[CMD mqtt]` | `MQTT_HOST` no configurado en Next.js — solo HTTPS ~60s |
@@ -182,9 +193,11 @@ Consola browser: `[Realtime] relay_commands registry SUBSCRIBED`
 
 ## 9. Flujo manual (referencia técnica)
 
+**Relé local (master):**
+
 ```
-AutomacaoPageClient → POST /api/esp-now/command
-  → createRelayCommandProd (relay_commands INSERT pending)
+AutomacaoPageClient → POST /api/esp-now/command (sin target MAC)
+  → createRelayCommandProd (relay_commands INSERT pending, target_device_id='')
   → notifyDeviceRelayCommand (MQTT opcional)
 ESP poll → rpc/get_and_lock_master_commands (pending→sent)
   → processRelayCommand → executeLocalRelayCommand
@@ -192,12 +205,26 @@ ESP poll → rpc/get_and_lock_master_commands (pending→sent)
 UI → useRelayAllocation (WSS + poll 5s) → quita claim manual
 ```
 
+**Relé slave ESP-NOW:**
+
+```
+AutomacaoPageClient → POST /api/esp-now/command (slave_mac_address)
+  → createRelayCommandProd (target_device_id = MAC slave)
+  → notifyDeviceRelayCommand (MQTT opcional)
+ESP poll → rpc/get_and_lock_slave_commands (pending→sent)
+  → processRelayCommand → ESP-NOW al slave
+  → markCommandCompleted
+```
+
+Prerrequisito Supabase slave: [COMANDOS_SLAVE_RPC.md](COMANDOS_SLAVE_RPC.md).
+
 ---
 
 ## 10. Documentos relacionados
 
 | Doc | Uso |
 |-----|-----|
+| [COMANDOS_SLAVE_RPC.md](COMANDOS_SLAVE_RPC.md) | **RPC slave obligatoria** — ESP-NOW, `target_device_id = MAC` |
 | [HANDOFF_CHECKPOINT_JUN2026.md](HANDOFF_CHECKPOINT_JUN2026.md) §5 | Matriz Realtime + bug ACK firmware |
 | [HANDOFF_ULTIMA_DOSAGEM_E2E.md](HANDOFF_ULTIMA_DOSAGEM_E2E.md) | Auto EC — sendero distinto |
 | [HANDOFF_AUTO_PH_E2E.md](HANDOFF_AUTO_PH_E2E.md) | Auto pH — sendero distinto |

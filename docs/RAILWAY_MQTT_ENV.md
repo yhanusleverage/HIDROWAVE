@@ -51,12 +51,13 @@ Local: `npm run verify:mqtt-publish-env`
 1. Toggle relé em `/automacao` (master local).
 2. **Logs Railway** (deploy logs / runtime):
    ```
-   [MQTT CMD] published id=… type=manual pri=10 → hidrowave/ESP32_HIDRO_269844/command
+   [MQTT CMD] published id=… type=manual pri=10 → hidrowave/ESP32_HIDRO_1A575C/command
    ```
 3. **Serial ESP32:**
    ```
-   [MQTT] rx command topic=hidrowave/ESP32_HIDRO_269844/command
-   [CMD mqtt] id=… master R… via=mqtt
+   [MQTT] rx command topic=hidrowave/ESP32_HIDRO_1A575C/command
+   [CMD mqtt] id=… slave R… via=mqtt
+   [MQTT] command_ack id=… relay=… state=…
    ✅ [ACK] relay_commands id=… → completed
    ```
 4. Supabase: fila `relay_commands` pasa `pending` → `completed` en &lt;2s.
@@ -82,7 +83,7 @@ topic write hidrowave/+/command
 
 (o por device: `topic write hidrowave/ESP32_HIDRO_XXXXXX/#` — suficiente para un master)
 
-**Verificado en VM (2026-06):** user `hidrowave` con `write hidrowave/ESP32_HIDRO_269844/#` — publish a `.../command` permitido.
+**Verificado en VM (2026-06):** user `hidrowave` com `write hidrowave/+/command` — publish para qualquer master permitido.
 
 Ver [`ESP-HIDROWAVE-main/docs/mqtt/HANDOFF_FASE3_COMANDOS_HIBRIDOS.md`](../../ESP-HIDROWAVE-main/docs/mqtt/HANDOFF_FASE3_COMANDOS_HIBRIDOS.md) §5.
 

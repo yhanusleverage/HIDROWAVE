@@ -31,6 +31,7 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
     isAguardandoRecirculacao,
     operationRemainingSec,
     nextCheckInSec,
+    operationInterrupted,
   } = usePhOperationState(deviceId, configReady, {
     intervalCeilingSec: phConfig.intervalo_auto_ph,
     autoEnabled: phConfig.auto_enabled,
@@ -156,6 +157,7 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
           nextCheckInSec={nextCheckInSec}
           nextCheckLabel="Próxima verificação pH"
           accent="violet"
+          operationInterrupted={operationInterrupted}
         />
 
         <AutoControlStatusMetrics

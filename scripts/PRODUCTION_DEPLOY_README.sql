@@ -18,8 +18,17 @@
 -- 4. scripts/ENABLE_REALTIME_REPLICATION.sql
 --    → ACK WSS instantáneo (relay_commands + 5 tablas)
 --
--- 5. Deploy frontend (Railway) + test manual:
---    - /automacao toggle relé → pending→sent→completed
+-- 5. scripts/PRODUCTION_RPC_GET_AND_LOCK_MASTER.sql
+--    → comandos relé local (target_device_id vacío)
+--
+-- 6. scripts/PRODUCTION_RPC_GET_AND_LOCK_SLAVE.sql
+--    → comandos ESP-NOW slave (target_device_id = MAC)
+--    → SIN ESTO: [RPC SLAVE] siempre devuelve []
+--    → Doc: docs/COMANDOS_SLAVE_RPC.md
+--
+-- 7. Deploy frontend (Railway) + test manual:
+--    - /automacao toggle relé master → pending→sent→completed
+--    - /automacao toggle relé slave ESP-NOW → idem vía RPC slave
 --    - Network WS phx_join relay_commands
 --    - Crear regla en /automacao
 -- =====================================================

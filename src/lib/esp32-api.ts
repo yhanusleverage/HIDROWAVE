@@ -6,6 +6,7 @@
  */
 
 import { supabase } from './supabase';
+import { resolveSlaveOnline } from './realtime/slave-status';
 
 /**
  * Interface para relé retornado pelo ESP32 Master
@@ -210,29 +211,20 @@ export async function getSlavesFromSupabase(masterDeviceId: string): Promise<ESP
     const slaves: ESP32Slave[] = data.map((device: DeviceStatusFromSupabase) => {
       const deviceRelayStates = relayStatesMap.get(device.device_id) || [];
       
-      // ✅ CORRIGIDO: Usar last_update de relay_slaves como fonte principal (mais confiável)
-      // relay_slaves.last_update é atualizado sempre que o Master recebe mensagem do Slave
-      let lastSeenTimestamp: number | null = null;
-      
-      // 1. Tentar usar last_update de relay_slaves (mais confiável para slaves)
+      // Online unificado: relay_slaves.last_update (preferido) ou device_status.last_seen
       const relaySlaveLastUpdate = slaveLastUpdateMap.get(device.device_id);
-      if (relaySlaveLastUpdate) {
-        lastSeenTimestamp = Math.floor(new Date(relaySlaveLastUpdate).getTime() / 1000);
-        console.log(`✅ [ESP32-API] Slave ${device.device_id}: usando last_update de relay_slaves: ${relaySlaveLastUpdate}`);
-      }
-      
-      // 2. Fallback: usar last_seen de device_status se não tiver last_update
-      if (!lastSeenTimestamp && device.last_seen) {
-        lastSeenTimestamp = Math.floor(new Date(device.last_seen).getTime() / 1000);
-        console.log(`⚠️ [ESP32-API] Slave ${device.device_id}: usando last_seen de device_status (fallback)`);
-      }
-      
-      // ✅ Recalcular is_online baseado em last_seen
-      const now = Math.floor(Date.now() / 1000);
-      const minutesAgo = lastSeenTimestamp ? (now - lastSeenTimestamp) / 60 : 999;
-      const calculatedIsOnline = minutesAgo < 5; // Online se última atualização < 5 minutos
-      
-      console.log(`🔍 [ESP32-API] Slave ${device.device_id}: minutesAgo=${minutesAgo.toFixed(1)}, is_online=${calculatedIsOnline}`);
+      const calculatedIsOnline = resolveSlaveOnline(relaySlaveLastUpdate, device.last_seen);
+
+      const lastSeenTimestamp = relaySlaveLastUpdate
+        ? Math.floor(new Date(relaySlaveLastUpdate).getTime() / 1000)
+        : device.last_seen
+          ? Math.floor(new Date(device.last_seen).getTime() / 1000)
+          : null;
+
+      console.log(
+        `🔍 [ESP32-API] Slave ${device.device_id}: is_online=${calculatedIsOnline}` +
+          (relaySlaveLastUpdate ? ` last_update=${relaySlaveLastUpdate}` : '')
+      );
       
       // Criar array de relés com estados reais do Supabase
       const relays = Array.from({ length: 8 }, (_, i) => {

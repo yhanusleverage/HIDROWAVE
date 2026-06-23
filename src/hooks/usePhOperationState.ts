@@ -31,6 +31,7 @@ type PhOperationRow = RelayMasterRow & {
   ph_operation_state?: string;
   ph_operation_remaining_sec?: number;
   ph_next_check_in_sec?: number;
+  last_operation_interrupted?: boolean;
 };
 
 function parsePhState(raw: string | undefined): PhOperationState {
@@ -199,6 +200,7 @@ export function usePhOperationState(
   options: UsePhOperationStateOptions = {}
 ) {
   const [snapshot, setSnapshot] = useState<PhOperationSnapshot>(initialSnapshot);
+  const [operationInterrupted, setOperationInterrupted] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const snapshotRef = useRef(snapshot);
   const intervalCeilingRef = useRef(options.intervalCeilingSec ?? 0);
@@ -224,6 +226,10 @@ export function usePhOperationState(
   }, []);
 
   const applyRow = useCallback((row: RelayMasterRow) => {
+    const r = row as PhOperationRow;
+    if (typeof r.last_operation_interrupted === 'boolean') {
+      setOperationInterrupted(r.last_operation_interrupted);
+    }
     const extracted = extractPhFields(row);
     if (!extracted) return;
     if (
@@ -305,7 +311,7 @@ export function usePhOperationState(
     if (!enabled || !deviceId?.trim()) return;
     const { data, error } = await supabase
       .from('relay_master')
-      .select('device_id, ph_operation_state, ph_operation_remaining_sec, ph_next_check_in_sec')
+      .select('device_id, ph_operation_state, ph_operation_remaining_sec, ph_next_check_in_sec, last_operation_interrupted')
       .eq('device_id', deviceId.trim())
       .maybeSingle();
     if (error || !data) return;
@@ -405,5 +411,6 @@ export function usePhOperationState(
     isDosando,
     isAguardandoRecirculacao,
     isPhCheckPending: autoOn && snapshot.state === 'ph_check_pending',
+    operationInterrupted: operationInterrupted && (autoOn ? snapshot.state : 'idle') === 'idle',
   };
 }

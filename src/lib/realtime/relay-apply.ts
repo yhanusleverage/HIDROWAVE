@@ -1,5 +1,6 @@
 import type { ESPNowSlave } from '@/lib/esp-now-slaves';
 import type { RelayMasterRow, RelaySlaveRow } from '@/lib/realtime/relay-states';
+import { resolveSlaveOnline } from '@/lib/realtime/slave-status';
 
 /** Fallback REST lento para timers y eventos perdidos tras reconexión WS. */
 export const RELAY_REST_FALLBACK_MS = 90 * 1000;
@@ -30,11 +31,15 @@ export function applySlaveRelayRow(
   const remainingTimes = row.relay_remaining_times ?? [];
 
   let matched = false;
+  const lastUpdate = row.last_update ?? row.updated_at;
   const updated = slaves.map((slave) => {
     if (!slaveMatchesRow(slave, row)) return slave;
     matched = true;
+    const online = resolveSlaveOnline(lastUpdate, slave.last_seen);
     return {
       ...slave,
+      status: online ? ('online' as const) : ('offline' as const),
+      last_seen: lastUpdate ?? slave.last_seen,
       relays: slave.relays.map((relay) => {
         const idx = relay.id;
         if (idx < 0 || idx >= Math.max(states.length, 8)) return relay;

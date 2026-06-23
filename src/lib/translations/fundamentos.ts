@@ -40,6 +40,7 @@ export interface FundamentosTranslations {
     note2: {
       title: string;
       content: string;
+      addendum?: string;
     };
     vpd: {
       title: string;
@@ -221,6 +222,8 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         title: 'Nota 2 — Lixiviação de nutrientes',
         content:
           'Quando o nível de água fica ESTÁTICO mas a EC sobe, a planta não está bebendo — está devolvendo nutrientes para a solução. É como um caldo concentrado demais: o organismo rejeita em vez de absorver. Reduza a EC ou troque o reservatório para recuperar o equilíbrio. Subir a EC só faz sentido se confirmar que a concentração estava baixa demais para a fase, não alta.',
+        addendum:
+          'Adendo — pode parecer contra-intuitivo, mas nem todo «ESTÁTICO + EC SUBINDO» é lixiviação pura. Em plantas pequenas, mudas, arranque vegetativo ou reservatório grande em relação à biomassa, a EC pode subir porque a planta ainda não transpira nem consome o suficiente — não porque está a rejeitar nutrientes. Nessas condições, um empurrão controlado (subir a EC de forma gradual até à faixa-alvo da fase) pode ser benéfico, desde que nível, pH, VPD (Nota 3) e sintomas visuais acompanhem. A lixiviação verdadeira costuma aparecer com planta já estabelecida, boa transpiração e sinais de excesso ou desequilíbrio — aí sim, baixar a EC ou trocar a solução recupera o equilíbrio.',
       },
       vpd: {
         title: 'Nota 3 — VPD (déficit de pressão de vapor)',
@@ -428,6 +431,8 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         title: 'Note 2 — Nutrient leaching',
         content:
           'When the water level stays STATIC but EC rises, the plant is not drinking—it is returning nutrients to the solution. Like a broth that is too concentrated: the organism rejects instead of absorbing. Lower EC or change the reservoir to restore balance. Raising EC only makes sense if you confirm concentration was too low for the stage, not too high.',
+        addendum:
+          'Addendum — counter-intuitive as it may seem, not every «STATIC + RISING EC» pattern is pure leaching. With small plants, seedlings, early vegetative growth, or a reservoir large relative to biomass, EC can rise because the plant still does not transpire or consume enough—not because it is rejecting nutrients. In those conditions, a controlled push (gradually raising EC toward the stage target) can be beneficial, as long as water level, pH, VPD (Note 3), and visual symptoms support it. True leaching usually appears with an established plant, good transpiration, and signs of excess or imbalance—then lowering EC or changing the solution restores balance.',
       },
       vpd: {
         title: 'Note 3 — VPD (vapor pressure deficit)',
@@ -635,6 +640,8 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
         title: 'Nota 2 — Lixiviación de nutrientes',
         content:
           'Cuando el nivel de agua queda ESTÁTICO pero la EC sube, la planta no está bebiendo — está devolviendo nutrientes a la solución. Como un caldo demasiado concentrado: el organismo rechaza en lugar de absorber. Reduzca la EC o cambie el reservorio. Subir la EC solo tiene sentido si confirma que la concentración era demasiado baja para la fase, no alta.',
+        addendum:
+          'Adenda — puede parecer contraintuitivo, pero no todo «ESTÁTICO + EC SUBIENDO» es lixiviación pura. En plantas pequeñas, plántulas, arranque vegetativo o reservorio grande respecto a la biomasa, la EC puede subir porque la planta aún no transpira ni consume lo suficiente — no porque rechace nutrientes. En esas condiciones, un empuje controlado (subir la EC de forma gradual hasta la banda objetivo de la fase) puede ser beneficioso, siempre que nivel, pH, VPD (Nota 3) y síntomas visuales lo acompañen. La lixiviación verdadera suele aparecer con planta ya establecida, buena transpiración y señales de exceso o desequilibrio — ahí sí, bajar la EC o cambiar la solución recupera el equilibrio.',
       },
       vpd: {
         title: 'Nota 3 — VPD (déficit de presión de vapor)',
