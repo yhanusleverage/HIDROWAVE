@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { createRelayCommandProd } from '@/lib/automation';
 import { notifyDeviceRelayCommand } from '@/lib/mqtt-command-publish';
+import {
+  normalizeRelayCommandMode,
+  type RelayCommandMode,
+} from '@/lib/mqtt-relay-command-schema';
+import { resolveDbActionAndDuration } from '@/lib/slave-relay-command';
 import { supabase } from '@/lib/supabase';
 
 /**
- * API ESP-NOW — INSERT em relay_commands (schema prod).
- * Fluxo: pending → ESP poll → sent → completed
+ * API ESP-NOW — INSERT em relay_commands (schema prod) + push MQTT.
  */
 export async function POST(request: Request) {
   try {
@@ -15,9 +19,12 @@ export async function POST(request: Request) {
       slave_mac_address,
       slave_name,
       relay_number,
-      action,
+      action: rawAction,
       duration_seconds,
+      cycle_off_seconds,
+      mode: rawMode,
       rule_id,
+      created_by: rawCreatedBy,
     } = body;
 
     if (!master_device_id) {
@@ -28,7 +35,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'relay_number inválido (0-15)' }, { status: 400 });
     }
 
-    if (action !== 'on' && action !== 'off') {
+    const mode = normalizeRelayCommandMode(rawMode as RelayCommandMode | undefined);
+    const resolved = resolveDbActionAndDuration({
+      master_device_id,
+      slave_mac_address: slave_mac_address ?? '',
+      slave_name,
+      relay_number,
+      mode,
+      action: rawAction,
+      duration_seconds,
+      cycle_off_seconds,
+    });
+
+    if (resolved.action !== 'on' && resolved.action !== 'off') {
       return NextResponse.json({ error: "action deve ser 'on' ou 'off'" }, { status: 400 });
     }
 
@@ -57,14 +76,15 @@ export async function POST(request: Request) {
     }
 
     const targetId = slave_mac_address || slave_name || null;
+    const createdBy = rawCreatedBy ?? resolved.created_by;
 
     const command = await createRelayCommandProd({
       device_id: master_device_id,
       relay_number,
-      action,
-      duration_seconds: duration_seconds ?? null,
+      action: resolved.action,
+      duration_seconds: resolved.duration_seconds,
       target_device_id: targetId,
-      created_by: 'web_interface',
+      created_by: createdBy,
     });
 
     if (!command) {
@@ -83,25 +103,29 @@ export async function POST(request: Request) {
       device_id: master_device_id,
       id: command.id as number,
       relay_index: relay_number,
-      action,
-      duration_s: duration_seconds ?? null,
+      action: resolved.action,
+      duration_s: resolved.duration_seconds,
+      mode,
+      cycle_off_s: cycle_off_seconds ?? null,
       target_device_id: targetId,
       command_type: body.command_type ?? 'manual',
       priority: typeof body.priority === 'number' ? body.priority : undefined,
-      triggered_by: body.triggered_by ?? 'web_interface',
+      triggered_by: body.triggered_by ?? createdBy,
       rule_id: rule_id ?? null,
     });
 
     return NextResponse.json({
       success: true,
-      message: `Comando ${action} criado com sucesso`,
+      message: `Comando ${mode} criado com sucesso`,
       command_id: command.id,
       command: {
         id: command.id,
         device_id: master_device_id,
         relay_number,
-        action,
-        duration_seconds,
+        action: resolved.action,
+        mode,
+        duration_seconds: resolved.duration_seconds,
+        cycle_off_seconds: cycle_off_seconds ?? null,
         status: 'pending',
         is_local: !slave_mac_address,
         is_slave: !!slave_mac_address,

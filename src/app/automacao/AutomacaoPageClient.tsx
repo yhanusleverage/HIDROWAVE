@@ -48,6 +48,7 @@ import {
 import { subscribeDeviceStatusUpdates } from '@/lib/realtime/device-status';
 import { subscribeRelayCommandUpdates } from '@/lib/realtime/relay-commands';
 import { applyRelayCommandAck, type PendingRelayCommand } from '@/lib/relay-pending-commands';
+import { sendSlaveRelayCommand } from '@/lib/slave-relay-command';
 // Removido: import { getRelayStates } from '@/lib/automation'; // ❌ Não usar mais relay_states
 import { getMasterLocalRelayNames, saveMasterLocalRelayName } from '@/lib/nutrition-plan';
 import { formatFlowRate } from '@/lib/pump-calibration';
@@ -250,7 +251,8 @@ export default function AutomacaoPageClient() {
   
   // ✅ NOVO: Estados para timers configurados por relé (relayKey -> duration_seconds)
   const [relayTimers, setRelayTimers] = useState<Map<string, number>>(new Map());
-  const [showTimerInput, setShowTimerInput] = useState<string | null>(null); // relayKey que está mostrando input
+  const [timerModes, setTimerModes] = useState<Map<string, 'timed_on' | 'timed_off'>>(new Map());
+  const [showTimerInput, setShowTimerInput] = useState<string | null>(null);
   
   // ✅ NOVO: Estados para ciclos programados (relayKey -> { onDuration: number, offDuration: number, enabled: boolean })
   const [relayCycles, setRelayCycles] = useState<Map<string, { onDuration: number; offDuration: number; enabled: boolean }>>(new Map());
@@ -1288,6 +1290,9 @@ export default function AutomacaoPageClient() {
         setEspnowSlaves((prev) => {
           const { slaves: updated, matched } = applySlaveRelayRow(prev, slaveRow);
           if (!matched) {
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('[Realtime] relay_slaves sin match — recargando slaves', slaveRow);
+            }
             loadESPNOWSlaves();
             return prev;
           }
@@ -2255,8 +2260,10 @@ export default function AutomacaoPageClient() {
                                   {slave.relays.map(relay => {
                                     const relayKey = `${slave.macAddress}-${relay.id}`;
                                     const realState = relay.state !== undefined ? relay.state : false;
-                                    const isRelayOn = relayStates.get(relayKey) ?? realState;
                                     const isLoading = loadingRelays.get(relayKey) || false;
+                                    const isRelayOn = isLoading
+                                      ? (relayStates.get(relayKey) ?? realState)
+                                      : realState;
                                     const isLocked = lockedSlaves.get(slave.macAddress) ?? false;
                                     const isSlaveOffline = slave.status === 'offline';
                                     const controlsDisabled = isLocked || isSlaveOffline;
@@ -2310,96 +2317,66 @@ export default function AutomacaoPageClient() {
                                         {/* 🎨 OBRA PRIMA: Switch Compacto Integrado con Timer y Ciclo */}
                                         <div className="relative">
                                           <div className="flex items-center gap-2">
-                                            {/* Switch Principal ON/OFF */}
+                                            {/* Modo ativo (chip) */}
+                                            {(relayCycles.get(relayKey)?.enabled || (hasTimer && remainingTime > 0)) && (
+                                              <p className="text-[10px] text-aqua-400/90 mb-1 truncate">
+                                                {relayCycles.get(relayKey)?.enabled
+                                                  ? `Ciclo ${relayCycles.get(relayKey)!.onDuration}s/${relayCycles.get(relayKey)!.offDuration}s`
+                                                  : `Timer ${remainingTime}s`}
+                                              </p>
+                                            )}
+
+                                            {/* Switch Principal ON/OFF — sempre instantâneo */}
                                             <button
                                               onClick={async () => {
-                                                if (isRelayOn) {
-                                                  const previousState = isRelayOn;
-                                                  setLoadingRelays(prev => new Map(prev).set(relayKey, true));
-                                                  setRelayStates(prev => new Map(prev).set(relayKey, false));
-                                                  try {
-                                                    const response = await fetch('/api/esp-now/command', {
-                                                      method: 'POST',
-                                                      headers: { 'Content-Type': 'application/json' },
-                                                      body: JSON.stringify({
-                                                        master_device_id: selectedDeviceId,
-                                                        slave_mac_address: slave.macAddress,
-                                                        slave_name: slave.name,
-                                                        relay_number: relay.id,
-                                                        action: 'off',
-                                                        duration_seconds: 0,
-                                                      }),
-                                                    });
-
-                                                    if (response.ok) {
-                                                      const result = await response.json();
-                                                      if (result.command_id) {
-                                                        commandToRelayMap.current.set(result.command_id, {
-                                                          relayKey,
-                                                          previousState,
-                                                        });
-                                                      }
-                                                      toast.success(`${relay.name || `Relé ${relay.id + 1}`} desligado`);
-                                                      setTimeout(() => updateRelayStatesOnly(), 2000);
-                                                    } else {
-                                                      setRelayStates(prev => new Map(prev).set(relayKey, previousState));
-                                                      const error = await response.json();
-                                                      toast.error(`Erro: ${error.error}`);
+                                                const previousState = isRelayOn;
+                                                const nextOn = !isRelayOn;
+                                                setLoadingRelays(prev => new Map(prev).set(relayKey, true));
+                                                setRelayStates(prev => new Map(prev).set(relayKey, nextOn));
+                                                try {
+                                                  const result = await sendSlaveRelayCommand({
+                                                    master_device_id: selectedDeviceId!,
+                                                    slave_mac_address: slave.macAddress,
+                                                    slave_name: slave.name,
+                                                    relay_number: relay.id,
+                                                    mode: 'instant',
+                                                    action: nextOn ? 'on' : 'off',
+                                                    duration_seconds: 0,
+                                                  });
+                                                  if (result.success) {
+                                                    if (result.command_id) {
+                                                      commandToRelayMap.current.set(result.command_id, {
+                                                        relayKey,
+                                                        previousState,
+                                                      });
                                                     }
-                                                  } catch {
-                                                    setRelayStates(prev => new Map(prev).set(relayKey, previousState));
-                                                    toast.error('Erro ao enviar comando');
-                                                  } finally {
-                                                    setLoadingRelays(prev => {
-                                                      const next = new Map(prev);
-                                                      next.delete(relayKey);
-                                                      return next;
-                                                    });
-                                                  }
-                                                } else {
-                                                  const timerDuration = relayTimers.get(relayKey) || 0;
-                                                  const previousState = isRelayOn;
-                                                  setLoadingRelays(prev => new Map(prev).set(relayKey, true));
-                                                  setRelayStates(prev => new Map(prev).set(relayKey, true));
-                                                  try {
-                                                    const response = await fetch('/api/esp-now/command', {
-                                                      method: 'POST',
-                                                      headers: { 'Content-Type': 'application/json' },
-                                                      body: JSON.stringify({
-                                                        master_device_id: selectedDeviceId,
-                                                        slave_mac_address: slave.macAddress,
-                                                        slave_name: slave.name,
-                                                        relay_number: relay.id,
-                                                        action: 'on',
-                                                        duration_seconds: timerDuration,
-                                                      }),
-                                                    });
-
-                                                    if (response.ok) {
-                                                      const result = await response.json();
-                                                      if (result.command_id) {
-                                                        commandToRelayMap.current.set(result.command_id, {
-                                                          relayKey,
-                                                          previousState,
-                                                        });
-                                                      }
-                                                      toast.success(`${relay.name || `Relé ${relay.id + 1}`} ligado${timerDuration > 0 ? ` (${timerDuration}s)` : ''}`);
-                                                      setTimeout(() => updateRelayStatesOnly(), 2000);
-                                                    } else {
-                                                      setRelayStates(prev => new Map(prev).set(relayKey, previousState));
-                                                      const error = await response.json();
-                                                      toast.error(`Erro: ${error.error}`);
+                                                    if (!nextOn) {
+                                                      setRelayCycles(prev => {
+                                                        const next = new Map(prev);
+                                                        const c = next.get(relayKey);
+                                                        if (c) next.set(relayKey, { ...c, enabled: false });
+                                                        return next;
+                                                      });
                                                     }
-                                                  } catch {
+                                                    toast.success(
+                                                      nextOn
+                                                        ? `${relay.name || `Relé ${relay.id + 1}`} ligado`
+                                                        : `${relay.name || `Relé ${relay.id + 1}`} desligado`
+                                                    );
+                                                    setTimeout(() => updateRelayStatesOnly(), 2000);
+                                                  } else {
                                                     setRelayStates(prev => new Map(prev).set(relayKey, previousState));
-                                                    toast.error('Erro ao enviar comando');
-                                                  } finally {
-                                                    setLoadingRelays(prev => {
-                                                      const next = new Map(prev);
-                                                      next.delete(relayKey);
-                                                      return next;
-                                                    });
+                                                    toast.error(`Erro: ${result.error}`);
                                                   }
+                                                } catch {
+                                                  setRelayStates(prev => new Map(prev).set(relayKey, previousState));
+                                                  toast.error('Erro ao enviar comando');
+                                                } finally {
+                                                  setLoadingRelays(prev => {
+                                                    const next = new Map(prev);
+                                                    next.delete(relayKey);
+                                                    return next;
+                                                  });
                                                 }
                                               }}
                                               disabled={isLoading || controlsDisabled}
@@ -2540,47 +2517,93 @@ export default function AutomacaoPageClient() {
                                               {/* Contenido Timer */}
                                               {showTimerInput === relayKey && (
                                                 <div className="space-y-2">
+                                                  <select
+                                                    value={timerModes.get(relayKey) ?? 'timed_on'}
+                                                    onChange={(e) => {
+                                                      const mode = e.target.value as 'timed_on' | 'timed_off';
+                                                      setTimerModes(prev => new Map(prev).set(relayKey, mode));
+                                                    }}
+                                                    className="w-full px-2 py-1.5 bg-dark-surface border border-dark-border rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                                                  >
+                                                    <option value="timed_on">Ligar por X segundos</option>
+                                                    <option value="timed_off">Desligar em X segundos</option>
+                                                  </select>
                                                   <div className="flex items-center gap-2">
                                                     <input
                                                       type="number"
-                                                      min="0"
+                                                      min="1"
                                                       max="3600"
-                                                      value={relayTimers.get(relayKey) || 0}
+                                                      value={relayTimers.get(relayKey) || 10}
                                                       onChange={(e) => {
-                                                        const value = parseInt(e.target.value) || 0;
-                                                        setRelayTimers(prev => {
-                                                          const next = new Map(prev);
-                                                          if (value > 0) {
-                                                            next.set(relayKey, value);
-                                                          } else {
-                                                            next.delete(relayKey);
-                                                          }
-                                                          return next;
-                                                        });
+                                                        const value = parseInt(e.target.value) || 10;
+                                                        setRelayTimers(prev => new Map(prev).set(relayKey, value));
                                                       }}
                                                       placeholder="Segundos"
                                                       className="flex-1 px-2 py-1.5 bg-dark-surface border border-dark-border rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-aqua-500"
                                                       autoFocus
                                                     />
                                                     <span className="text-xs text-dark-textSecondary">s</span>
-                                                    <button
-                                                      type="button"
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setRelayTimers(prev => {
-                                                          const next = new Map(prev);
-                                                          next.delete(relayKey);
-                                                          return next;
-                                                        });
-                                                        setShowTimerInput(null);
-                                                      }}
-                                                      className="p-1.5 hover:bg-red-500/20 rounded text-red-400 transition-colors"
-                                                      title="Fechar e remover timer"
-                                                    >
-                                                      <XMarkIcon className="w-3.5 h-3.5" />
-                                                    </button>
                                                   </div>
-                                                  <p className="text-xs text-dark-textSecondary/80">Timer: desliga após X segundos</p>
+                                                  <p className="text-xs text-dark-textSecondary/80">
+                                                    {(timerModes.get(relayKey) ?? 'timed_on') === 'timed_on'
+                                                      ? 'Liga o relé e desliga automaticamente após X segundos'
+                                                      : 'Mantém ligado e desliga após X segundos (relé deve estar ON)'}
+                                                  </p>
+                                                  <button
+                                                    type="button"
+                                                    disabled={isLoading || controlsDisabled}
+                                                    onClick={async (e) => {
+                                                      e.stopPropagation();
+                                                      const secs = relayTimers.get(relayKey) || 10;
+                                                      const mode = timerModes.get(relayKey) ?? 'timed_on';
+                                                      setLoadingRelays(prev => new Map(prev).set(relayKey, true));
+                                                      const result = await sendSlaveRelayCommand({
+                                                        master_device_id: selectedDeviceId!,
+                                                        slave_mac_address: slave.macAddress,
+                                                        slave_name: slave.name,
+                                                        relay_number: relay.id,
+                                                        mode,
+                                                        duration_seconds: secs,
+                                                      });
+                                                      setLoadingRelays(prev => {
+                                                        const next = new Map(prev);
+                                                        next.delete(relayKey);
+                                                        return next;
+                                                      });
+                                                      if (result.success) {
+                                                        if (mode === 'timed_on') {
+                                                          setRelayStates(prev => new Map(prev).set(relayKey, true));
+                                                        }
+                                                        toast.success(
+                                                          mode === 'timed_on'
+                                                            ? `Timer: ligar ${secs}s`
+                                                            : `Timer: desligar em ${secs}s`
+                                                        );
+                                                        setShowTimerInput(null);
+                                                        setTimeout(() => updateRelayStatesOnly(), 2000);
+                                                      } else {
+                                                        toast.error(result.error ?? 'Erro ao ativar timer');
+                                                      }
+                                                    }}
+                                                    className="w-full py-2 px-3 text-xs font-medium rounded bg-aqua-500/20 text-aqua-400 border border-aqua-500/40 hover:bg-aqua-500/30 disabled:opacity-50"
+                                                  >
+                                                    Ativar Timer
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setRelayTimers(prev => {
+                                                        const next = new Map(prev);
+                                                        next.delete(relayKey);
+                                                        return next;
+                                                      });
+                                                      setShowTimerInput(null);
+                                                    }}
+                                                    className="w-full py-1.5 text-xs text-dark-textSecondary hover:text-red-400"
+                                                  >
+                                                    Fechar painel
+                                                  </button>
                                                 </div>
                                               )}
 
@@ -2627,31 +2650,87 @@ export default function AutomacaoPageClient() {
                                                       placeholder="10"
                                                     />
                                                   </div>
-                                                  <div className="flex items-center gap-2">
-                                                    <button
-                                                      onClick={() => {
-                                                        const cycle = relayCycles.get(relayKey);
-                                                        setRelayCycles(prev => {
-                                                          const next = new Map(prev);
-                                                          if (cycle) {
-                                                            next.set(relayKey, { ...cycle, enabled: !cycle.enabled });
+                                                  <div className="flex flex-col gap-2">
+                                                    {relayCycles.get(relayKey)?.enabled ? (
+                                                      <button
+                                                        type="button"
+                                                        disabled={isLoading || controlsDisabled}
+                                                        onClick={async (e) => {
+                                                          e.stopPropagation();
+                                                          setLoadingRelays(prev => new Map(prev).set(relayKey, true));
+                                                          const result = await sendSlaveRelayCommand({
+                                                            master_device_id: selectedDeviceId!,
+                                                            slave_mac_address: slave.macAddress,
+                                                            slave_name: slave.name,
+                                                            relay_number: relay.id,
+                                                            mode: 'cycle_stop',
+                                                            action: 'off',
+                                                          });
+                                                          setLoadingRelays(prev => {
+                                                            const next = new Map(prev);
+                                                            next.delete(relayKey);
+                                                            return next;
+                                                          });
+                                                          if (result.success) {
+                                                            setRelayCycles(prev => {
+                                                              const next = new Map(prev);
+                                                              const c = next.get(relayKey);
+                                                              if (c) next.set(relayKey, { ...c, enabled: false });
+                                                              return next;
+                                                            });
+                                                            toast.success('Ciclo parado');
                                                           } else {
-                                                            next.set(relayKey, { onDuration: 10, offDuration: 10, enabled: true });
+                                                            toast.error(result.error ?? 'Erro ao parar ciclo');
                                                           }
-                                                          return next;
-                                                        });
-                                                        toast.success(cycle?.enabled ? 'Ciclo desativado' : 'Ciclo ativado');
-                                                      }}
-                                                      className={`
-                                                        flex-1 py-2 px-3 text-xs font-medium rounded transition-all
-                                                        ${relayCycles.get(relayKey)?.enabled
-                                                          ? 'bg-green-500/20 text-green-400 border border-green-500/40 hover:bg-green-500/30'
-                                                          : 'bg-aqua-500/20 text-aqua-400 border border-aqua-500/40 hover:bg-aqua-500/30'
-                                                        }
-                                                      `}
-                                                    >
-                                                      {relayCycles.get(relayKey)?.enabled ? '🟢 Ativo' : '▶️ Ativar Ciclo'}
-                                                    </button>
+                                                        }}
+                                                        className="w-full py-2 px-3 text-xs font-medium rounded bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 disabled:opacity-50"
+                                                      >
+                                                        Parar Ciclo
+                                                      </button>
+                                                    ) : (
+                                                      <button
+                                                        type="button"
+                                                        disabled={isLoading || controlsDisabled}
+                                                        onClick={async (e) => {
+                                                          e.stopPropagation();
+                                                          const cycle = relayCycles.get(relayKey) ?? {
+                                                            onDuration: 10,
+                                                            offDuration: 10,
+                                                            enabled: false,
+                                                          };
+                                                          setLoadingRelays(prev => new Map(prev).set(relayKey, true));
+                                                          const result = await sendSlaveRelayCommand({
+                                                            master_device_id: selectedDeviceId!,
+                                                            slave_mac_address: slave.macAddress,
+                                                            slave_name: slave.name,
+                                                            relay_number: relay.id,
+                                                            mode: 'cycle',
+                                                            duration_seconds: cycle.onDuration,
+                                                            cycle_off_seconds: cycle.offDuration,
+                                                          });
+                                                          setLoadingRelays(prev => {
+                                                            const next = new Map(prev);
+                                                            next.delete(relayKey);
+                                                            return next;
+                                                          });
+                                                          if (result.success) {
+                                                            setRelayCycles(prev =>
+                                                              new Map(prev).set(relayKey, { ...cycle, enabled: true })
+                                                            );
+                                                            toast.success(
+                                                              `Ciclo ON ${cycle.onDuration}s / OFF ${cycle.offDuration}s`
+                                                            );
+                                                            setShowCycleInput(null);
+                                                            setTimeout(() => updateRelayStatesOnly(), 2000);
+                                                          } else {
+                                                            toast.error(result.error ?? 'Erro ao ativar ciclo');
+                                                          }
+                                                        }}
+                                                        className="w-full py-2 px-3 text-xs font-medium rounded bg-aqua-500/20 text-aqua-400 border border-aqua-500/40 hover:bg-aqua-500/30 disabled:opacity-50"
+                                                      >
+                                                        Ativar Ciclo
+                                                      </button>
+                                                    )}
                                                     <button
                                                       type="button"
                                                       onClick={(e) => {
@@ -2663,8 +2742,8 @@ export default function AutomacaoPageClient() {
                                                         });
                                                         setShowCycleInput(null);
                                                       }}
-                                                      className="p-2 hover:bg-red-500/20 rounded text-red-400 transition-colors"
-                                                      title="Fechar e remover ciclo"
+                                                      className="p-2 hover:bg-red-500/20 rounded text-red-400 transition-colors self-end"
+                                                      title="Fechar painel"
                                                     >
                                                       <XMarkIcon className="w-4 h-4" />
                                                     </button>

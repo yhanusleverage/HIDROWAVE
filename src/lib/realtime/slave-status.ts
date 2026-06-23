@@ -25,20 +25,37 @@ export function pickNewestTimestamp(
   return best;
 }
 
+/** Slaves ESP-NOW: heartbeat MQTT ~45s — margen 90s (alinhado com firmware link) */
+export const SLAVE_ONLINE_THRESHOLD_MINUTES = 1.5;
+
 /**
  * Online unificado para slaves: preferir relay_slaves.last_update, fallback device_status.last_seen.
+ * link_online explícito do payload MQTT (quando disponível no row) prevalece.
  */
 export function resolveSlaveOnline(
   relaySlavesLastUpdate?: string | null,
-  deviceStatusLastSeen?: string | null
+  deviceStatusLastSeen?: string | null,
+  linkOnline?: boolean | null
 ): boolean {
-  if (relaySlavesLastUpdate && isOnlineFromLastSeen(relaySlavesLastUpdate)) {
+  if (linkOnline === true) return true;
+  if (linkOnline === false) return false;
+  if (
+    relaySlavesLastUpdate &&
+    isOnlineFromLastSeen(relaySlavesLastUpdate, SLAVE_ONLINE_THRESHOLD_MINUTES)
+  ) {
     return true;
   }
-  if (deviceStatusLastSeen && isOnlineFromLastSeen(deviceStatusLastSeen)) {
+  if (
+    deviceStatusLastSeen &&
+    isOnlineFromLastSeen(deviceStatusLastSeen, SLAVE_ONLINE_THRESHOLD_MINUTES)
+  ) {
     return true;
   }
   return false;
+}
+
+function normalizeMac(mac: string | null | undefined): string {
+  return (mac || '').trim().toUpperCase();
 }
 
 export function isSlaveDeviceRow(row: DeviceStatusRow): boolean {
@@ -63,7 +80,9 @@ export function patchSlaveFromDeviceStatus(
 
   const updated = slaves.map((slave) => {
     const byId = row.device_id && slave.device_id === row.device_id;
-    const byMac = row.mac_address && slave.macAddress === row.mac_address;
+    const byMac =
+      row.mac_address &&
+      normalizeMac(slave.macAddress) === normalizeMac(row.mac_address);
     if (!byId && !byMac) return slave;
 
     matched = true;

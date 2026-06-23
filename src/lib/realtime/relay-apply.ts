@@ -11,9 +11,15 @@ export type LocalRelayState = {
   state: boolean;
 };
 
+function normalizeMac(mac: string | null | undefined): string {
+  return (mac || '').trim().toUpperCase();
+}
+
 function slaveMatchesRow(slave: ESPNowSlave, row: RelaySlaveRow): boolean {
   if (row.device_id && slave.device_id === row.device_id) return true;
-  if (row.slave_mac_address && slave.macAddress === row.slave_mac_address) return true;
+  if (row.slave_mac_address && normalizeMac(slave.macAddress) === normalizeMac(row.slave_mac_address)) {
+    return true;
+  }
   return false;
 }
 
@@ -26,7 +32,8 @@ export function applySlaveRelayRow(
     return { slaves, matched: false };
   }
 
-  const states = row.relay_states ?? [];
+  const states = row.relay_states;
+  const hasStateArray = Array.isArray(states) && states.length > 0;
   const hasTimers = row.relay_has_timers ?? [];
   const remainingTimes = row.relay_remaining_times ?? [];
 
@@ -35,12 +42,17 @@ export function applySlaveRelayRow(
   const updated = slaves.map((slave) => {
     if (!slaveMatchesRow(slave, row)) return slave;
     matched = true;
-    const online = resolveSlaveOnline(lastUpdate, slave.last_seen);
+    const online = resolveSlaveOnline(
+      lastUpdate,
+      slave.last_seen,
+      row.link_online
+    );
     return {
       ...slave,
       status: online ? ('online' as const) : ('offline' as const),
       last_seen: lastUpdate ?? slave.last_seen,
       relays: slave.relays.map((relay) => {
+        if (!hasStateArray) return relay;
         const idx = relay.id;
         if (idx < 0 || idx >= Math.max(states.length, 8)) return relay;
         return {
@@ -52,6 +64,14 @@ export function applySlaveRelayRow(
       }),
     };
   });
+
+  if (!matched && process.env.NODE_ENV === 'development') {
+    console.warn('[Realtime] relay_slaves row sin match', {
+      device_id: row.device_id,
+      slave_mac_address: row.slave_mac_address,
+      known: slaves.map((s) => ({ id: s.device_id, mac: s.macAddress })),
+    });
+  }
 
   return { slaves: matched ? updated : slaves, matched };
 }

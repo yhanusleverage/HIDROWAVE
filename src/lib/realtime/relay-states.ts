@@ -25,6 +25,7 @@ export type RelaySlaveRow = {
   relay_remaining_times?: number[];
   last_update?: string;
   updated_at?: string;
+  link_online?: boolean | null;
 };
 
 type RelayStateListener = {

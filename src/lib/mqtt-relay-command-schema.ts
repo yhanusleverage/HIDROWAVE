@@ -16,6 +16,22 @@ export const SLAVE_MAC_RE =
 export type MqttRelayAction = 'on' | 'off';
 export type MqttCommandType = 'manual' | 'rule' | 'peristaltic';
 
+/** Modo de acionamento — default instant (compat v1) */
+export type RelayCommandMode =
+  | 'instant'
+  | 'timed_on'
+  | 'timed_off'
+  | 'cycle'
+  | 'cycle_stop';
+
+export const RELAY_COMMAND_MODES: RelayCommandMode[] = [
+  'instant',
+  'timed_on',
+  'timed_off',
+  'cycle',
+  'cycle_stop',
+];
+
 /** Payload JSON publicado no tópico command (v1) */
 export type MqttRelayCommandMessageV1 = {
   v: typeof MQTT_CMD_SCHEMA_VERSION;
@@ -25,6 +41,8 @@ export type MqttRelayCommandMessageV1 = {
   relay_index: number;
   action: MqttRelayAction;
   duration_s: number;
+  mode?: RelayCommandMode;
+  cycle_off_s?: number;
   source: 'web' | 'api' | 'rule';
   command_type: MqttCommandType;
   priority: number;
@@ -42,6 +60,8 @@ export type MqttRelayCommandNotifyInput = {
   relay_index: number;
   action: MqttRelayAction;
   duration_s?: number | null;
+  mode?: RelayCommandMode;
+  cycle_off_s?: number | null;
   target_device_id?: string | null;
   command_type?: MqttCommandType;
   priority?: number;
@@ -88,6 +108,13 @@ export function isSlaveCommand(target?: string | null): boolean {
   return normalizeTargetDeviceId(target) !== undefined;
 }
 
+export function normalizeRelayCommandMode(
+  mode?: RelayCommandMode | string | null
+): RelayCommandMode {
+  const m = (mode ?? 'instant').trim() as RelayCommandMode;
+  return RELAY_COMMAND_MODES.includes(m) ? m : 'instant';
+}
+
 export function validateNotifyInput(input: MqttRelayCommandNotifyInput): string | null {
   if (!input.id || input.id <= 0) return 'id inválido (deve ser relay_commands.id > 0)';
   if (!validateDeviceId(input.device_id)) return `device_id inválido: ${input.device_id}`;
@@ -98,6 +125,22 @@ export function validateNotifyInput(input: MqttRelayCommandNotifyInput): string 
       : `relay_index master inválido: ${input.relay_index} (0-15)`;
   }
   if (input.action !== 'on' && input.action !== 'off') return `action inválida: ${input.action}`;
+  const mode = normalizeRelayCommandMode(input.mode);
+  const duration = Math.max(0, Math.floor(input.duration_s ?? 0));
+  const cycleOff = Math.max(0, Math.floor(input.cycle_off_s ?? 0));
+  if (mode === 'timed_on' || mode === 'timed_off') {
+    if (duration < 1 || duration > 3600) {
+      return 'timed_on/timed_off exige duration_s entre 1 e 3600';
+    }
+  }
+  if (mode === 'cycle') {
+    if (duration < 1 || duration > 3600) {
+      return 'cycle exige duration_s (ON) entre 1 e 3600';
+    }
+    if (cycleOff < 1 || cycleOff > 3600) {
+      return 'cycle exige cycle_off_s entre 1 e 3600';
+    }
+  }
   const target = normalizeTargetDeviceId(input.target_device_id);
   if (target && !SLAVE_MAC_RE.test(target)) {
     return `target_device_id não é MAC válido: ${target}`;
@@ -117,6 +160,8 @@ export function buildMqttRelayCommandMessageV1(
   const commandType = input.command_type ?? 'manual';
   const target = normalizeTargetDeviceId(input.target_device_id);
   const duration = Math.max(0, Math.floor(input.duration_s ?? 0));
+  const mode = normalizeRelayCommandMode(input.mode);
+  const cycleOff = Math.max(0, Math.floor(input.cycle_off_s ?? 0));
 
   const msg: MqttRelayCommandMessageV1 = {
     v: MQTT_CMD_SCHEMA_VERSION,
@@ -131,6 +176,13 @@ export function buildMqttRelayCommandMessageV1(
     priority: input.priority ?? defaultPriority(commandType),
     triggered_by: input.triggered_by ?? 'mqtt_push',
   };
+
+  if (mode !== 'instant') {
+    msg.mode = mode;
+  }
+  if (mode === 'cycle' && cycleOff > 0) {
+    msg.cycle_off_s = cycleOff;
+  }
 
   if (target) {
     msg.target_device_id = target;
