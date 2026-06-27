@@ -64,6 +64,23 @@ Serial:
 
 Teste VM: `npm run test:pub:slave-command` em `/opt/hidrowave-bridge` (ver `MQTT_COMANDOS_RAPIDOS_SLAVES.md`).
 
+### Latencia toggle → ACK → UI (slave estable)
+
+**Precondicion:** slave sin `MASTER NÃO ENCONTRADO` en serial; master `online:1`; mismo canal RF (ej. canal 1).
+
+| Paso | Accion | OK si |
+|------|--------|-------|
+| 1 | Script semi-auto en VM | `node scripts/bancada-slave-relay-kpi.js` sin error MQTT |
+| 2 | Cronometro: clic toggle relé 0 en UI | < **2 s** hasta estado reflejado en UI |
+| 3 | Serial master | ACK relé, sin `TIMEOUT DE ACK` |
+| 4 | Serial slave | Sin `0x3069`, sin scan multi-canal durante toggle |
+| 5 | GPIO fisico | Relé audibly/LED cambia |
+
+```bash
+SLAVE_MAC=14:33:5C:38:BF:60 TEST_DEVICE_ID=ESP32_HIDRO_1A575C \
+  node scripts/bancada-slave-relay-kpi.js
+```
+
 ---
 
 ## Limpieza post-test
