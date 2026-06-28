@@ -23,6 +23,7 @@ export type RelaySlaveRow = {
   relay_states?: boolean[];
   relay_has_timers?: boolean[];
   relay_remaining_times?: number[];
+  relay_names?: string[];
   last_update?: string;
   updated_at?: string;
   link_online?: boolean | null;

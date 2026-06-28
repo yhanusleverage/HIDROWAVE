@@ -17,6 +17,8 @@
     "verify:mqtt-publish-env": "node scripts/verify-mqtt-publish-env.js",
     "verify:relay-rpc": "node scripts/verify-relay-rpc.js",
     "verify:relay-command": "node scripts/verify-relay-rpc.js",
+    "verify:slave-relay-states": "node scripts/verify-slave-relay-states-e2e.js",
+    "verify:slave-relay-names": "node scripts/verify-slave-relay-names.js",
     "verify:design-tokens": "node scripts/check-design-tokens.js"
   },
   "engines": {

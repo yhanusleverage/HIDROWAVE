@@ -8,7 +8,7 @@ import { saveSlaveRelayName } from '@/lib/esp-now-slaves';
  * - slave_mac_address: MAC address (identificador principal)
  * - slave_name: Nome do dispositivo (identificador alternativo)
  * 
- * Salva em decision_rules como metadados
+ * Salva em relay_slaves.relay_names (schema prod)
  */
 export async function POST(request: Request) {
   try {
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Salvar nome do relé na tabela relay_names
+    // Salvar nome do relé em relay_slaves.relay_names
     const result = await saveSlaveRelayName(
       master_device_id,
       slave_mac_address,

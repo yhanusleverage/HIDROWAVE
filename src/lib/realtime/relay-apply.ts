@@ -1,6 +1,7 @@
 import type { ESPNowSlave } from '@/lib/esp-now-slaves';
 import type { RelayMasterRow, RelaySlaveRow } from '@/lib/realtime/relay-states';
 import { resolveSlaveOnline } from '@/lib/realtime/slave-status';
+import { slaveRelayNamesToMap } from '@/lib/relay-names-prod';
 
 /** Fallback REST lento para timers y eventos perdidos tras reconexión WS. */
 export const RELAY_REST_FALLBACK_MS = 90 * 1000;
@@ -36,6 +37,10 @@ export function applySlaveRelayRow(
   const hasStateArray = Array.isArray(states) && states.length > 0;
   const hasTimers = row.relay_has_timers ?? [];
   const remainingTimes = row.relay_remaining_times ?? [];
+  const nameMap =
+    row.relay_names && row.relay_names.length > 0
+      ? slaveRelayNamesToMap(row.relay_names)
+      : null;
 
   let matched = false;
   const lastUpdate = row.last_update ?? row.updated_at;
@@ -52,11 +57,16 @@ export function applySlaveRelayRow(
       status: online ? ('online' as const) : ('offline' as const),
       last_seen: lastUpdate ?? slave.last_seen,
       relays: slave.relays.map((relay) => {
-        if (!hasStateArray) return relay;
         const idx = relay.id;
-        if (idx < 0 || idx >= Math.max(states.length, 8)) return relay;
-        return {
+        const nameFromRow = nameMap?.[idx];
+        const next: typeof relay = {
           ...relay,
+          ...(nameFromRow ? { name: nameFromRow } : {}),
+        };
+        if (!hasStateArray) return next;
+        if (idx < 0 || idx >= Math.max(states.length, 8)) return next;
+        return {
+          ...next,
           state: states[idx] ?? relay.state,
           has_timer: hasTimers[idx] ?? relay.has_timer,
           remaining_time: remainingTimes[idx] ?? relay.remaining_time,

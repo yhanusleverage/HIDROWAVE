@@ -119,6 +119,7 @@ export const processosPagesEs: Record<ProcessosPageSlug, DocsPageContent> = {
       { href: '/processos/ciclos-automaticos', title: 'Ciclos Automáticos', description: 'Máquinas de estado EC y pH', accent: 'ec' },
       { href: '/processos/scripts-sequenciais', title: 'Scripts Secuenciales', description: 'WHILE/IF, cooldown', accent: 'brand' },
       { href: '/processos/agendamentos', title: 'Agendamientos', description: 'SCHEDULE_*, timezone', accent: 'wait' },
+      { href: '/processos/timeline-cultivo', title: 'Timeline de cultivo — preview', description: 'EC/pH por semana, P1–P4 y simulación (mock)', accent: 'warn' },
     ],
     next: { href: '/processos/ciclos-automaticos', label: 'Ciclos Automáticos' },
     help: {

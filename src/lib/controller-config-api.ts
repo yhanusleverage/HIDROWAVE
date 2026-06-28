@@ -18,6 +18,8 @@ export const EC_WRITABLE_KEYS = [
   'dilution_auto_enabled',
   'dilution_drain_relay',
   'dilution_fill_relay',
+  'dilution_drain_slave_mac',
+  'dilution_fill_slave_mac',
   'dilution_max_volume_l',
   'flowmeter_pulses_per_liter',
   'dilution_fill_flow_lps',
@@ -129,6 +131,13 @@ export function sanitizeEcNumericFields(
   }
   if (out.dilution_fill_relay !== undefined && typeof out.dilution_fill_relay === 'number') {
     out.dilution_fill_relay = Math.floor(out.dilution_fill_relay);
+  }
+
+  for (const key of ['dilution_drain_slave_mac', 'dilution_fill_slave_mac'] as const) {
+    if (typeof out[key] === 'string') {
+      const trimmed = (out[key] as string).trim().toUpperCase();
+      out[key] = trimmed.length > 0 ? trimmed : null;
+    }
   }
 
   if (out.intervalo_auto_ec !== undefined) {

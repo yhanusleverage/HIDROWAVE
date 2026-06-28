@@ -8,10 +8,12 @@ import {
   LockClosedIcon,
   LockOpenIcon,
   BeakerIcon,
+  SignalIcon,
 } from '@heroicons/react/24/outline';
-import { DoserRelaySelect } from '@/components/DoserRelaySelect';
 import { EcDilutionPreviewCard } from '@/components/EcDilutionPreviewCard';
+import { SlaveRelaySelect } from '@/components/SlaveRelaySelect';
 import OperationStateBadges from '@/components/OperationStateBadges';
+import type { ESPNowSlave } from '@/lib/esp-now-slaves';
 import { useEcDilutionConfig } from '@/hooks/useEcDilutionConfig';
 import { useEcDilutionState } from '@/hooks/useEcDilutionState';
 import { useLastEcDilution } from '@/hooks/useLastEcDilution';
@@ -23,24 +25,17 @@ import {
 } from '@/lib/ec-dilution';
 import { parseConfigApiError } from '@/lib/controller-config-api';
 import {
-  buildRegistryFromConfigs,
-  formatRelayConflictMessage,
-  type RelayAllocationRegistry,
-  type EcNutrientRelaySlice,
-} from '@/lib/relay-allocation';
+  dilutionDrainRef,
+  dilutionFillRef,
+  validateEcDilutionSlaveAssignment,
+  type SlaveRelayRef,
+} from '@/lib/slave-relay-allocation';
 import { HW_TEXT } from '@/lib/design-tokens';
-
-export interface RelayAllocationBridge {
-  buildRegistry: (
-    overrides?: Parameters<typeof buildRegistryFromConfigs>[0]
-  ) => RelayAllocationRegistry;
-}
 
 interface EcDilutionSectionProps {
   deviceId: string;
   ecActual: number | null;
-  relayAllocation: RelayAllocationBridge;
-  nutrients: EcNutrientRelaySlice[];
+  espnowSlaves: ESPNowSlave[];
   locked?: boolean;
   onToggleLock?: () => void;
 }
@@ -57,8 +52,7 @@ function formatCountdown(totalSec: number): string {
 export function EcDilutionSection({
   deviceId,
   ecActual,
-  relayAllocation,
-  nutrients,
+  espnowSlaves,
   locked = false,
   onToggleLock,
 }: EcDilutionSectionProps) {
@@ -74,22 +68,32 @@ export function EcDilutionSection({
   });
   const lastDilution = useLastEcDilution(deviceId, Boolean(deviceId?.trim()));
 
-  const registry = useMemo(
-    () =>
-      relayAllocation.buildRegistry({
-        ecConfig: {
-          nutrients,
-          dilution_drain_relay: config.dilution_drain_relay,
-          dilution_fill_relay: config.dilution_fill_relay,
-        },
+  const drainRef = useMemo(
+    (): SlaveRelayRef | null =>
+      dilutionDrainRef({
+        dilution_drain_slave_mac: config.dilution_drain_slave_mac,
+        dilution_drain_relay: config.dilution_drain_relay,
       }),
-    [
-      relayAllocation,
-      nutrients,
-      config.dilution_drain_relay,
-      config.dilution_fill_relay,
-    ]
+    [config.dilution_drain_slave_mac, config.dilution_drain_relay]
   );
+
+  const fillRef = useMemo(
+    (): SlaveRelayRef | null =>
+      dilutionFillRef({
+        dilution_fill_slave_mac: config.dilution_fill_slave_mac,
+        dilution_fill_relay: config.dilution_fill_relay,
+      }),
+    [config.dilution_fill_slave_mac, config.dilution_fill_relay]
+  );
+
+  const reservedRelays = useMemo((): SlaveRelayRef[] => {
+    const list: SlaveRelayRef[] = [];
+    if (drainRef) list.push(drainRef);
+    if (fillRef) list.push(fillRef);
+    return list;
+  }, [drainRef, fillRef]);
+
+  const onlineSlaves = espnowSlaves.filter((s) => s.status === 'online').length;
 
   const suggestedVolume = useMemo(() => {
     if (ecActual == null || config.ec_setpoint <= 0) return 0;
@@ -104,34 +108,25 @@ export function EcDilutionSection({
   }, [suggestedVolume, manualVolume]);
 
   const handleSaveConfig = useCallback(async () => {
-    const drainMsg = formatRelayConflictMessage(registry, config.dilution_drain_relay, {
-      field: 'ec_dilution_drain',
-      currentValue: config.dilution_drain_relay,
-    });
-    if (drainMsg) {
-      toast.error(drainMsg);
-      return;
-    }
-    const fillMsg = formatRelayConflictMessage(registry, config.dilution_fill_relay, {
-      field: 'ec_dilution_fill',
-      currentValue: config.dilution_fill_relay,
-    });
-    if (fillMsg) {
-      toast.error(fillMsg);
-      return;
-    }
-    if (config.dilution_drain_relay < 0 || config.dilution_fill_relay < 0) {
-      toast.error('Configure os relés de dreno e reposição');
-      return;
-    }
-    if (config.dilution_drain_relay === config.dilution_fill_relay) {
-      toast.error('Relés de dreno e reposição devem ser diferentes');
+    const validation = validateEcDilutionSlaveAssignment(
+      {
+        dilution_drain_slave_mac: config.dilution_drain_slave_mac,
+        dilution_drain_relay: config.dilution_drain_relay,
+        dilution_fill_slave_mac: config.dilution_fill_slave_mac,
+        dilution_fill_relay: config.dilution_fill_relay,
+      },
+      espnowSlaves
+    );
+    if (!validation.ok) {
+      toast.error(validation.error);
       return;
     }
 
     const result = await config.save({
       dilution_drain_relay: config.dilution_drain_relay,
       dilution_fill_relay: config.dilution_fill_relay,
+      dilution_drain_slave_mac: config.dilution_drain_slave_mac,
+      dilution_fill_slave_mac: config.dilution_fill_slave_mac,
       dilution_max_volume_l: config.dilution_max_volume_l,
       flowmeter_pulses_per_liter: config.flowmeter_pulses_per_liter,
       dilution_fill_flow_lps: config.dilution_fill_flow_lps,
@@ -142,8 +137,8 @@ export function EcDilutionSection({
       toast.error(result.error || 'Erro ao salvar diluição');
       return;
     }
-    hwToast.success('Configuração de diluição salva', 'DILUIÇÃO EC');
-  }, [config, registry]);
+    hwToast.success('Configuração de diluição salva (relés slave)', 'DILUIÇÃO EC');
+  }, [config, espnowSlaves]);
 
   const handleToggleAuto = useCallback(async () => {
     const next = !config.dilution_auto_enabled;
@@ -168,8 +163,8 @@ export function EcDilutionSection({
       toast.error(`Volume excede o máximo (${config.dilution_max_volume_l} L)`);
       return;
     }
-    if (config.dilution_drain_relay < 0 || config.dilution_fill_relay < 0) {
-      toast.error('Configure e salve os relés antes de iniciar');
+    if (!drainRef || !fillRef) {
+      toast.error('Configure e salve os relés slave antes de iniciar');
       return;
     }
     if (dilutionState.isDiluting) {
@@ -199,9 +194,23 @@ export function EcDilutionSection({
     } finally {
       setStarting(false);
     }
-  }, [manualVolume, config, dilutionState.isDiluting, deviceId]);
+  }, [manualVolume, config, dilutionState.isDiluting, deviceId, drainRef, fillRef]);
 
   const controlsDisabled = locked || config.isSaving;
+
+  const setDrainRef = (ref: SlaveRelayRef | null) => {
+    config.updateLocal({
+      dilution_drain_slave_mac: ref?.slaveMac ?? '',
+      dilution_drain_relay: ref?.relayId ?? -1,
+    });
+  };
+
+  const setFillRef = (ref: SlaveRelayRef | null) => {
+    config.updateLocal({
+      dilution_fill_slave_mac: ref?.slaveMac ?? '',
+      dilution_fill_relay: ref?.relayId ?? -1,
+    });
+  };
 
   return (
     <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
@@ -266,8 +275,19 @@ export function EcDilutionSection({
         <div className="p-4 sm:p-6 border-t border-dark-border space-y-6">
           <p className="text-xs sm:text-sm text-dark-textSecondary">
             Modo A: dreno parcial medido por fluxómetro na saída do dreno + reposição de água.
-            Ativa quando EC &gt; setpoint + banda morta. Independente do Auto EC de nutrientes.
+            Ativa quando EC &gt; setpoint + banda morta. Relés via{' '}
+            <span className="text-violet-300 font-medium">ESP-NOW slave</span> (não relés master
+            0–7).
           </p>
+
+          <div className="flex items-center gap-2 text-xs text-dark-textSecondary rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2">
+            <SignalIcon className="w-4 h-4 text-violet-400 shrink-0" />
+            <span>
+              {espnowSlaves.length === 0
+                ? 'Nenhum slave ESP-NOW — sincronize o master na bancada.'
+                : `${espnowSlaves.length} slave(s) · ${onlineSlaves} online`}
+            </span>
+          </div>
 
           <EcDilutionPreviewCard
             ecSetpoint={config.ec_setpoint}
@@ -280,9 +300,7 @@ export function EcDilutionSection({
           {dilutionState.isDiluting && dilutionState.targetL > 0 && (
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-cyan-300">
-                <span>
-                  {dilutionState.isDraining ? 'Drenando' : 'Reponendo'}
-                </span>
+                <span>{dilutionState.isDraining ? 'Drenando' : 'Reponendo'}</span>
                 <span>
                   {dilutionState.progressL.toFixed(1)} / {dilutionState.targetL.toFixed(1)} L
                 </span>
@@ -301,39 +319,38 @@ export function EcDilutionSection({
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                Relé dreno
-              </label>
-              <DoserRelaySelect
-                registry={registry}
-                context={{
-                  field: 'ec_dilution_drain',
-                  currentValue: config.dilution_drain_relay,
-                }}
-                value={config.dilution_drain_relay}
-                onChange={(v) => config.updateLocal({ dilution_drain_relay: v })}
+          <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.04] p-4 space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-300/90">
+              Relés slave (dreno + reposição)
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <SlaveRelaySelect
+                slaves={espnowSlaves}
+                label="Relé dreno"
+                value={drainRef}
+                reserved={reservedRelays.filter(
+                  (r) => !(fillRef && r.slaveMac === fillRef.slaveMac && r.relayId === fillRef.relayId)
+                )}
+                onChange={setDrainRef}
                 disabled={controlsDisabled}
-                className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text"
+                emptyMessage="Todos os relés slave estão reservados ou indisponíveis."
+              />
+              <SlaveRelaySelect
+                slaves={espnowSlaves}
+                label="Relé reposição (água)"
+                value={fillRef}
+                reserved={reservedRelays.filter(
+                  (r) =>
+                    !(drainRef && r.slaveMac === drainRef.slaveMac && r.relayId === drainRef.relayId)
+                )}
+                onChange={setFillRef}
+                disabled={controlsDisabled}
+                emptyMessage="Todos os relés slave estão reservados ou indisponíveis."
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                Relé reposição (água)
-              </label>
-              <DoserRelaySelect
-                registry={registry}
-                context={{
-                  field: 'ec_dilution_fill',
-                  currentValue: config.dilution_fill_relay,
-                }}
-                value={config.dilution_fill_relay}
-                onChange={(v) => config.updateLocal({ dilution_fill_relay: v })}
-                disabled={controlsDisabled}
-                className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text"
-              />
-            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-dark-textSecondary mb-1">
                 Volume máximo por ciclo (L)
@@ -434,11 +451,7 @@ export function EcDilutionSection({
                 <button
                   type="button"
                   onClick={() => setConfirmManual(true)}
-                  disabled={
-                    controlsDisabled ||
-                    dilutionState.isDiluting ||
-                    !manualVolume
-                  }
+                  disabled={controlsDisabled || dilutionState.isDiluting || !manualVolume}
                   className="px-4 py-2 bg-cyan-800 hover:bg-cyan-900 text-white rounded-lg disabled:opacity-50 whitespace-nowrap"
                 >
                   Iniciar diluição

@@ -4126,8 +4126,7 @@ export default function AutomacaoPageClient() {
           <EcDilutionSection
             deviceId={selectedDeviceId}
             ecActual={ecAtual}
-            relayAllocation={relayAllocation}
-            nutrients={nutrientsState}
+            espnowSlaves={espnowSlaves}
             locked={ecControllerLocked}
             onToggleLock={() =>
               showLockUnlockToast(

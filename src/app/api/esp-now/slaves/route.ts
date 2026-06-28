@@ -101,7 +101,7 @@ export async function GET(request: Request) {
       // ✅ CORRETO: Usar relay_slaves (arrays)
       const { data: slaveRelays, error: relayError } = await supabase
         .from('relay_slaves')
-        .select('device_id, relay_states, relay_has_timers, relay_remaining_times')
+        .select('device_id, relay_states, relay_has_timers, relay_remaining_times, relay_names')
         .eq('master_device_id', masterDeviceId)
         .in('device_id', deviceIds);
 
@@ -110,6 +110,7 @@ export async function GET(request: Request) {
         relay_states?: boolean[];
         relay_has_timers?: boolean[];
         relay_remaining_times?: number[];
+        relay_names?: string[] | null;
       }
       
       if (!relayError && slaveRelays) {
@@ -118,15 +119,19 @@ export async function GET(request: Request) {
           const states = slave.relay_states || Array(8).fill(false);
           const hasTimers = slave.relay_has_timers || Array(8).fill(false);
           const remainingTimes = slave.relay_remaining_times || Array(8).fill(0);
+          const names = slave.relay_names || [];
           
           const relayStates: RelayState[] = [];
           for (let i = 0; i < 8; i++) {
+            const customName =
+              names[i] && String(names[i]).trim() ? String(names[i]).trim() : undefined;
             relayStates.push({
               device_id: slave.device_id,
               relay_number: i,
               state: states[i] || false,
               has_timer: hasTimers[i] || false,
               remaining_time: remainingTimes[i] || 0,
+              relay_name: customName,
             });
           }
           

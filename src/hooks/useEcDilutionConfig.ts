@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { parseConfigApiError } from '@/lib/controller-config-api';
+import { normalizeSlaveMac } from '@/lib/slave-relay-allocation';
 
 export interface EcDilutionConfigSnapshot {
   dilution_auto_enabled: boolean;
   dilution_drain_relay: number;
   dilution_fill_relay: number;
+  dilution_drain_slave_mac: string;
+  dilution_fill_slave_mac: string;
   dilution_max_volume_l: number;
   flowmeter_pulses_per_liter: number;
   dilution_fill_flow_lps: number;
@@ -21,6 +24,8 @@ const DEFAULT: EcDilutionConfigSnapshot = {
   dilution_auto_enabled: false,
   dilution_drain_relay: -1,
   dilution_fill_relay: -1,
+  dilution_drain_slave_mac: '',
+  dilution_fill_slave_mac: '',
   dilution_max_volume_l: 50,
   flowmeter_pulses_per_liter: 450,
   dilution_fill_flow_lps: 0.5,
@@ -36,6 +41,12 @@ function parseConfig(data: Record<string, unknown>): Omit<EcDilutionConfigSnapsh
     dilution_auto_enabled: Boolean(data.dilution_auto_enabled),
     dilution_drain_relay: Number(data.dilution_drain_relay ?? -1),
     dilution_fill_relay: Number(data.dilution_fill_relay ?? -1),
+    dilution_drain_slave_mac: normalizeSlaveMac(
+      typeof data.dilution_drain_slave_mac === 'string' ? data.dilution_drain_slave_mac : ''
+    ),
+    dilution_fill_slave_mac: normalizeSlaveMac(
+      typeof data.dilution_fill_slave_mac === 'string' ? data.dilution_fill_slave_mac : ''
+    ),
     dilution_max_volume_l: Number(data.dilution_max_volume_l) || 50,
     flowmeter_pulses_per_liter: Number(data.flowmeter_pulses_per_liter) || 450,
     dilution_fill_flow_lps: Number(data.dilution_fill_flow_lps) || 0.5,
@@ -83,6 +94,12 @@ export function useEcDilutionConfig(deviceId: string, enabled = true) {
         }
         if (patch.dilution_fill_relay !== undefined) {
           body.dilution_fill_relay = patch.dilution_fill_relay;
+        }
+        if (patch.dilution_drain_slave_mac !== undefined) {
+          body.dilution_drain_slave_mac = patch.dilution_drain_slave_mac || null;
+        }
+        if (patch.dilution_fill_slave_mac !== undefined) {
+          body.dilution_fill_slave_mac = patch.dilution_fill_slave_mac || null;
         }
         if (patch.dilution_max_volume_l !== undefined) {
           body.dilution_max_volume_l = patch.dilution_max_volume_l;

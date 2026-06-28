@@ -169,7 +169,7 @@ export default function Sidebar() {
         />
       )}
     <aside
-      className={`fixed left-0 top-0 h-full bg-gradient-to-b from-dark-surface via-primary-900 to-aqua-900 border-r border-dark-border text-white transition-all duration-300 ease-in-out z-50 shadow-2xl ${
+      className={`fixed left-0 top-0 h-full flex flex-col bg-gradient-to-b from-dark-surface via-primary-900 to-aqua-900 border-r border-dark-border text-white transition-all duration-300 ease-in-out z-50 shadow-2xl ${
         isExpanded ? 'w-64' : 'w-20'
       }`}
       onMouseEnter={handleMouseEnter}
@@ -177,7 +177,7 @@ export default function Sidebar() {
     >
       {/* Logo/Header */}
       <div
-        className={`flex p-4 border-b border-dark-border ${
+        className={`flex shrink-0 p-4 border-b border-dark-border ${
           isExpanded ? 'items-center justify-between' : 'flex-col items-center gap-2'
         }`}
       >
@@ -205,8 +205,8 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* Menu Items */}
-      <nav className="mt-6 px-2">
+      {/* Menu Items — scroll when list exceeds viewport */}
+      <nav className="flex-1 min-h-0 overflow-y-auto mt-4 px-2 pb-2">
         <ul className="space-y-2">
           {menuItems.map((item) => {
             const isActive =
@@ -238,14 +238,15 @@ export default function Sidebar() {
         </ul>
       </nav>
 
-      {/* Footer */}
-      <div className={`absolute bottom-4 left-0 right-0 px-4 transition-opacity ${isExpanded ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="text-xs text-dark-textSecondary text-center space-y-1">
-          <NavLink href="/quem-somos" className="block hover:text-aqua-400 transition-colors">
-            Quem somos
-          </NavLink>
-          <p>© {new Date().getFullYear()} HydroWave</p>
-        </div>
+      {/* Footer — in flow (no absolute) to avoid overlapping nav items */}
+      <div
+        className={`shrink-0 border-t border-dark-border px-4 py-3 transition-opacity ${
+          isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <p className="text-xs text-dark-textSecondary text-center">
+          © {new Date().getFullYear()} HydroWave
+        </p>
       </div>
     </aside>
     </>

@@ -111,6 +111,7 @@ export const processosPagesEn: Record<ProcessosPageSlug, DocsPageContent> = {
       { href: '/processos/ciclos-automaticos', title: 'Automatic Cycles', description: 'EC and pH state machines, badges and config poll', accent: 'ec' },
       { href: '/processos/scripts-sequenciais', title: 'Sequential Scripts', description: 'WHILE/IF, cooldown, rule_executions', accent: 'brand' },
       { href: '/processos/agendamentos', title: 'Schedules', description: 'SCHEDULE_*, timezone, trigger_type', accent: 'wait' },
+      { href: '/processos/timeline-cultivo', title: 'Grow cycle timeline — preview', description: 'Weekly EC/pH, P1–P4 events and simulation (mock)', accent: 'warn' },
     ],
     next: { href: '/processos/ciclos-automaticos', label: 'Automatic Cycles' },
     help: {

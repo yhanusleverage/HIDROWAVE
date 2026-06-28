@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import {
   validateEcNutrientsAssignment,
-  validateEcDilutionRelayAssignment,
+  validateEcDilutionSlaveFields,
   type EcNutrientRelaySlice,
 } from '@/lib/relay-allocation';
 import {
@@ -104,12 +104,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const dilutionRelayCheck = validateEcDilutionRelayAssignment(
-      writableConfig.dilution_drain_relay as number | undefined,
-      writableConfig.dilution_fill_relay as number | undefined,
-      nutrients,
-      phRow ?? undefined
-    );
+    const dilutionRelayCheck = validateEcDilutionSlaveFields(writableConfig);
     if (!dilutionRelayCheck.ok) {
       return NextResponse.json(
         configApiErrorResponse(

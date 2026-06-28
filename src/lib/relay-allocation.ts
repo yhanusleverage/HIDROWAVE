@@ -262,21 +262,23 @@ export function buildRegistryFromConfigs(input: BuildRegistryInput): RelayAlloca
   }
 
   const dilDrain = Number(input.ecConfig?.dilution_drain_relay);
-  if (isDoserRelay(dilDrain)) {
+  const dilDrainMac = (input.ecConfig as { dilution_drain_slave_mac?: string })?.dilution_drain_slave_mac;
+  if (isDoserRelay(dilDrain) && !dilDrainMac) {
     claims.push({
       relayNumber: dilDrain,
       owner: 'ec_dilution_drain',
-      label: 'Dreno diluição EC',
+      label: 'Dreno diluição EC (legacy master)',
       sourceId: 'dilution_drain',
     });
   }
 
   const dilFill = Number(input.ecConfig?.dilution_fill_relay);
-  if (isDoserRelay(dilFill)) {
+  const dilFillMac = (input.ecConfig as { dilution_fill_slave_mac?: string })?.dilution_fill_slave_mac;
+  if (isDoserRelay(dilFill) && !dilFillMac) {
     claims.push({
       relayNumber: dilFill,
       owner: 'ec_dilution_fill',
-      label: 'Reposição diluição EC',
+      label: 'Reposição diluição EC (legacy master)',
       sourceId: 'dilution_fill',
     });
   }
@@ -571,54 +573,39 @@ export function validateEcNutrientsAssignment(
   return { ok: true };
 }
 
-export function validateEcDilutionRelayAssignment(
-  drainRelay: number | null | undefined,
-  fillRelay: number | null | undefined,
-  nutrients: EcNutrientRelaySlice[] | null | undefined,
-  phConfig: PhConfigRelaySlice | null | undefined
+export function validateEcDilutionSlaveFields(
+  config: Record<string, unknown>
 ): ValidationResult {
-  const drain = Number(drainRelay);
-  const fill = Number(fillRelay);
-  const hasDrain = isDoserRelay(drain);
-  const hasFill = isDoserRelay(fill);
+  const hasDrainMac =
+    typeof config.dilution_drain_slave_mac === 'string' &&
+    config.dilution_drain_slave_mac.trim().length > 0;
+  const hasFillMac =
+    typeof config.dilution_fill_slave_mac === 'string' &&
+    config.dilution_fill_slave_mac.trim().length > 0;
+  const drainRelay = Number(config.dilution_drain_relay);
+  const fillRelay = Number(config.dilution_fill_relay);
 
-  if (hasDrain && hasFill && drain === fill) {
-    return { ok: false, error: 'Relés de dreno e reposição devem ser diferentes.' };
-  }
+  const configuring =
+    hasDrainMac ||
+    hasFillMac ||
+    Number.isFinite(drainRelay) ||
+    Number.isFinite(fillRelay);
 
-  const phUp = Number(phConfig?.relay_ph_up);
-  const phDown = Number(phConfig?.relay_ph_down);
-
-  const checkOne = (relay: number, label: string): ValidationResult => {
-    if (isDoserRelay(phUp) && relay === phUp) {
-      return { ok: false, error: `Relé ${relay} (${label}) já usado como pH+.` };
-    }
-    if (isDoserRelay(phDown) && relay === phDown) {
-      return { ok: false, error: `Relé ${relay} (${label}) já usado como pH−.` };
-    }
-    if (Array.isArray(nutrients)) {
-      for (let i = 0; i < nutrients.length; i++) {
-        const nut = nutrients[i];
-        if (!isActiveNutrient(nut)) continue;
-        const r = nutrientRelay(nut);
-        if (r === relay) {
-          return {
-            ok: false,
-            error: `Relé ${relay} (${label}) já atribuído ao nutriente "${nut.name || i + 1}".`,
-          };
-        }
-      }
-    }
+  if (!configuring) {
     return { ok: true };
-  };
-
-  if (hasDrain) {
-    const r = checkOne(drain, 'dreno');
-    if (!r.ok) return r;
   }
-  if (hasFill) {
-    const r = checkOne(fill, 'reposição');
-    if (!r.ok) return r;
+
+  if (!hasDrainMac || !Number.isFinite(drainRelay) || drainRelay < 0 || drainRelay > 7) {
+    return { ok: false, error: 'Relé slave de dreno incompleto (MAC + índice 0–7).' };
+  }
+  if (!hasFillMac || !Number.isFinite(fillRelay) || fillRelay < 0 || fillRelay > 7) {
+    return { ok: false, error: 'Relé slave de reposição incompleto (MAC + índice 0–7).' };
+  }
+
+  const drainMac = config.dilution_drain_slave_mac!.toString().trim().toUpperCase();
+  const fillMac = config.dilution_fill_slave_mac!.toString().trim().toUpperCase();
+  if (drainMac === fillMac && drainRelay === fillRelay) {
+    return { ok: false, error: 'Dreno e reposição não podem ser o mesmo relé slave.' };
   }
 
   return { ok: true };

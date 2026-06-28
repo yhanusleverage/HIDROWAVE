@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getSupabaseServerClient } from './supabase-server';
 import { getDecisionRules } from './automation';
 import { patchSlaveRelayNamesArray } from './relay-names-prod';
 import { 
@@ -175,7 +176,10 @@ export async function saveSlaveRelayName(
       return { ok: false, error: 'Device ID do slave não encontrado' };
     }
 
-    const { data: existing, error: fetchError } = await supabase
+    const db =
+      typeof window === 'undefined' ? getSupabaseServerClient() : supabase;
+
+    const { data: existing, error: fetchError } = await db
       .from('relay_slaves')
       .select('relay_names')
       .eq('device_id', slaveDeviceId)
@@ -199,7 +203,7 @@ export async function saveSlaveRelayName(
       existing?.relay_names
     );
 
-    const { data: updated, error } = await supabase
+    const { data: updated, error } = await db
       .from('relay_slaves')
       .update({
         relay_names,

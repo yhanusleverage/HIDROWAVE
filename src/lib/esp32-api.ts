@@ -56,9 +56,9 @@ interface SlaveRelayFromSupabase {
   relay_states?: boolean[];
   relay_has_timers?: boolean[];
   relay_remaining_times?: number[];
+  relay_names?: string[] | null;
   last_update?: string;
   updated_at?: string;
-  relay_name?: string;
 }
 
 interface RelayState {
@@ -171,7 +171,7 @@ export async function getSlavesFromSupabase(masterDeviceId: string): Promise<ESP
       // ✅ CORRETO: Usar relay_slaves (arrays) + last_update para calcular status
       const { data: slaveRelays, error: relayError } = await supabase
         .from('relay_slaves')
-        .select('device_id, relay_states, relay_has_timers, relay_remaining_times, last_update, updated_at')
+        .select('device_id, relay_states, relay_has_timers, relay_remaining_times, relay_names, last_update, updated_at')
         .eq('master_device_id', masterDeviceId)
         .in('device_id', deviceIds);
       
@@ -187,15 +187,18 @@ export async function getSlavesFromSupabase(masterDeviceId: string): Promise<ESP
           const states = slave.relay_states || Array(8).fill(false);
           const hasTimers = slave.relay_has_timers || Array(8).fill(false);
           const remainingTimes = slave.relay_remaining_times || Array(8).fill(0);
+          const names = slave.relay_names || [];
           
           const relayStates: RelayState[] = [];
           for (let i = 0; i < 8; i++) {
+            const customName = names[i] && String(names[i]).trim() ? String(names[i]).trim() : undefined;
             relayStates.push({
               device_id: slave.device_id,
               relay_number: i,
               state: states[i] || false,
               has_timer: hasTimers[i] || false,
               remaining_time: remainingTimes[i] || 0,
+              relay_name: customName,
             });
           }
           

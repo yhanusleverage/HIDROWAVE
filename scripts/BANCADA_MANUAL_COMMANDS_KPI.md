@@ -72,14 +72,21 @@ Teste VM: `npm run test:pub:slave-command` em `/opt/hidrowave-bridge` (ver `MQTT
 |------|--------|-------|
 | 1 | Script semi-auto en VM | `node scripts/bancada-slave-relay-kpi.js` sin error MQTT |
 | 2 | Cronometro: clic toggle relé 0 en UI | < **2 s** hasta estado reflejado en UI |
-| 3 | Serial master | ACK relé, sin `TIMEOUT DE ACK` |
-| 4 | Serial slave | Sin `0x3069`, sin scan multi-canal durante toggle |
-| 5 | GPIO fisico | Relé audibly/LED cambia |
+| 3 | Serial master | `[RELAY-ACK]` + `[CMD ACK-DIRECT]` **antes** de `[ACK-FALLBACK]` |
+| 4 | Serial slave | `RELAY_ACK enviado id=…` sin `MASTER ENCONTRADO` en cada PONG |
+| 5 | Serial slave | Sin `Auto-discovery` cada 30s con canal locked |
+| 6 | GPIO fisico | Relé audibly/LED cambia |
 
 ```bash
 SLAVE_MAC=14:33:5C:38:BF:60 TEST_DEVICE_ID=ESP32_HIDRO_1A575C \
   node scripts/bancada-slave-relay-kpi.js
 ```
+
+### Serial esperado (ACK directo)
+
+Master: `[RELAY-ACK]` → `[CMD ACK-DIRECT]` (ACK-FALLBACK solo como respaldo).
+
+Slave: `RELAY_ACK enviado` + ALL_RELAYS throttled (máx. 1 cada 3 s salvo `status`).
 
 ---
 

@@ -20,6 +20,12 @@ import {
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { subscribeRelayCommandUpdates } from '@/lib/realtime/relay-commands';
 import { applyRelayCommandAck, type PendingRelayCommand } from '@/lib/relay-pending-commands';
+import {
+  relayCommandKey,
+  scheduleRelayCommand,
+  releaseRelayCommandSlot,
+  isRelayCommandInFlight,
+} from '@/lib/relay-command-guard';
 import { HwModal } from '@/components/ui/HwModal';
 import {
   ChartBarIcon,
@@ -138,11 +144,23 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
         status,
         {
           onCompleted: (relayKey, ackAction) => {
+            releaseRelayCommandSlot(relayKey);
+            setLoadingRelays((prev) => {
+              const next = new Map(prev);
+              next.delete(relayKey);
+              return next;
+            });
             if (ackAction === 'on' || ackAction === 'off') {
               applyRelayState(relayKey, ackAction === 'on');
             }
           },
           onFailed: (relayKey, previousState, num) => {
+            releaseRelayCommandSlot(relayKey);
+            setLoadingRelays((prev) => {
+              const next = new Map(prev);
+              next.delete(relayKey);
+              return next;
+            });
             applyRelayState(relayKey, previousState);
             const relayNum = num !== undefined ? String(num) : 'desconhecido';
             toast.error(`Comando falhou para relé ${relayNum}`);
@@ -153,6 +171,87 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
       );
     },
     [applyRelayState]
+  );
+
+  /** Envío slave con debounce 400ms + 1 in-flight por relé + cola last-write-wins */
+  const sendSlaveRelayCommand = useCallback(
+    (
+      slaveMac: string,
+      relayId: number,
+      action: 'on' | 'off',
+      durationSeconds: number
+    ) => {
+      const key = relayCommandKey(slaveMac, relayId);
+      const slave = slaves.find((s) => s.macAddress === slaveMac);
+      const relay = slave?.relays.find((r) => r.id === relayId);
+      const previousState = relayStates.has(key)
+        ? relayStates.get(key) ?? false
+        : relay?.state ?? false;
+      const desiredOn = action === 'on';
+
+      setLoadingRelays((prev) => new Map(prev).set(key, true));
+      applyRelayState(key, desiredOn);
+
+      const queued = scheduleRelayCommand(
+        key,
+        { action, durationSeconds },
+        async (intent) => {
+          try {
+            const response = await fetch('/api/relay-commands/slave', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                master_device_id: device.device_id,
+                user_email: userProfile?.email,
+                master_mac_address: device.mac_address,
+                slave_device_id: `ESP32_SLAVE_${slaveMac.replace(/:/g, '_')}`,
+                slave_mac_address: slaveMac,
+                relay_numbers: [relayId],
+                actions: [intent.action],
+                duration_seconds: [intent.durationSeconds],
+                command_type: 'manual',
+                priority: 10,
+                expires_at: null,
+                triggered_by: 'manual',
+              }),
+            });
+
+            if (!response.ok) {
+              const err = await response.json().catch(() => ({}));
+              applyRelayState(key, previousState);
+              setLoadingRelays((prev) => {
+                const next = new Map(prev);
+                next.delete(key);
+                return next;
+              });
+              toast.error(`Erro: ${(err as { error?: string }).error ?? 'comando falhou'}`);
+              return { ok: false as const };
+            }
+
+            const data = await response.json();
+            const commandId = data.command_id ?? data.command?.id;
+            if (commandId) {
+              commandToRelayMap.current.set(commandId, { relayKey: key, previousState });
+            }
+            return { ok: true as const, commandId };
+          } catch {
+            applyRelayState(key, previousState);
+            setLoadingRelays((prev) => {
+              const next = new Map(prev);
+              next.delete(key);
+              return next;
+            });
+            toast.error('Erro ao enviar comando');
+            return { ok: false as const };
+          }
+        }
+      );
+
+      if (queued === 'queued') {
+        toast('Aguardando confirmação do comando anterior…', { icon: '⏳', duration: 1800 });
+      }
+    },
+    [device.device_id, device.mac_address, userProfile?.email, slaves, relayStates, applyRelayState]
   );
 
   /**
@@ -1294,84 +1393,39 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                                       {/* Botões de Controle Manual */}
                                       <div className="flex space-x-2">
                                         <button
-                                          onClick={async () => {
-                                            try {
-                                              // ✅ NOVA API: Usar /api/relay-commands/slave para slaves
-                                              const response = await fetch('/api/relay-commands/slave', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({
-                                                  master_device_id: device.device_id,
-                                                  user_email: userProfile?.email,
-                                                  master_mac_address: device.mac_address,
-                                                  slave_device_id: `ESP32_SLAVE_${slave.macAddress.replace(/:/g, '_')}`,
-                                                  slave_mac_address: slave.macAddress,
-                                                  relay_numbers: [relay.id],      // ✅ ARRAY
-                                                  actions: ['on'],                // ✅ ARRAY
-                                                  duration_seconds: [relay.schedule?.durationMinutes 
-                                                    ? relay.schedule.durationMinutes * 60 
-                                                    : 0],                         // ✅ ARRAY
-                                                  command_type: 'manual',
-                                                  priority: 10,
-                                                  expires_at: null,
-                                                  triggered_by: 'manual',
-                                                }),
-                                              });
-
-                                              if (response.ok) {
-                                                const data = await response.json();
-                                                toast.success(`Comando ESP-NOW enviado: Ligar relé ${relay.id} do slave ${slave.macAddress}`);
-                                              } else {
-                                                const error = await response.json();
-                                                toast.error(`Erro ao enviar comando ESP-NOW: ${error.error}`);
-                                              }
-                                            } catch (error) {
-                                              console.error('Erro ao enviar comando ESP-NOW:', error);
-                                              toast.error(`Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`);
-                                            }
-                                          }}
-                                          className="flex-1 py-2 px-4 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg font-medium transition-all"
+                                          onClick={() =>
+                                            sendSlaveRelayCommand(
+                                              slave.macAddress,
+                                              relay.id,
+                                              'on',
+                                              relay.schedule?.durationMinutes
+                                                ? relay.schedule.durationMinutes * 60
+                                                : 0
+                                            )
+                                          }
+                                          disabled={
+                                            loadingRelays.get(`${slave.macAddress}-${relay.id}`) ||
+                                            isRelayCommandInFlight(relayCommandKey(slave.macAddress, relay.id))
+                                          }
+                                          className="flex-1 py-2 px-4 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                          Ligar Agora
+                                          {loadingRelays.get(`${slave.macAddress}-${relay.id}`)
+                                            ? '⏳ Enviando…'
+                                            : 'Ligar Agora'}
                                         </button>
                                         <button
-                                          onClick={async () => {
-                                            try {
-                                              // ✅ NOVA API: Usar /api/relay-commands/slave para slaves
-                                              const response = await fetch('/api/relay-commands/slave', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({
-                                                  master_device_id: device.device_id,
-                                                  user_email: userProfile?.email,
-                                                  master_mac_address: device.mac_address,
-                                                  slave_device_id: `ESP32_SLAVE_${slave.macAddress.replace(/:/g, '_')}`,
-                                                  slave_mac_address: slave.macAddress,
-                                                  relay_numbers: [relay.id],      // ✅ ARRAY
-                                                  actions: ['off'],              // ✅ ARRAY
-                                                  duration_seconds: [0],         // ✅ ARRAY
-                                                  command_type: 'manual',
-                                                  priority: 10,
-                                                  expires_at: null,
-                                                  triggered_by: 'manual',
-                                                }),
-                                              });
-
-                                              if (response.ok) {
-                                                const data = await response.json();
-                                                toast.success(`Comando ESP-NOW enviado: Desligar relé ${relay.id} do slave ${slave.macAddress}`);
-                                              } else {
-                                                const error = await response.json();
-                                                toast.error(`Erro ao enviar comando ESP-NOW: ${error.error}`);
-                                              }
-                                            } catch (error) {
-                                              console.error('Erro ao enviar comando ESP-NOW:', error);
-                                              toast.error(`Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`);
-                                            }
-                                          }}
-                                          className="flex-1 py-2 px-4 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg font-medium transition-colors"
+                                          onClick={() =>
+                                            sendSlaveRelayCommand(slave.macAddress, relay.id, 'off', 0)
+                                          }
+                                          disabled={
+                                            loadingRelays.get(`${slave.macAddress}-${relay.id}`) ||
+                                            isRelayCommandInFlight(relayCommandKey(slave.macAddress, relay.id))
+                                          }
+                                          className="flex-1 py-2 px-4 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                          Desligar
+                                          {loadingRelays.get(`${slave.macAddress}-${relay.id}`)
+                                            ? '⏳'
+                                            : 'Desligar'}
                                         </button>
                                       </div>
                                     </div>
@@ -1534,67 +1588,14 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                                       </div>
                                       <div className="flex space-x-1">
                                         <button
-                                          onClick={async () => {
-                                            const previousState = relayStates.has(relayKey)
-                                              ? relayStates.get(relayKey) || false
-                                              : relay.state || false;
-
-                                            setLoadingRelays(prev => new Map(prev).set(relayKey, true));
-                                            setRelayStates(prev => {
-                                              const newMap = new Map(prev);
-                                              newMap.set(relayKey, true);
-                                              return newMap;
-                                            });
-
-                                            try {
-                                              const response = await fetch('/api/relay-commands/slave', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({
-                                                  master_device_id: device.device_id,
-                                                  slave_mac_address: slave.macAddress,
-                                                  relay_numbers: [relay.id],
-                                                  actions: ['on'],
-                                                  duration_seconds: [0],
-                                                }),
-                                              });
-
-                                              if (response.ok) {
-                                                const data = await response.json();
-                                                const commandId = data.command_id ?? data.command?.id;
-                                                if (commandId) {
-                                                  commandToRelayMap.current.set(commandId, {
-                                                    relayKey,
-                                                    previousState,
-                                                  });
-                                                }
-                                                toast.success(`${relay.name || `Relé ${relay.id + 1}`} ligado`);
-                                                setTimeout(() => loadSlaves(), 2000);
-                                              } else {
-                                                const error = await response.json();
-                                                setRelayStates(prev => {
-                                                  const newMap = new Map(prev);
-                                                  newMap.set(relayKey, previousState);
-                                                  return newMap;
-                                                });
-                                                toast.error(`Erro: ${error.error}`);
-                                              }
-                                            } catch {
-                                              setRelayStates(prev => {
-                                                const newMap = new Map(prev);
-                                                newMap.set(relayKey, previousState);
-                                                return newMap;
-                                              });
-                                              toast.error('Erro ao enviar comando');
-                                            } finally {
-                                              setLoadingRelays(prev => {
-                                                const next = new Map(prev);
-                                                next.delete(relayKey);
-                                                return next;
-                                              });
-                                            }
-                                          }}
-                                          disabled={isLoading || isRelayOn}
+                                          onClick={() =>
+                                            sendSlaveRelayCommand(slave.macAddress, relay.id, 'on', 0)
+                                          }
+                                          disabled={
+                                            isLoading ||
+                                            isRelayOn ||
+                                            isRelayCommandInFlight(relayKey)
+                                          }
                                           className={`flex-1 py-1.5 px-2 text-xs font-medium rounded transition-all ${
                                             isRelayOn
                                               ? 'bg-dark-border text-dark-textSecondary cursor-not-allowed'
@@ -1604,67 +1605,14 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                                           {isLoading ? '⏳' : 'ON'}
                                         </button>
                                         <button
-                                          onClick={async () => {
-                                            const previousState = relayStates.has(relayKey)
-                                              ? relayStates.get(relayKey) || false
-                                              : relay.state || false;
-
-                                            setLoadingRelays(prev => new Map(prev).set(relayKey, true));
-                                            setRelayStates(prev => {
-                                              const newMap = new Map(prev);
-                                              newMap.set(relayKey, false);
-                                              return newMap;
-                                            });
-
-                                            try {
-                                              const response = await fetch('/api/relay-commands/slave', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({
-                                                  master_device_id: device.device_id,
-                                                  slave_mac_address: slave.macAddress,
-                                                  relay_numbers: [relay.id],
-                                                  actions: ['off'],
-                                                  duration_seconds: [0],
-                                                }),
-                                              });
-
-                                              if (response.ok) {
-                                                const data = await response.json();
-                                                const commandId = data.command_id ?? data.command?.id;
-                                                if (commandId) {
-                                                  commandToRelayMap.current.set(commandId, {
-                                                    relayKey,
-                                                    previousState,
-                                                  });
-                                                }
-                                                toast.success(`${relay.name || `Relé ${relay.id + 1}`} desligado`);
-                                                setTimeout(() => loadSlaves(), 2000);
-                                              } else {
-                                                const error = await response.json();
-                                                setRelayStates(prev => {
-                                                  const newMap = new Map(prev);
-                                                  newMap.set(relayKey, previousState);
-                                                  return newMap;
-                                                });
-                                                toast.error(`Erro: ${error.error}`);
-                                              }
-                                            } catch {
-                                              setRelayStates(prev => {
-                                                const newMap = new Map(prev);
-                                                newMap.set(relayKey, previousState);
-                                                return newMap;
-                                              });
-                                              toast.error('Erro ao enviar comando');
-                                            } finally {
-                                              setLoadingRelays(prev => {
-                                                const next = new Map(prev);
-                                                next.delete(relayKey);
-                                                return next;
-                                              });
-                                            }
-                                          }}
-                                          disabled={isLoading || !isRelayOn}
+                                          onClick={() =>
+                                            sendSlaveRelayCommand(slave.macAddress, relay.id, 'off', 0)
+                                          }
+                                          disabled={
+                                            isLoading ||
+                                            !isRelayOn ||
+                                            isRelayCommandInFlight(relayKey)
+                                          }
                                           className={`flex-1 py-1.5 px-2 text-xs font-medium rounded transition-all ${
                                             !isRelayOn
                                               ? 'bg-dark-border text-dark-textSecondary cursor-not-allowed'
@@ -1831,82 +1779,43 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                                         {/* Botões de Controle Manual */}
                                         <div className="flex space-x-2">
                                           <button
-                                            onClick={async () => {
-                                              try {
-                                                // ✅ NOVA API: Usar /api/relay-commands/slave para slaves
-                                                const response = await fetch('/api/relay-commands/slave', {
-                                                  method: 'POST',
-                                                  headers: { 'Content-Type': 'application/json' },
-                                                  body: JSON.stringify({
-                                                    master_device_id: device.device_id,
-                                                    user_email: userProfile?.email,
-                                                    master_mac_address: device.mac_address,
-                                                    slave_device_id: `ESP32_SLAVE_${slave.macAddress.replace(/:/g, '_')}`,
-                                                    slave_mac_address: slave.macAddress,
-                                                    relay_numbers: [relay.id],      // ✅ ARRAY
-                                                    actions: ['on'],                 // ✅ ARRAY
-                                                    duration_seconds: [relay.schedule?.durationMinutes 
-                                                      ? relay.schedule.durationMinutes * 60 
-                                                      : 0],                         // ✅ ARRAY
-                                                    command_type: 'manual',
-                                                    priority: 10,
-                                                    expires_at: null,
-                                                    triggered_by: 'manual',
-                                                  }),
-                                                });
-
-                                                if (response.ok) {
-                                                  const data = await response.json();
-                                                  console.log(`Comando ESP-NOW enviado: Ligar relé ${relay.id} do slave ${slave.macAddress}. Comando ID: ${data.command_id}`);
-                                                } else {
-                                                  const error = await response.json();
-                                                  console.error('Erro ao enviar comando ESP-NOW:', error);
-                                                }
-                                              } catch (error) {
-                                                console.error('Erro ao enviar comando ESP-NOW:', error);
-                                              }
-                                            }}
-                                            className="flex-1 py-2 px-4 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg font-medium transition-all"
+                                            onClick={() =>
+                                              sendSlaveRelayCommand(
+                                                slave.macAddress,
+                                                relay.id,
+                                                'on',
+                                                relay.schedule?.durationMinutes
+                                                  ? relay.schedule.durationMinutes * 60
+                                                  : 0
+                                              )
+                                            }
+                                            disabled={
+                                              loadingRelays.get(`${slave.macAddress}-${relay.id}`) ||
+                                              isRelayCommandInFlight(
+                                                relayCommandKey(slave.macAddress, relay.id)
+                                              )
+                                            }
+                                            className="flex-1 py-2 px-4 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                           >
-                                            Ligar Agora
+                                            {loadingRelays.get(`${slave.macAddress}-${relay.id}`)
+                                              ? '⏳ Enviando…'
+                                              : 'Ligar Agora'}
                                           </button>
                                           <button
-                                            onClick={async () => {
-                                              try {
-                                                // ✅ NOVA API: Usar /api/relay-commands/slave para slaves
-                                                const response = await fetch('/api/relay-commands/slave', {
-                                                  method: 'POST',
-                                                  headers: { 'Content-Type': 'application/json' },
-                                                  body: JSON.stringify({
-                                                    master_device_id: device.device_id,
-                                                    user_email: userProfile?.email,
-                                                    master_mac_address: device.mac_address,
-                                                    slave_device_id: `ESP32_SLAVE_${slave.macAddress.replace(/:/g, '_')}`,
-                                                    slave_mac_address: slave.macAddress,
-                                                    relay_numbers: [relay.id],      // ✅ ARRAY
-                                                    actions: ['off'],               // ✅ ARRAY
-                                                    duration_seconds: [0],         // ✅ ARRAY
-                                                    command_type: 'manual',
-                                                    priority: 10,
-                                                    expires_at: null,
-                                                    triggered_by: 'manual',
-                                                  }),
-                                                });
-
-                                                if (response.ok) {
-                                                  const data = await response.json();
-                                                  console.log(`Comando ESP-NOW enviado: Desligar relé ${relay.id} do slave ${slave.macAddress}. Comando ID: ${data.command_id}`);
-                                                } else {
-                                                  const error = await response.json();
-                                                  console.error('Erro ao enviar comando ESP-NOW:', error);
-                                                }
-                                              } catch (error) {
-                                                console.error('Erro ao enviar comando ESP-NOW:', error);
-                                              }
-                                            }}
-                                            className="flex-1 py-2 px-4 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg font-medium transition-colors"
+                                            onClick={() =>
+                                              sendSlaveRelayCommand(slave.macAddress, relay.id, 'off', 0)
+                                            }
+                                            disabled={
+                                              loadingRelays.get(`${slave.macAddress}-${relay.id}`) ||
+                                              isRelayCommandInFlight(
+                                                relayCommandKey(slave.macAddress, relay.id)
+                                              )
+                                            }
+                                            className="flex-1 py-2 px-4 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                           >
-                                            Desligar
+                                            {loadingRelays.get(`${slave.macAddress}-${relay.id}`)
+                                              ? '⏳'
+                                              : 'Desligar'}
                                           </button>
                                         </div>
                                       </div>
