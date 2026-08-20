@@ -10,14 +10,18 @@ import {
   SWITCH_MODE_CYCLE,
   SWITCH_MODE_TIMER,
 } from '@/lib/instruction-labels';
+import { InstructionAddButtons } from './instruction-editors/InstructionAddButtons';
 import WhileInstructionEditor from './instruction-editors/WhileInstructionEditor';
 import IfInstructionEditor from './instruction-editors/IfInstructionEditor';
 import RelayActionEditor from './instruction-editors/RelayActionEditor';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { useAuth } from '@/contexts/AuthContext';
 import TargetRuleIdField from '@/components/TargetRuleIdField';
+import { DEFAULT_MASTER_RELAYS } from '@/lib/master-relay-options';
+import { createNestedInstruction, ensureInstructionIds } from '@/lib/instruction-factory';
 
 export interface Instruction {
+  id?: string;
   type: 'while' | 'if' | 'relay_action' | 'switch' | 'return' | 'break' | 'continue' | 'delay';
   condition?: {
     sensor: string;
@@ -77,6 +81,7 @@ export default function SequentialScriptEditor({
   const [availableRules, setAvailableRules] = useState<Array<{ rule_id: string; rule_name: string }>>([]);
   const [loadingAvailableRules, setLoadingAvailableRules] = useState(false);
   const [currentRuleId, setCurrentRuleId] = useState<string | null>(null);
+  const masterRelays = DEFAULT_MASTER_RELAYS;
 
   // ✅ Carregar regras disponíveis para eventos encadeados
   useEffect(() => {
@@ -162,7 +167,7 @@ export default function SequentialScriptEditor({
         setEnabled(data.enabled !== false);
         setCurrentRuleId(data.rule_id); // ✅ Guardar rule_id atual
         if (data.rule_json?.script) {
-          setInstructions(data.rule_json.script.instructions || []);
+          setInstructions(ensureInstructionIds(data.rule_json.script.instructions || []));
           setLoopInterval(data.rule_json.script.loop_interval_ms || 5000);
           setMaxIterations(data.rule_json.script.max_iterations || 0);
           if (data.rule_json.script.chained_events) {
@@ -182,38 +187,34 @@ export default function SequentialScriptEditor({
   };
 
   const addInstruction = (type: Instruction['type']) => {
-    const newInstr: Instruction = {
-      type,
-      condition:
-        type === 'while' || type === 'if'
-          ? { sensor: 'water_level', operator: '!=', value: 'vazio' }
-          : undefined,
-      body: type === 'while' ? [] : undefined,
-      then: type === 'if' ? [] : undefined,
-      relay_number: type === 'relay_action' ? 5 : undefined,
-      action: type === 'relay_action' ? 'on' : undefined,
-      duration_ms: type === 'switch' ? 1000 : undefined,
-    };
-    setInstructions([...instructions, newInstr]);
+    const newInstr = createNestedInstruction(type);
+    if (type === 'relay_action') {
+      newInstr.relay_number = 5;
+    }
+    setInstructions((prev) => [...prev, newInstr]);
   };
 
   const removeInstruction = (index: number) => {
-    setInstructions(instructions.filter((_, i) => i !== index));
+    setInstructions((prev) => prev.filter((_, i) => i !== index));
   };
 
   const moveInstruction = (index: number, direction: 'up' | 'down') => {
-    const newInstrs = [...instructions];
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex >= 0 && targetIndex < newInstrs.length) {
-      [newInstrs[index], newInstrs[targetIndex]] = [newInstrs[targetIndex], newInstrs[index]];
-      setInstructions(newInstrs);
-    }
+    setInstructions((prev) => {
+      const newInstrs = [...prev];
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex >= 0 && targetIndex < newInstrs.length) {
+        [newInstrs[index], newInstrs[targetIndex]] = [newInstrs[targetIndex], newInstrs[index]];
+      }
+      return newInstrs;
+    });
   };
 
   const updateInstruction = (index: number, updated: Instruction) => {
-    const newInstrs = [...instructions];
-    newInstrs[index] = updated;
-    setInstructions(newInstrs);
+    setInstructions((prev) => {
+      const newInstrs = [...prev];
+      newInstrs[index] = updated;
+      return newInstrs;
+    });
   };
 
   const handleSave = async () => {
@@ -507,6 +508,7 @@ export default function SequentialScriptEditor({
                     instruction={instr}
                     onChange={(updated) => updateInstruction(index, updated)}
                     espnowSlaves={espnowSlaves}
+                    masterRelays={masterRelays}
                   />
                 )}
 
@@ -515,6 +517,7 @@ export default function SequentialScriptEditor({
                     instruction={instr}
                     onChange={(updated) => updateInstruction(index, updated)}
                     espnowSlaves={espnowSlaves}
+                    masterRelays={masterRelays}
                   />
                 )}
 
@@ -523,6 +526,7 @@ export default function SequentialScriptEditor({
                     instruction={instr}
                     onChange={(updated) => updateInstruction(index, updated)}
                     espnowSlaves={espnowSlaves}
+                    masterRelays={masterRelays}
                     onDelete={() => removeInstruction(index)}
                   />
                 )}
@@ -691,36 +695,7 @@ export default function SequentialScriptEditor({
 
           {/* Botões para adicionar instruções */}
           <div className="mt-4 p-3 border border-dark-border rounded-lg bg-aqua-500/10">
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => addInstruction('while')}
-                className="px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border rounded-lg text-sm text-white transition-colors flex items-center gap-2"
-              >
-                <PlusIcon className="w-4 h-4" />
-                LOOP
-              </button>
-              <button
-                onClick={() => addInstruction('if')}
-                className="px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border rounded-lg text-sm text-white transition-colors flex items-center gap-2"
-              >
-                <PlusIcon className="w-4 h-4" />
-                Se
-              </button>
-              <button
-                onClick={() => addInstruction('relay_action')}
-                className="px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border rounded-lg text-sm text-white transition-colors flex items-center gap-2"
-              >
-                <PlusIcon className="w-4 h-4" />
-                Relé
-              </button>
-                <button
-                  onClick={() => addInstruction('switch')}
-                  className="px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border rounded-lg text-sm text-white transition-colors flex items-center gap-2"
-                >
-                  <PlusIcon className="w-4 h-4" />
-                  SWITCH
-                </button>
-            </div>
+            <InstructionAddButtons onAdd={addInstruction} />
           </div>
         </div>
 

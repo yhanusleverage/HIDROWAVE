@@ -125,6 +125,14 @@ export const HW_TOAST_CATEGORY_ACCENT: Record<string, HwAccent> = {
   ALERTA: 'warn',
 };
 
+/** Camada de processo (P1–P4) → acento semântico na timeline. */
+export const HW_PROCESS_LAYER_ACCENT: Record<'P1' | 'P2' | 'P3' | 'P4', HwAccent> = {
+  P1: 'warn',
+  P2: 'ec',
+  P3: 'ph',
+  P4: 'wait',
+};
+
 /** Escala tipográfica unificada. */
 export const HW_HEADING_LG = 'text-3xl font-bold text-dark-text';
 export const HW_HEADING_MD = 'text-2xl font-bold text-dark-text';

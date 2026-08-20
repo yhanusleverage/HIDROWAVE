@@ -1,0 +1,2 @@
+date,device_id,p1_master_ms,p1_slave_ms,p1_notes,p2_hydro_age_s,p3_crashes_24h,p4_heap_free_min,p4_flash_margin_pct,p5_hh_domain,p6_touched_core_and_control,p7_prod_bugs,operator,notes
+2026-07-13,ESP32_HIDRO_,,,,,,0,,,,,,,,"inicio baseline — completar tras primera medición"

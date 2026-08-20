@@ -9,6 +9,8 @@ export interface GrowWeekProfile {
   phase: GrowPhase;
   ecSetpointUsCm: number;
   phSetpoint: number;
+  /** Volume efectivo del tanque (L) — decrece con masa radicular / timeline F2 */
+  tankVolumeL?: number;
   label?: string;
 }
 
@@ -22,12 +24,15 @@ export interface TankEvent {
   description: string;
 }
 
+export type ScheduleKind = 'circulation' | 'maintenance' | 'custom';
+
 export interface ScheduleBlock {
   weekIndex: number;
   ruleId: string;
   layer: 'P4';
   label: string;
   cadence: string;
+  kind?: ScheduleKind;
 }
 
 export interface GrowCyclePlan {

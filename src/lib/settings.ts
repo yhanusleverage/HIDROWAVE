@@ -9,6 +9,7 @@ import {
   isValidMac,
   normalizeEmail,
 } from './db-schema';
+import { normalizeLocale } from './locale';
 import { supabase } from './supabase';
 
 const STORAGE_KEY = 'hydrowave_settings';
@@ -53,6 +54,7 @@ function parseStoredSettings(raw: Partial<Settings>): Settings {
   return {
     ...defaultSettings,
     ...raw,
+    language: normalizeLocale(raw.language ?? defaultSettings.language),
     pollingInterval: Math.max(
       5,
       Math.min(300, raw.pollingInterval || defaultSettings.pollingInterval)

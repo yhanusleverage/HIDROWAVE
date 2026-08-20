@@ -46,8 +46,8 @@ export const supportPagesPt: Record<SupportPageSlug, DocsPageContent> = {
         accent: 'brand',
         layers: [
           {
-            title: '1. Edge — ESP32 master + slaves ESP-NOW',
-            body: 'O master lê sensores de água (pH, EC/TDS, nível), executa Auto EC/pH via HydroControl e envia comandos a relés locais ou slaves (válvulas, bombas peristálticas, recirculação).',
+            title: '1. Edge — HydroWave Core + Atlas (ESP-NOW)',
+            body: 'O Core lê sensores de água (pH, EC/TDS, nível), executa Auto EC/pH e envia comandos a relés locais ou Atlas (válvulas, bombas peristálticas, recirculação).',
             accent: 'wait',
           },
           {
@@ -148,7 +148,7 @@ export const supportPagesPt: Record<SupportPageSlug, DocsPageContent> = {
         steps: [
           { title: 'UI / Automação', body: 'Operador configura setpoints, plano nutricional ou regras. Next.js chama API routes que persistem em Supabase.' },
           { title: 'Supabase', body: 'Tabelas: hydro_measurements, relay_master, ec_controller_config, ph_controller_config, decision_rules, relay_commands, nutrient_dosages, ph_dosages.' },
-          { title: 'ESP32 — HydroSystemCore', body: 'Poll de config (~30 s), leitura de sensores, sync de operation_state, processamento de relay_commands pendentes.' },
+          { title: 'ESP32 — HydroWave Core', body: 'Poll de config (~30 s), leitura de sensores, sync de operation_state, processamento de relay_commands pendentes.' },
           { title: 'HydroControl + DecisionEngine', body: 'Loops EC/pH no loop() principal; regras avaliadas em task dedicada com cooldown e limites horários.' },
         ],
       },
@@ -214,7 +214,7 @@ IF level_4 == "vazio" THEN
 END IF`,
         steps: [
           { title: 'Mapear level_4', body: 'Configure a sonda mais baixa (ou estado lógico derivado) como level_4 = vazio quando o tanque esvaziou.' },
-          { title: 'Associar relé', body: 'Válvula motorizada de dreno no slave ESP-NOW ou relé local (ex.: relé 5).' },
+          { title: 'Associar relé', body: 'Válvula motorizada de dreno no Atlas ou relé local do Core (ex.: relé 5).' },
           { title: 'Definir loop_interval_ms', body: 'Tipicamente 1000–5000 ms entre avaliações do WHILE para evitar chatter da válvula.' },
         ],
       },
@@ -237,7 +237,7 @@ END IF`,
           {
             variant: 'warning',
             title: 'Padrão de design',
-            body: 'Full recharge está documentado como contrato de script. O nome de relé existe no firmware de teste; valide mapeamento de GPIO/slave na sua instalação antes de confiar em produção.',
+            body: 'Full recharge está documentado como contrato de script. O nome de relé existe no firmware de teste; valide mapeamento de GPIO/Atlas na sua instalação antes de confiar em produção.',
           },
         ],
       },
@@ -357,7 +357,7 @@ END IF`,
           rows: [
             { cells: ['WHILE', 'Loop enquanto condição verdadeira (ex.: dreno)'] },
             { cells: ['IF / ELSE', 'Ramificação condicional'] },
-            { cells: ['relay_action', 'ON/OFF em relé master ou slave ESP-NOW'] },
+            { cells: ['relay_action', 'ON/OFF em relé do Core ou Atlas'] },
             { cells: ['DELAY', 'Pausa entre passos (ms)'] },
             { cells: ['RETURN', 'Encerra execução do script neste ciclo'] },
           ],

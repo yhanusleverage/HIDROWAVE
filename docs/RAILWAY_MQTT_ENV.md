@@ -12,7 +12,7 @@ Servicio **HIDROWAVE frontend** → Variables:
 
 | Variable | Ejemplo | Notas |
 |----------|---------|-------|
-| `MQTT_HOST` | `99.79.36.220` | IP/host del broker Mosquitto (Lightsail) |
+| `MQTT_HOST` | `15.222.65.160` | IP/host del broker Mosquitto (Lightsail; no usar la IP antigua) |
 | `MQTT_PORT` | `1883` | Default 1883 |
 | `MQTT_PUBLISH_USER` | `hidrowave` | Usuario con ACL **write** en `hidrowave/+/command` |
 | `MQTT_PUBLISH_PASS` | `***` | Password del usuario publish |
@@ -26,7 +26,7 @@ Alternativa (fallback en código): `MQTT_USER` / `MQTT_PASS` si no defines `MQTT
 ## Desarrollo local (`.env.local`)
 
 ```env
-MQTT_HOST=99.79.36.220
+MQTT_HOST=15.222.65.160
 MQTT_PORT=1883
 MQTT_PUBLISH_USER=hidrowave
 MQTT_PUBLISH_PASS=tu_password

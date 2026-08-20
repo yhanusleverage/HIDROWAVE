@@ -277,7 +277,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
       if (loadedSlaves.length === 0) {
         // Se não houver slaves no banco, mostrar mensagem
         console.log('Nenhum slave ESP-NOW encontrado para este dispositivo');
-        toast('Nenhum slave ESP-NOW encontrado. Adicione slaves via ESP32 Master.', {
+        toast('Nenhum HydroWave Atlas encontrado. Adicione Atlas via HydroWave Core.', {
           icon: 'ℹ️',
           duration: 3000,
         });
@@ -301,7 +301,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
       setSlaves(loadedSlaves);
     } catch (error) {
       console.error('Erro ao carregar slaves:', error);
-      toast.error('Erro ao carregar slaves ESP-NOW');
+      toast.error('Erro ao carregar HydroWave Atlas');
     } finally {
       setLoadingSlaves(false);
     }
@@ -698,7 +698,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
             { id: 'status' as const, label: 'Status', icon: ChartBarIcon },
             { id: 'rules' as const, label: 'Regras', icon: Cog6ToothIcon },
             { id: 'local' as const, label: 'Relés Locais', icon: BoltIcon },
-            { id: 'slaves' as const, label: 'Slaves ESP-NOW', icon: SignalIcon },
+            { id: 'slaves' as const, label: 'HydroWave Atlas', icon: SignalIcon },
           ]).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -1202,7 +1202,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                 <div className="mb-4 flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-dark-text mb-2">
-                      📡 Comandos ESP-NOW Slaves
+                      📡 Comandos HydroWave Atlas
                     </h3>
                     <p className="text-sm text-dark-textSecondary">
                       Configure relés remotos com automação hidropônica (ON a cada X minutos por Y minutos)
@@ -1220,13 +1220,13 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                 <div className="max-h-96 overflow-y-auto">
                   {loadingSlaves ? (
                     <div className="text-center py-8">
-                      <BrandLoading message="Carregando slaves ESP-NOW..." size={40} className="py-4" />
+                      <BrandLoading message="Carregando HydroWave Atlas..." size={40} className="py-4" />
                     </div>
                   ) : slaves.length === 0 ? (
                     <div className="text-center py-8 bg-dark-surface border border-dark-border rounded-lg">
-                      <p className="text-dark-textSecondary mb-2">Nenhum slave ESP-NOW encontrado</p>
+                      <p className="text-dark-textSecondary mb-2">Nenhum HydroWave Atlas encontrado</p>
                       <p className="text-xs text-dark-textSecondary">
-                        Os slaves serão descobertos automaticamente pelo ESP32 Master via ESP-NOW
+                        Os Atlas serão descobertos automaticamente pelo HydroWave Core via ESP-NOW
                         <br />
                         e registrados no Supabase quando conectados.
                       </p>
@@ -1492,7 +1492,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-dark-text mb-2">
-                    Dispositivos ESP-NOW Slaves
+                    Dispositivos HydroWave Atlas
                   </h3>
                   <p className="text-sm text-dark-textSecondary">
                     Configure relés remotos com automação hidropônica (ON a cada X minutos por Y minutos)
@@ -1508,12 +1508,12 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
               </div>
 
               {loadingSlaves ? (
-                <BrandLoading message="Carregando slaves ESP-NOW..." size={40} className="py-4" />
+                <BrandLoading message="Carregando HydroWave Atlas..." size={40} className="py-4" />
               ) : slaves.length === 0 ? (
                 <div className="text-center py-8 bg-dark-surface border border-dark-border rounded-lg">
-                  <p className="text-dark-textSecondary mb-2">Nenhum slave ESP-NOW encontrado</p>
+                  <p className="text-dark-textSecondary mb-2">Nenhum HydroWave Atlas encontrado</p>
                   <p className="text-xs text-dark-textSecondary">
-                    Os slaves serão descobertos automaticamente pelo ESP32 Master via ESP-NOW
+                    Os Atlas serão descobertos automaticamente pelo HydroWave Core via ESP-NOW
                     <br />
                     e registrados no Supabase quando conectados.
                   </p>

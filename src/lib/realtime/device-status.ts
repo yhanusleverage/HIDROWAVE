@@ -22,6 +22,7 @@ export type DeviceStatusRow = {
   level_4?: boolean | null;
   water_level?: string | null;
   water_level_ok?: boolean | null;
+  levels_simulated?: boolean | null;
 };
 
 /** Heartbeat MQTT ~60s + HTTPS status 60s — margem 5 min (evita falso offline en UI) */

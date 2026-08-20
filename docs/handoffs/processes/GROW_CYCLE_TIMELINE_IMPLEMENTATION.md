@@ -2,7 +2,8 @@
 
 **Data:** jun 2026  
 **Relacionado:** [S01_GROW_CYCLE_RULES_17JUN2026.md](./S01_GROW_CYCLE_RULES_17JUN2026.md)  
-**Preview UI:** `/processos/timeline-cultivo` (dados fictícios, simulação)
+**Preview UI:** `/processos/timeline-cultivo` (F0 mock + tooltip métricas live opcional)  
+**Handoff:** [S02_DECISION_ENGINE_F0_F1_HANDOFF.md](./S02_DECISION_ENGINE_F0_F1_HANDOFF.md)
 
 ---
 
@@ -93,12 +94,12 @@ interface GrowCyclePlan {
 
 ## 5. Roadmap
 
-| Fase | Entrega | Persistência |
-|------|---------|--------------|
-| **F0** | Doc + `/processos/timeline-cultivo` mock | Nenhuma |
-| **F1** | Tabela `grow_cycle_plans` + CRUD API | Supabase |
-| **F2** | “Publicar plano” → gera/atualiza `decision_rules` | Transacional |
-| **F3** | Master aplica setpoints semanais via poll/RPC | Firmware |
+| Fase | Entrega | Estado jul/2026 |
+|------|---------|-----------------|
+| **F0** | Doc + `/processos/timeline-cultivo` mock + chart SVG | ✅ |
+| **F1** | Selector device + tooltip métricas live + **Schedules P4 UI P1** | ✅ parcial |
+| **F2** | “Publicar plano” → `decision_rules` | ⚠️ lib `publish-from-timeline.ts`; UI pendiente |
+| **F3** | Setpoints semanales vía poll/RPC | ❌ |
 
 ### F1 — schema sugerido (futuro)
 
@@ -158,8 +159,24 @@ Implementadas em `src/lib/grow-cycle-timeline/simulation-engine.ts`:
 | `src/lib/grow-cycle-timeline/types.ts` | Tipos |
 | `src/lib/grow-cycle-timeline/mock-rdwc-12w.ts` | Ciclo demo |
 | `src/lib/grow-cycle-timeline/simulation-engine.ts` | Simulação pura |
-| `src/components/grow-cycle/*` | UI chart + painéis |
+| `src/lib/rule-procedure/publish-from-timeline.ts` | Gerador F2 (sin UI aún) |
+| `src/components/grow-cycle/*` | UI chart + painéis + tooltip + ScheduleChip |
+| `src/lib/grow-cycle-timeline/schedule-tokens.ts` | Tokens P4 circulation/maintenance |
+| `docs/handoffs/processes/GROW_CYCLE_SCHEDULE_DESIGN_P0_P1.md` | Baseline P0 / spec P1 schedules |
 | `src/app/processos/timeline-cultivo/*` | Página mock |
+
+---
+
+## 10. Schedules P4 UI (P0 / P1)
+
+| Versão | Ativação | Visual |
+|--------|----------|--------|
+| **P0** | `?scheduleUi=p0` | Texto 8px ciano (`⟳ 2h`, `UC Dom`) |
+| **P1** | default | Chips com ícone + mini-bar + legenda |
+
+Spec completa: [GROW_CYCLE_SCHEDULE_DESIGN_P0_P1.md](./GROW_CYCLE_SCHEDULE_DESIGN_P0_P1.md)
+
+Componentes: `ScheduleChip`, `ScheduleLaneRow`, `schedule-tokens.ts`
 
 ---
 

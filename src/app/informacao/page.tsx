@@ -27,50 +27,48 @@ export default function InformacaoPage() {
     {
       question: 'Como conectar meu dispositivo ESP32?',
       answer:
-        'Configure o WiFi no firmware do ESP32 e garanta que ele esteja na mesma rede do servidor. Acesse Dispositivos para verificar se o master aparece online e enviando telemetria.',
+        'Configure o WiFi no firmware do ESP32 e garanta que ele esteja na mesma rede do servidor. Acesse Dispositivos para verificar se o HydroWave Core aparece online e enviando telemetria.',
     },
     {
       question: 'Como usar o Auto EC (passo a passo)?',
       answer: (
         <ol className="list-decimal list-inside space-y-2 mt-1">
           <li>
-            <strong>Automação → Controle Nutricional Proporcional</strong> — desbloqueie com senha admin se necessário.
+            Em <strong>Automação</strong>, abra o controle nutricional (desbloqueie com senha se pedir).
           </li>
           <li>
-            <strong>Plano nutricional</strong> — adicione nutrientes, associe relés e ml/L. Calibre a bomba em{' '}
+            <strong>Nutrientes</strong> — cadastre cada parte do plano (A, B, C…), escolha a bomba e a dose em ml por litro de água do tanque. Calibre a vazão em{' '}
             <NavLink href="/calibragem" className="text-aqua-400 hover:underline">Calibragem</NavLink>.
           </li>
           <li>
-            <strong>Parâmetros hidropônicos</strong> — base de dose (EC da solução stock), setpoint e{' '}
-            <strong>tolerância (banda morta)</strong>. O ESP32 só dosifica se |EC − setpoint| &gt; tolerância.
+            <strong>Alvo de EC</strong> — informe o EC desejado da solução e a faixa de tolerância. O sistema só acrescenta nutrientes quando o EC está abaixo do alvo (fora da faixa, por baixo).
           </li>
           <li>
-            <strong>Parâmetros de ciclo</strong> — intervalo entre <em>verificações</em> de EC e tempo de recirculação após cada dose.
+            <strong>Ritmo</strong> — de quanto em quanto tempo medir o EC, e quanto tempo misturar (recirculação) depois de cada dose.
           </li>
           <li>
-            <strong>Salvar Parâmetros</strong>, depois <strong>Ativar Auto EC</strong>. A config é enviada via RPC{' '}
-            <code className="text-aqua-400">activate_auto_ec</code>.
+            <strong>Salvar Parâmetros</strong> e depois <strong>Ativar Auto EC</strong>. O controlador passa a dosar sozinho conforme o plano.
           </li>
           <li>
-            Acompanhe o <strong>Status do Controle</strong>: banda morta, countdown de verificação/recirculação e dosagem.
+            Acompanhe o status: se está na faixa, misturando ou dosando. Se o EC subir demais, configure dreno e reposição de água (diluição) abaixo no mesmo painel.
           </li>
         </ol>
       ),
     },
     {
-      question: 'O que é a tolerância (banda morta) no Auto EC?',
+      question: 'O que é a faixa de tolerância no Auto EC?',
       answer:
-        'Evita dosagens desnecessárias quando a EC já está “perto o suficiente” do setpoint. Ex.: setpoint 1500 µS/cm e tolerância 50 → sem ação entre 1450 e 1550. Igual ao conceito de tolerância no Auto pH.',
+        'É a “folga” em torno do EC desejado para não dosar a toda hora. Ex.: alvo 1500 µS/cm e tolerância 50 → sem ação entre 1450 e 1550. Nutrientes só entram quando o EC está abaixo do alvo (fora da faixa, por baixo). O mesmo tipo de ideia vale no Auto pH.',
     },
     {
-      question: 'Intervalo entre verificações vs pausa entre nutrientes?',
+      question: 'Intervalo de medição vs pausa entre nutrientes?',
       answer:
-        'São coisas diferentes. O intervalo entre verificações (ex.: 300 s) é quanto tempo o firmware espera entre ciclos de leitura de EC. A pausa ~3 s entre nutrientes na mesma dose é interna ao firmware (mistura segura) e não aparece na UI.',
+        'São coisas diferentes. O intervalo (ex.: 5 minutos) é de quanto em quanto tempo o sistema olha o EC do tanque. A pausa curta entre um nutriente e outro na mesma dose é só para misturar com segurança — o cultivador não precisa ajustar isso.',
     },
     {
       question: 'Por que não consigo ativar o Auto EC?',
       answer:
-        'É necessário pelo menos um nutriente com ml/L válido (total_ml > 0). Remova linhas vazias ou aumente ml/L. Salve os parâmetros antes de ativar.',
+        'É preciso pelo menos um nutriente com dose válida (mín. 0,1 ml/L). Remova linhas vazias ou aumente a dose. Salve os parâmetros antes de ativar.',
     },
     {
       question: 'Como configurar regras de automação?',
@@ -173,7 +171,7 @@ export default function InformacaoPage() {
           <div className="space-y-3 text-sm text-dark-textSecondary">
             <div className="border-l-4 border-aqua-500 pl-4 py-2">
               <h3 className="font-semibold text-dark-text mb-1">1. Dispositivo online</h3>
-              <p>ESP32 master conectado, sensores publicando EC/pH/nível.</p>
+              <p>HydroWave Core conectado, sensores publicando EC/pH/nível.</p>
             </div>
             <div className="border-l-4 border-primary-500 pl-4 py-2">
               <h3 className="font-semibold text-dark-text mb-1">2. Calibragem</h3>

@@ -21,7 +21,7 @@ export interface EcDilutionConfigSnapshot {
 }
 
 const DEFAULT: EcDilutionConfigSnapshot = {
-  dilution_auto_enabled: false,
+  dilution_auto_enabled: true,
   dilution_drain_relay: -1,
   dilution_fill_relay: -1,
   dilution_drain_slave_mac: '',

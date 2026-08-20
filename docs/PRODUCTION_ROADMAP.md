@@ -3,6 +3,8 @@
 > Estado actual: **Nivel 2 (MVP prod)** — Jun 2026  
 > Objetivo futuro: **Nivel 3 (serio)** antes de escalar usuarios/dispositivos.
 
+**Ingeniería (P, contrato, DoD, escopo por jobs):** [`docs/engineering/00_INDICE.md`](engineering/00_INDICE.md)
+
 ---
 
 ## Nivel actual (implementado / en curso)

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useId, useRef } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { HwButton } from './HwButton';
 
@@ -31,12 +31,20 @@ export function HwModal({
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
+  // Listener + scroll lock: deps solo [open] para no robar foco en re-renders del padre.
+  useEffect(() => {
+    if (!open) return;
+
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== 'Tab' || !dialogRef.current) return;
@@ -56,31 +64,21 @@ export function HwModal({
         e.preventDefault();
         first.focus();
       }
-    },
-    [onClose]
-  );
-
-  useEffect(() => {
-    if (!open) return;
-
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-    document.addEventListener('keydown', handleKeyDown);
-    document.body.style.overflow = 'hidden';
-
-    const timer = window.setTimeout(() => {
-      const first = dialogRef.current?.querySelector<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
-      first?.focus();
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timer);
-      document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
-      previousFocusRef.current?.focus();
     };
-  }, [open, handleKeyDown]);
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [open]);
+
+  // Restaurar foco solo al cerrar el modal (no cuando cambia onClose).
+  useEffect(() => {
+    if (open) return;
+    previousFocusRef.current?.focus();
+    previousFocusRef.current = null;
+  }, [open]);
 
   if (!open) return null;
 

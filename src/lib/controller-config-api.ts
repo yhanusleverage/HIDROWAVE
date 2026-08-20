@@ -23,6 +23,10 @@ export const EC_WRITABLE_KEYS = [
   'dilution_max_volume_l',
   'flowmeter_pulses_per_liter',
   'dilution_fill_flow_lps',
+  'aggressiveness',
+  'consumo_24h',
+  'pulse_ml',
+  'pulse_gap_sec',
   'updated_at',
   'created_by',
 ] as const;
@@ -42,6 +46,9 @@ export const PH_WRITABLE_KEYS = [
   'intervalo_auto_ph',
   'tempo_recirculacao',
   'aggressiveness',
+  'consumo_24h',
+  'pulse_ml',
+  'pulse_gap_sec',
   'gain_alpha',
   'max_dose_ml_per_cycle',
   'max_pulse_seconds',
@@ -67,6 +74,31 @@ function pickKeys(
 function finiteFloat(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
   return value;
+}
+
+function clampAggressiveness(value: unknown): number | undefined {
+  const v = finiteFloat(value);
+  if (v === undefined) return undefined;
+  return Math.min(1, Math.max(0.05, v));
+}
+
+/** ml por pulso (HMI pulseMl). */
+function clampPulseMl(value: unknown): number | undefined {
+  const v = finiteFloat(value);
+  if (v === undefined) return undefined;
+  return Math.min(50, Math.max(0.05, v));
+}
+
+/** Gap pulsos (s) (HMI pulseGapSec). */
+function clampPulseGapSec(value: unknown): number | undefined {
+  const v = finiteFloat(value);
+  if (v === undefined) return undefined;
+  return Math.min(120, Math.max(0, v));
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  return undefined;
 }
 
 function positiveInt(value: unknown, min = 1): number | undefined {
@@ -126,6 +158,18 @@ export function sanitizeEcNumericFields(
     if (v !== undefined) out[key] = v;
   }
 
+  const aggressiveness = clampAggressiveness(out.aggressiveness);
+  if (aggressiveness !== undefined) out.aggressiveness = aggressiveness;
+
+  const pulseMl = clampPulseMl(out.pulse_ml);
+  if (pulseMl !== undefined) out.pulse_ml = pulseMl;
+
+  const pulseGapSec = clampPulseGapSec(out.pulse_gap_sec);
+  if (pulseGapSec !== undefined) out.pulse_gap_sec = pulseGapSec;
+
+  const consumo24h = asBoolean(out.consumo_24h);
+  if (consumo24h !== undefined) out.consumo_24h = consumo24h;
+
   if (out.dilution_drain_relay !== undefined && typeof out.dilution_drain_relay === 'number') {
     out.dilution_drain_relay = Math.floor(out.dilution_drain_relay);
   }
@@ -180,6 +224,18 @@ export function sanitizePhNumericFields(
 
   if (typeof out.relay_ph_up === 'number') out.relay_ph_up = Math.floor(out.relay_ph_up);
   if (typeof out.relay_ph_down === 'number') out.relay_ph_down = Math.floor(out.relay_ph_down);
+
+  const aggressiveness = clampAggressiveness(out.aggressiveness);
+  if (aggressiveness !== undefined) out.aggressiveness = aggressiveness;
+
+  const pulseMl = clampPulseMl(out.pulse_ml);
+  if (pulseMl !== undefined) out.pulse_ml = pulseMl;
+
+  const pulseGapSec = clampPulseGapSec(out.pulse_gap_sec);
+  if (pulseGapSec !== undefined) out.pulse_gap_sec = pulseGapSec;
+
+  const consumo24h = asBoolean(out.consumo_24h);
+  if (consumo24h !== undefined) out.consumo_24h = consumo24h;
 
   return out;
 }

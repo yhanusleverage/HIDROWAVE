@@ -129,7 +129,7 @@ export default function DispositivosPage() {
           
           if (masters.length > 0) {
             const master = masters[0];
-            toast.loading('Enviando comando de teste ao slave...', { id: 'test-command' });
+            toast.loading('Enviando comando de teste ao Atlas...', { id: 'test-command' });
             
             try {
               // Enviar comando de teste: ligar relé 0 por 2 segundos

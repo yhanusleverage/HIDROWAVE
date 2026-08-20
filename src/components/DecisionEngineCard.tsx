@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'react-hot-toast';
 import { Cog6ToothIcon, PlayIcon, PauseIcon, PlusIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import SequentialScriptEditor from './SequentialScriptEditor';
-import { formatInstructionType } from '@/lib/instruction-labels';
+import { formatInstructionPreview } from '@/lib/instruction-labels';
 import { useAuth } from '@/contexts/AuthContext';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { HwBadge } from '@/components/ui/HwBadge';
@@ -211,12 +211,7 @@ export default function DecisionEngineCard({ deviceId }: DecisionEngineCardProps
                   <div className={`mt-2 text-xs space-y-1 font-mono ${HW_LABEL}`}>
                     {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
                       <div key={idx} className="text-aqua-300">
-                        {idx + 1}. {formatInstructionType(instr.type)}
-                        {instr.condition && (
-                          <span className="ml-2 text-dark-textSecondary">
-                            {instr.condition.sensor} {instr.condition.operator} {instr.condition.value}
-                          </span>
-                        )}
+                        {idx + 1}. {formatInstructionPreview(instr)}
                       </div>
                     ))}
                     {script.rule_json.script.instructions.length > 2 && (

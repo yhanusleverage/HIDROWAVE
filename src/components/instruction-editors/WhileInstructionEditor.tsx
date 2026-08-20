@@ -1,44 +1,40 @@
 'use client';
 
 import React from 'react';
+import dynamic from 'next/dynamic';
 import { PlusIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { Instruction } from '../SequentialScriptEditor';
 import { ESPNowSlave } from '@/lib/esp-now-slaves';
+import type { MasterRelayOption } from '@/lib/master-relay-options';
 import RelayActionEditor from './RelayActionEditor';
-import IfInstructionEditor from './IfInstructionEditor';
+import ConditionFields from './ConditionFields';
+import { createNestedInstruction } from '@/lib/instruction-factory';
 import {
-  INSTRUCTION_OPERATORS,
   formatInstructionType,
   SWITCH_LABEL,
   SWITCH_MODE_CYCLE,
   SWITCH_MODE_TIMER,
+  CONDITION_SENSORS,
 } from '@/lib/instruction-labels';
+
+const IfInstructionEditor = dynamic(() => import('./IfInstructionEditor'), { ssr: false });
 
 interface WhileInstructionEditorProps {
   instruction: Instruction;
   onChange: (updated: Instruction) => void;
   espnowSlaves: ESPNowSlave[];
+  masterRelays: MasterRelayOption[];
 }
 
-const SENSORS = [
-  { value: 'water_level', label: 'Nível de Água' },
-  { value: 'temperature', label: 'Temperatura (°C)' },
-  { value: 'temp_water', label: 'Temp. Água (°C)' },
-  { value: 'temp_env', label: 'Temp. Ambiente (°C)' },
-  { value: 'humidity', label: 'Umidade (%)' },
-];
-
-const WATER_LEVEL_OPTIONS = [
-  { value: 'vazio', label: 'Vazio' },
-  { value: 'baixo', label: 'Baixo' },
-  { value: 'medio', label: 'Médio' },
-  { value: 'alto', label: 'Alto' },
-];
+const SCRIPT_SENSORS = CONDITION_SENSORS.filter(
+  (s) => s.value !== 'ph' && s.value !== 'ec'
+);
 
 export default function WhileInstructionEditor({
   instruction,
   onChange,
   espnowSlaves,
+  masterRelays,
 }: WhileInstructionEditorProps) {
   // ✅ Funções auxiliares para conversão de tempo
   const msToTime = (ms: number): string => {
@@ -54,13 +50,10 @@ export default function WhileInstructionEditor({
     return (hours * 3600 + minutes * 60 + seconds) * 1000;
   };
 
-  const updateCondition = (field: string, value: string) => {
+  const updateCondition = (condition: NonNullable<Instruction['condition']>) => {
     onChange({
       ...instruction,
-      condition: {
-        ...instruction.condition!,
-        [field]: value,
-      },
+      condition,
     });
   };
 
@@ -72,21 +65,7 @@ export default function WhileInstructionEditor({
   };
 
   const addBodyInstruction = (type: Instruction['type']) => {
-    const newInstr: Instruction = {
-      type,
-      relay_number: type === 'relay_action' ? 0 : undefined,
-      action: type === 'relay_action' ? 'on' : undefined,
-      duration_ms: type === 'switch' ? 1000 : undefined,
-      condition: (type === 'while' || type === 'if') ? {
-        sensor: 'water_level',
-        operator: '!=',
-        value: 'vazio',
-      } : undefined,
-      body: type === 'while' ? [] : undefined,
-      then: type === 'if' ? [] : undefined,
-      else: type === 'if' ? [] : undefined,
-    };
-    updateBody([...(instruction.body || []), newInstr]);
+    updateBody([...(instruction.body || []), createNestedInstruction(type)]);
   };
 
   const removeBodyInstruction = (index: number) => {
@@ -99,88 +78,36 @@ export default function WhileInstructionEditor({
     updateBody(newBody);
   };
 
-  const isLevelSensor = instruction.condition?.sensor === 'water_level';
-  const currentSensor = instruction.condition?.sensor || 'water_level';
+  const currentCondition = instruction.condition ?? {
+    sensor: 'water_level',
+    operator: '!=',
+    value: 'vazio',
+  };
 
   return (
     <div className="space-y-3">
-      {/* Condição */}
-      <div className="border border-dark-border rounded-lg p-3 bg-dark-surface/30">
-        <label className="block text-xs text-dark-textSecondary mb-2">Condição (LOOP)</label>
-        <div className="grid grid-cols-3 gap-2">
-          <select
-            value={currentSensor}
-            onChange={(e) => {
-              const newSensor = e.target.value;
-              // Se mudar para um nível, ajustar valor padrão
-              if (newSensor === 'water_level') {
-                updateCondition('sensor', newSensor);
-                updateCondition('value', 'vazio');
-                updateCondition('operator', '!=');
-              } else {
-                updateCondition('sensor', newSensor);
-                updateCondition('value', '0');
-              }
-            }}
-            className="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
-          >
-            {SENSORS.map((sensor) => (
-              <option key={sensor.value} value={sensor.value}>
-                {sensor.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={instruction.condition?.operator || '!='}
-            onChange={(e) => updateCondition('operator', e.target.value)}
-            className="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
-          >
-            {INSTRUCTION_OPERATORS.map((op) => (
-              <option key={op.value} value={op.value}>
-                {op.label}
-              </option>
-            ))}
-          </select>
-          {isLevelSensor ? (
-            <select
-              value={instruction.condition?.value || 'vazio'}
-              onChange={(e) => updateCondition('value', e.target.value)}
-              className="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
-            >
-              {WATER_LEVEL_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-          <input
-              type="number"
-              step="0.1"
-            value={instruction.condition?.value || ''}
-            onChange={(e) => updateCondition('value', e.target.value)}
-              placeholder={
-                currentSensor === 'humidity' 
-                  ? 'Valor (%)' 
-                  : currentSensor === 'temperature' || currentSensor === 'temp_water' || currentSensor === 'temp_env'
-                  ? 'Valor (°C)'
-                  : 'Valor'
-              }
-            className="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
-          />
-          )}
-        </div>
-      </div>
+      <ConditionFields
+        label="LOOP"
+        condition={currentCondition}
+        onChange={(condition) =>
+          updateCondition({
+            sensor: condition.sensor,
+            operator: condition.operator,
+            value: String(condition.value),
+          })
+        }
+        sensors={SCRIPT_SENSORS}
+      />
 
       {/* Body (instruções dentro do WHILE) */}
       <div>
         <label className="block text-xs text-dark-textSecondary mb-2">
-          Instruções dentro do LOOP:
+          Instruções dentro do ciclo:
         </label>
         <div className="space-y-2 ml-4 border-l-2 border-aqua-500/30 pl-3">
           {(instruction.body || []).map((bodyInstr, idx) => (
             <div
-              key={idx}
+              key={bodyInstr.id ?? idx}
               className="border border-dark-border rounded-lg p-2 bg-dark-surface/50"
             >
               <div className="flex justify-between items-center mb-2">
@@ -188,6 +115,7 @@ export default function WhileInstructionEditor({
                   {formatInstructionType(bodyInstr.type)}
                 </span>
                 <button
+                  type="button"
                   onClick={() => removeBodyInstruction(idx)}
                   className="p-1 hover:bg-dark-surface rounded"
                 >
@@ -200,6 +128,7 @@ export default function WhileInstructionEditor({
                   instruction={bodyInstr}
                   onChange={(updated) => updateBodyInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
+                  masterRelays={masterRelays}
                 />
               )}
 
@@ -327,6 +256,7 @@ export default function WhileInstructionEditor({
                   instruction={bodyInstr}
                   onChange={(updated) => updateBodyInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
+                  masterRelays={masterRelays}
                 />
               )}
 
@@ -335,6 +265,7 @@ export default function WhileInstructionEditor({
                   instruction={bodyInstr}
                   onChange={(updated) => updateBodyInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
+                  masterRelays={masterRelays}
                 />
               )}
 
@@ -346,13 +277,15 @@ export default function WhileInstructionEditor({
 
           <div className="flex gap-2 flex-wrap">
             <button
+              type="button"
               onClick={() => addBodyInstruction('while')}
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
               <PlusIcon className="w-3 h-3" />
-              LOOP
+              {formatInstructionType('while')}
             </button>
             <button
+              type="button"
               onClick={() => addBodyInstruction('if')}
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
@@ -360,6 +293,7 @@ export default function WhileInstructionEditor({
               Se
             </button>
             <button
+              type="button"
               onClick={() => addBodyInstruction('relay_action')}
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
@@ -367,13 +301,15 @@ export default function WhileInstructionEditor({
               Relé
             </button>
             <button
+              type="button"
               onClick={() => addBodyInstruction('switch')}
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
               <PlusIcon className="w-3 h-3" />
-              SWITCH
+              {formatInstructionType('switch')}
             </button>
             <button
+              type="button"
               onClick={() => addBodyInstruction('return')}
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >

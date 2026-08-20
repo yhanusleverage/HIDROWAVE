@@ -41,8 +41,9 @@ export const processosPagesPt: Record<ProcessosPageSlug, DocsPageContent> = {
         table: {
           headers: ['Tipo', 'Exemplo', 'Onde configurar'],
           rows: [
-            { cells: ['Ciclo fechado', 'Auto EC / Auto pH', 'Automação → Controle Nutricional / pH'] },
-            { cells: ['Script procedural', 'Dreno, recarga', 'Automação → Script Sequencial'] },
+            { cells: ['Ciclo fechado', 'Auto EC / Auto pH', 'Automação → abas Auto EC / Auto pH'] },
+            { cells: ['Plano de cultivo', 'Timeline S0…Sn', 'Automação → aba Ciclo de Cultivo'] },
+            { cells: ['Script procedural', 'Dreno, recarga', 'Automação → Procedimentos'] },
             { cells: ['Schedule temporal', 'Circulação 15 min / 2 h', 'Dispositivos → Schedule de relé'] },
           ],
         },
@@ -113,6 +114,7 @@ export const processosPagesPt: Record<ProcessosPageSlug, DocsPageContent> = {
       { href: '/processos/ciclos-automaticos', title: 'Ciclos Automáticos', description: 'Máquinas de estado EC e pH, badges e poll de config', accent: 'ec' },
       { href: '/processos/scripts-sequenciais', title: 'Scripts Sequenciais', description: 'WHILE/IF, cooldown, rule_executions', accent: 'brand' },
       { href: '/processos/agendamentos', title: 'Agendamentos', description: 'SCHEDULE_*, timezone, trigger_type', accent: 'wait' },
+      { href: '/automacao/procedimento', title: 'Rule Builder — procedimento (preview)', description: 'Triggers, steps P1–P4 e export JSON (mock)', accent: 'brand' },
       { href: '/processos/timeline-cultivo', title: 'Timeline de cultivo — preview', description: 'EC/pH por semana, P1–P4 e simulação (mock)', accent: 'warn' },
     ],
     next: { href: '/processos/ciclos-automaticos', label: 'Ciclos Automáticos' },
@@ -172,7 +174,8 @@ export const processosPagesPt: Record<ProcessosPageSlug, DocsPageContent> = {
         title: 'Tutorial: seguir um ciclo completo na UI',
         accent: 'brand',
         steps: [
-          { title: 'Ativar Auto EC', body: 'Automação → Salvar Parâmetros → Ativar. Observe ec_operation_state em Status do Controle.' },
+          { title: 'Desenhar ciclo', body: 'Automação → aba Ciclo de Cultivo → ajustar semanas → Publicar plano (gera decision_rules P1+P4).' },
+          { title: 'Ativar Auto EC', body: 'Automação → aba Auto EC → Salvar Parâmetros → Ativar. Observe ec_operation_state em Status do Controle.' },
           { title: 'Fora da banda morta', body: 'Badge muda para dosagem; nutrient_dosages recebe novo registro.' },
           { title: 'Recirculação', body: 'Countdown de recirculação; não interrompa com dosagem manual.' },
           { title: 'Auto pH', body: 'Após EC estabilizar, ative pH; verifique interlock G5 se EC ainda sequencia.' },

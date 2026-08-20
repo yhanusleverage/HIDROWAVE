@@ -5,12 +5,14 @@ import type {
   SimulatedLogEntry,
   TankEvent,
 } from './types';
+import { getWeekTankVolumeL } from './tank-volume';
 
 export type WeekHoverMetrics = {
   weekIndex: number;
   phase: GrowPhase;
   ecSetpoint: number;
   phSetpoint: number;
+  tankVolumeL: number;
   ecActual: number;
   phActual: number;
   ecError: number;
@@ -59,6 +61,7 @@ export function getWeekHoverMetricsSimulated(
     phase: profile.phase,
     ecSetpoint: profile.ecSetpointUsCm,
     phSetpoint: profile.phSetpoint,
+    tankVolumeL: getWeekTankVolumeL(plan, weekIndex),
     ecActual,
     phActual,
     ecError,

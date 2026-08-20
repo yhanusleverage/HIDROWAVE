@@ -13,6 +13,8 @@
 | S01 | [S01_NUTRIENT_DOSAGES_E2E.md](S01_NUTRIENT_DOSAGES_E2E.md) | Eventos `nutrient_dosages` | **V1** | Cerrado |
 | S02 | [S02_EC_CONTROLLER_METRICS.md](S02_EC_CONTROLLER_METRICS.md) | Métricas `ec_controller_metrics` | **V3** | Cerrado 17/06 |
 | S03 | [S03_BRIDGE_METRICS.md](S03_BRIDGE_METRICS.md) | Bridge + ACL métricas + hydro | R1–V4 | **Cerrado** 17/06 |
+| UI | [AUTO_EC_UI_SESSION_HANDOFF.md](AUTO_EC_UI_SESSION_HANDOFF.md) | Abas `/automacao` — sessão Auto EC P2 | — | **Cerrado** 10/07 |
+| F0 | [HMI_WEB_PARITY_F0.md](../HMI_WEB_PARITY_F0.md) | Contrato paridad HMI ↔ web ↔ Master (Tanque, enable=armed, F1–F5) | — | **Congelado** 12/08 |
 | — | [HANDOFF_DEV_RELAX_SENSORS_17JUN2026.md](../../HANDOFF_DEV_RELAX_SENSORS_17JUN2026.md) | Banco dev + hydro Realtime | V3+V4+hydro | **Cerrado** 17/06 |
 
 ```mermaid

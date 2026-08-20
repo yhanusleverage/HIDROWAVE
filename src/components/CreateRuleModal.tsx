@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon, Cog6ToothIcon, PaperClipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import { hwToast } from '@/lib/control-toast';
@@ -10,6 +10,8 @@ import {
   SWITCH_MODE_CYCLE,
   SWITCH_MODE_TIMER,
 } from '@/lib/instruction-labels';
+import NavLink from '@/components/NavLink';
+import { InstructionAddButtons } from './instruction-editors/InstructionAddButtons';
 import WhileInstructionEditor from './instruction-editors/WhileInstructionEditor';
 import IfInstructionEditor from './instruction-editors/IfInstructionEditor';
 import RelayActionEditor from './instruction-editors/RelayActionEditor';
@@ -20,6 +22,10 @@ import { supabase } from '@/lib/supabase';
 import TargetRuleIdField from '@/components/TargetRuleIdField';
 import { HwModal } from '@/components/ui/HwModal';
 import { HwButton } from '@/components/ui/HwButton';
+import { DEFAULT_MASTER_RELAYS, type MasterRelayOption } from '@/lib/master-relay-options';
+import ConditionFields from './instruction-editors/ConditionFields';
+import { createNestedInstruction, ensureInstructionIds } from '@/lib/instruction-factory';
+import { CONDITION_SENSORS, isLevelSensor, normalizeCondition } from '@/lib/instruction-labels';
 interface Relay {
   id: number;
   name: string;
@@ -55,7 +61,7 @@ interface ChainedEventSequential {
 interface RuleCondition {
   sensor: string;
   operator: string;
-  value: number; // ✅ Solo number para compatibilidad con NewRuleData
+  value: number | string;
   logic?: 'AND' | 'OR';
 }
 
@@ -103,7 +109,7 @@ interface AutomationRule {
     conditions?: Array<{
       sensor: string;
       operator: string;
-      value: number;
+      value: number | string;
       logic?: 'AND' | 'OR';
     }>;
     actions?: Array<{
@@ -147,6 +153,12 @@ export default function CreateRuleModal({
   editingRule,
 }: CreateRuleModalProps) {
   const { userProfile } = useAuth();
+  const masterRelays = useMemo<MasterRelayOption[]>(() => {
+    const fromRelays = relays
+      .filter((r) => r.device !== 'slave')
+      .map((r) => ({ number: r.id, name: r.name }));
+    return fromRelays.length > 0 ? fromRelays : DEFAULT_MASTER_RELAYS;
+  }, [relays]);
   const [ruleName, setRuleName] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<number>(50);
@@ -162,16 +174,6 @@ export default function CreateRuleModal({
     { sensor: 'temperature', operator: '>', value: 25.0, logic: 'AND' },
   ]);
 
-  // Cuando se cambia el sensor a un nivel, ajustar el valor
-  const handleSensorChange = (index: number, sensorValue: string) => {
-    const updated = [...conditions];
-    if (sensorValue.startsWith('level_') || sensorValue === 'water_level') {
-      updated[index] = { ...updated[index], sensor: sensorValue, operator: '==', value: 'medio' };
-    } else {
-      updated[index] = { ...updated[index], sensor: sensorValue, value: 0 };
-    }
-    setConditions(updated);
-  };
   const [actions, setActions] = useState<Action[]>([]);
   const [chainedEvents, setChainedEvents] = useState<ChainedEvent[]>([]);
   const [cooldown, setCooldown] = useState(60);
@@ -183,49 +185,46 @@ export default function CreateRuleModal({
   const [espnowSlaves, setEspnowSlaves] = useState<ESPNowSlave[]>([]);
   const [chainedEventsSequential, setChainedEventsSequential] = useState<ChainedEventSequential[]>([]);
   const [expandedChainedEventsSequential, setExpandedChainedEventsSequential] = useState(false);
+  const modalInitKeyRef = useRef<string | null>(null);
+  const prevOpenRef = useRef(false);
   const [availableRules, setAvailableRules] = useState<Array<{ rule_id: string; rule_name: string }>>([]);
   const [loadingAvailableRules, setLoadingAvailableRules] = useState(false);
 
-  const sensors = [
-    { value: 'level_1', label: 'Nível 1' },
-    { value: 'level_2', label: 'Nível 2' },
-    { value: 'level_3', label: 'Nível 3' },
-    { value: 'level_4', label: 'Nível 4' },
-    { value: 'water_level', label: 'Nível de Água' },
-    { value: 'temperature', label: 'Temperatura da Água (°C)' },
-    { value: 'humidity', label: 'Umidade (%)' },
-    { value: 'ph', label: 'pH' },
-    { value: 'ec', label: 'EC (µS/cm)' },
-  ];
-
-  const waterLevelOptions = [
-    { value: 'vazio', label: 'Vazio' },
-    { value: 'baixo', label: 'Baixo' },
-    { value: 'medio', label: 'Médio' },
-    { value: 'alto', label: 'Alto' },
-  ];
-
-  const operators = [
-    { value: '<', label: 'Menor que (<)' },
-    { value: '>', label: 'Maior que (>)' },
-    { value: '<=', label: 'Menor ou igual (≤)' },
-    { value: '>=', label: 'Maior ou igual (≥)' },
-    { value: '==', label: 'Igual a (=)' },
-    { value: '!=', label: 'Diferente de (≠)' },
-  ];
+  const sensors = [...CONDITION_SENSORS];
 
   const addCondition = () => {
-    setConditions([...conditions, { sensor: 'temperature', operator: '>', value: 0, logic: 'AND' }]);
+    setConditions((prev) => [
+      ...prev,
+      { sensor: 'water_level', operator: '!=', value: 'vazio', logic: 'AND' },
+    ]);
   };
 
   const removeCondition = (index: number) => {
-    setConditions(conditions.filter((_, i) => i !== index));
+    setConditions((prev) => prev.filter((_, i) => i !== index));
   };
 
   const updateCondition = (index: number, field: keyof Condition, value: string | number) => {
-    const updated = [...conditions];
-    updated[index] = { ...updated[index], [field]: value };
-    setConditions(updated);
+    setConditions((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const updateConditionRow = (
+    index: number,
+    condition: { sensor: string; operator: string; value: string | number }
+  ) => {
+    setConditions((prev) => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        sensor: condition.sensor,
+        operator: condition.operator,
+        value: condition.value,
+      };
+      return updated;
+    });
   };
 
   const addAction = () => {
@@ -236,7 +235,7 @@ export default function CreateRuleModal({
       slave.relays.forEach((relay) => {
         relayOptions.push({
           value: `slave_${slave.macAddress}_${relay.id}`,
-          label: `${slave.name || slave.device_id || 'ESP-SLAVE'}: ${relay.id} - ${relay.name || `Relé ${relay.id}`}`,
+          label: `${slave.name || slave.device_id || 'HydroWave Atlas'}: ${relay.id} - ${relay.name || `Relé ${relay.id}`}`,
           slaveMac: slave.macAddress,
           relayId: relay.id,
         });
@@ -244,7 +243,7 @@ export default function CreateRuleModal({
     });
 
     if (relayOptions.length === 0) {
-      toast.error('Nenhum relé slave disponível. Carregue os slaves primeiro.');
+      toast.error('Nenhum relé Atlas disponível. Carregue os Atlas primeiro.');
       return;
     }
 
@@ -303,9 +302,37 @@ export default function CreateRuleModal({
     return (hours * 3600 + minutes * 60 + seconds) * 1000;
   };
 
-  // ✅ Carregar dados da regra quando estiver editando
+  // Carregar / resetar formulário só ao abrir o modal ou trocar de regra (evita apagar edição em re-renders)
   useEffect(() => {
-    if (editingRule && isOpen) {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = isOpen;
+
+    if (!isOpen) {
+      modalInitKeyRef.current = null;
+      return;
+    }
+
+    const initKey = editingRule
+      ? String(editingRule.rule_id || editingRule.supabase_id || editingRule.id || 'edit')
+      : 'new';
+
+    const justOpened = !wasOpen;
+    const ruleChanged =
+      modalInitKeyRef.current !== null && modalInitKeyRef.current !== initKey;
+
+    if (!justOpened && !ruleChanged) {
+      return;
+    }
+
+    modalInitKeyRef.current = initKey;
+
+    setExpandedConditions(true);
+    setExpandedActions(true);
+    setExpandedChainedEvents(false);
+    setExpandedAdvanced(false);
+    setExpandedChainedEventsSequential(false);
+
+    if (editingRule) {
       // Carregar dados básicos
       setRuleName(String(editingRule.rule_name || editingRule.name || ''));
       setDescription(String(editingRule.rule_description || editingRule.description || ''));
@@ -318,7 +345,9 @@ export default function CreateRuleModal({
         
         // Carregar instruções sequenciais
         if (ruleJson.script?.instructions && Array.isArray(ruleJson.script.instructions)) {
-          setInstructions(ruleJson.script.instructions as Instruction[]);
+          setInstructions(ensureInstructionIds(ruleJson.script.instructions as Instruction[]));
+        } else {
+          setInstructions([]);
         }
         
         // Carregar configurações de loop
@@ -333,12 +362,16 @@ export default function CreateRuleModal({
       
       // Carregar condições e ações tradicionais (se não for Sequential Script)
       if (editingRule.conditions && Array.isArray(editingRule.conditions)) {
-        setConditions(editingRule.conditions.map(c => ({
-          sensor: String(c.sensor || ''),
-          operator: String(c.operator || ''),
-          value: typeof c.value === 'number' ? c.value : (typeof c.value === 'string' ? parseFloat(c.value) || 0 : 0),
-          logic: c.logic,
-        })));
+        setConditions(editingRule.conditions.map((c) => {
+          const normalized = normalizeCondition(c);
+          const isLevel = isLevelSensor(normalized.sensor);
+          return {
+            sensor: normalized.sensor,
+            operator: normalized.operator,
+            value: isLevel ? String(normalized.value) : normalized.value,
+            logic: c.logic,
+          };
+        }));
       }
       if (editingRule.actions && Array.isArray(editingRule.actions)) {
         setActions(editingRule.actions.map(a => ({
@@ -360,23 +393,23 @@ export default function CreateRuleModal({
       if (typeof editingRule.max_executions_per_hour === 'number') {
         setMaxExecutionsPerHour(editingRule.max_executions_per_hour);
       }
-    } else if (!editingRule && isOpen) {
-      // Resetar campos quando não está editando (nova regra)
-      setRuleName('');
-      setDescription('');
-      setPriority(50);
-      setEnabled(true);
-      setConditions([{ sensor: 'temperature', operator: '>', value: 25.0, logic: 'AND' }]);
-      setActions([]);
-      setChainedEvents([]);
-      setInstructions([]);
-      setLoopInterval(5000);
-      setMaxIterations(0);
-      setChainedEventsSequential([]);
-      setCooldown(60);
-      setMaxExecutionsPerHour(10);
+      return;
     }
-  }, [editingRule, isOpen]);
+
+    setRuleName('');
+    setDescription('');
+    setPriority(50);
+    setEnabled(true);
+    setConditions([{ sensor: 'temperature', operator: '>', value: 25.0, logic: 'AND' }]);
+    setActions([]);
+    setChainedEvents([]);
+    setInstructions([]);
+    setLoopInterval(5000);
+    setMaxIterations(0);
+    setChainedEventsSequential([]);
+    setCooldown(60);
+    setMaxExecutionsPerHour(10);
+  }, [isOpen, editingRule?.rule_id, editingRule?.supabase_id, editingRule?.id]);
 
   // ✅ Funções para Instruções Sequenciais (de Nova Função)
   useEffect(() => {
@@ -427,38 +460,34 @@ export default function CreateRuleModal({
   };
 
   const addInstruction = (type: Instruction['type']) => {
-    const newInstr: Instruction = {
-      type,
-      condition:
-        type === 'while' || type === 'if'
-          ? { sensor: 'water_level', operator: '!=', value: 'vazio' }
-          : undefined,
-      body: type === 'while' ? [] : undefined,
-      then: type === 'if' ? [] : undefined,
-      relay_number: type === 'relay_action' ? 5 : undefined,
-      action: type === 'relay_action' ? 'on' : undefined,
-      duration_ms: type === 'switch' ? 1000 : undefined,
-    };
-    setInstructions([...instructions, newInstr]);
+    const newInstr = createNestedInstruction(type);
+    if (type === 'relay_action') {
+      newInstr.relay_number = 5;
+    }
+    setInstructions((prev) => [...prev, newInstr]);
   };
 
   const removeInstruction = (index: number) => {
-    setInstructions(instructions.filter((_, i) => i !== index));
+    setInstructions((prev) => prev.filter((_, i) => i !== index));
   };
 
   const moveInstruction = (index: number, direction: 'up' | 'down') => {
-    const newInstrs = [...instructions];
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex >= 0 && targetIndex < newInstrs.length) {
-      [newInstrs[index], newInstrs[targetIndex]] = [newInstrs[targetIndex], newInstrs[index]];
-      setInstructions(newInstrs);
-    }
+    setInstructions((prev) => {
+      const newInstrs = [...prev];
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex >= 0 && targetIndex < newInstrs.length) {
+        [newInstrs[index], newInstrs[targetIndex]] = [newInstrs[targetIndex], newInstrs[index]];
+      }
+      return newInstrs;
+    });
   };
 
   const updateInstruction = (index: number, updated: Instruction) => {
-    const newInstrs = [...instructions];
-    newInstrs[index] = updated;
-    setInstructions(newInstrs);
+    setInstructions((prev) => {
+      const newInstrs = [...prev];
+      newInstrs[index] = updated;
+      return newInstrs;
+    });
   };
 
   const handleSave = () => {
@@ -486,12 +515,15 @@ export default function CreateRuleModal({
       name: ruleName,
       description: description || ruleName,
       // ✅ Converter conditions para RuleCondition[] (value debe ser number)
-      conditions: instructions.length > 0 ? [] : conditions.map(c => ({
-        sensor: c.sensor,
-        operator: c.operator,
-        value: typeof c.value === 'string' ? parseFloat(c.value) || 0 : c.value,
-        logic: c.logic,
-      })),
+      conditions: instructions.length > 0 ? [] : conditions.map((c) => {
+        const norm = normalizeCondition(c);
+        return {
+          sensor: norm.sensor,
+          operator: norm.operator,
+          value: norm.value,
+          logic: c.logic,
+        };
+      }),
       // ✅ Converter actions para el formato esperado
       actions: instructions.length > 0 ? [] : actions.map(a => ({
         relayId: a.relayId,
@@ -591,9 +623,17 @@ export default function CreateRuleModal({
             </div>
           </div>
 
+          <p className="text-xs text-dark-textSecondary rounded-lg border border-dark-border bg-dark-surface/50 px-3 py-2">
+            Prefere passos guiados (enchimento, dreno, changeout)?{' '}
+            <NavLink href="/automacao/procedimento" className="text-aqua-400 hover:underline">
+              Abrir Rule Builder procedural
+            </NavLink>
+          </p>
+
           {/* 🔍 CONDIÇÃO PRINCIPAL - Menu Colapsável */}
           <div className="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
             <button
+              type="button"
               onClick={() => setExpandedConditions(!expandedConditions)}
               className="w-full p-4 flex items-center justify-between hover:bg-dark-card transition-colors"
             >
@@ -612,6 +652,7 @@ export default function CreateRuleModal({
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-dark-textSecondary">Quando:</p>
                   <button
+                    type="button"
                     onClick={addCondition}
                     className="px-3 py-1.5 bg-aqua-500/20 text-aqua-400 border border-aqua-500/30 rounded text-sm hover:bg-aqua-500/30 transition-colors"
                   >
@@ -633,60 +674,24 @@ export default function CreateRuleModal({
                           </select>
                         </div>
                       )}
-                      <div className="flex items-center space-x-2">
-                        <select
-                          value={condition.sensor}
-                          onChange={(e) => handleSensorChange(index, e.target.value)}
-                          className="flex-1 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
+                      <ConditionFields
+                        condition={{
+                          sensor: condition.sensor,
+                          operator: condition.operator,
+                          value: condition.value,
+                        }}
+                        onChange={(updated) => updateConditionRow(index, updated)}
+                        sensors={sensors}
+                      />
+                      {conditions.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeCondition(index)}
+                          className="px-3 py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-sm hover:bg-red-500/30 transition-colors"
                         >
-                          {sensors.map((sensor) => (
-                            <option key={sensor.value} value={sensor.value}>
-                              {sensor.label}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={condition.operator}
-                          onChange={(e) => updateCondition(index, 'operator', e.target.value)}
-                          className="w-40 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
-                        >
-                          {operators.map((op) => (
-                            <option key={op.value} value={op.value}>
-                              {op.label}
-                            </option>
-                          ))}
-                        </select>
-                        {(condition.sensor.startsWith('level_') || condition.sensor === 'water_level') ? (
-                          <select
-                            value={condition.value as string}
-                            onChange={(e) => updateCondition(index, 'value', e.target.value)}
-                            className="w-40 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
-                          >
-                            {waterLevelOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                        <input
-                          type="number"
-                          step="0.1"
-                            value={condition.value as number}
-                            onChange={(e) => updateCondition(index, 'value', parseFloat(e.target.value) || 0)}
-                          className="w-32 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
-                          placeholder="Valor"
-                        />
-                        )}
-                        {conditions.length > 1 && (
-                          <button
-                            onClick={() => removeCondition(index)}
-                            className="px-3 py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-sm hover:bg-red-500/30 transition-colors"
-                          >
-                            Remover
-                          </button>
-                        )}
-                      </div>
+                          Remover
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -694,114 +699,23 @@ export default function CreateRuleModal({
             )}
           </div>
 
-          {/* ⚡ AÇÕES - Menu Colapsável */}
+          {/* Passos do script — sempre visível (não esconder em Ações) */}
           <div className="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
-            <button
-              onClick={() => setExpandedActions(!expandedActions)}
-              className="w-full p-4 flex items-center justify-between hover:bg-dark-card transition-colors"
-            >
-              <div className="flex items-center space-x-3">
-                {expandedActions ? (
-                  <ChevronUpIcon className="w-5 h-5 text-aqua-400" />
-                ) : (
-                  <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
-                )}
-                <h3 className="text-lg font-semibold text-dark-text">⚡ Ações</h3>
-              </div>
-            </button>
+            <div className="p-4 border-b border-dark-border">
+              <h3 className="text-lg font-semibold text-dark-text">Passos do script</h3>
+              <p className="text-xs text-dark-textSecondary mt-1">
+                Ordem de execução no ESP32. Ex.: dreno automático ={' '}
+                <strong className="text-aqua-300">LOOP</strong> +{' '}
+                <strong className="text-aqua-300">Relé</strong>.
+              </p>
+            </div>
+            <div className="p-4 space-y-4">
+              <InstructionAddButtons onAdd={addInstruction} />
 
-            {expandedActions && (
-              <div className="p-4 border-t border-dark-border space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-dark-textSecondary">Então:</p>
-                  <button
-                    onClick={addAction}
-                    className="px-3 py-1.5 bg-primary-500/20 text-primary-400 border border-primary-500/30 rounded text-sm hover:bg-primary-500/30 transition-colors"
-                  >
-                    + Adicionar Ação
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {actions.map((action, index) => {
-                    // ✅ Gerar opções de relés (APENAS slaves)
-                    const relayOptions: Array<{ value: string; label: string; slaveMac: string; relayId: number }> = [];
-                    
-                    espnowSlaves.forEach((slave) => {
-                      slave.relays.forEach((relay) => {
-                        relayOptions.push({
-                          value: `slave_${slave.macAddress}_${relay.id}`,
-                          label: `${slave.name || slave.device_id || 'ESP-SLAVE'}: ${relay.id} - ${relay.name || `Relé ${relay.id}`}`,
-                          slaveMac: slave.macAddress,
-                          relayId: relay.id,
-                        });
-                      });
-                    });
-
-                    // Valor atual do relay (formato: slave_MAC_relayId)
-                    const currentRelayValue = action.relayName && action.relayName.includes(':')
-                      ? relayOptions.find(opt => opt.label === action.relayName)?.value || (relayOptions.length > 0 ? relayOptions[0].value : '')
-                      : relayOptions.length > 0 ? relayOptions[0].value : '';
-
-                    const handleRelayChange = (value: string) => {
-                      const [type, ...parts] = value.split('_');
-                      if (type === 'slave') {
-                        const [mac, relayNum] = parts;
-                        const selectedOption = relayOptions.find(opt => opt.value === value);
-                        if (selectedOption) {
-                          updateAction(index, 'relayId', parseInt(relayNum));
-                          updateAction(index, 'relayName', selectedOption.label);
-                        }
-                      }
-                    };
-
-                    return (
-                      <div key={index} className="bg-dark-card p-4 rounded-lg border border-dark-border space-y-3">
-                        <div className="flex items-center space-x-2">
-                          <select
-                            value={currentRelayValue}
-                            onChange={(e) => handleRelayChange(e.target.value)}
-                            className="flex-1 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
-                          >
-                            {relayOptions.length === 0 ? (
-                              <option value="">Nenhum relé slave disponível</option>
-                            ) : (
-                              relayOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))
-                            )}
-                          </select>
-                          <select
-                            value={action.action}
-                            onChange={(e) => updateAction(index, 'action', e.target.value)}
-                            className="w-32 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
-                          >
-                            <option value="on">Ligar (ON)</option>
-                            <option value="off">Desligar (OFF)</option>
-                          </select>
-                          <button
-                            onClick={() => removeAction(index)}
-                            className="px-3 py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-sm hover:bg-red-500/30 transition-colors"
-                          >
-                            Remover
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* 📝 INSTRUÇÕES (Ordem de Execução) - dentro de Ações */}
-                <div className="border-t border-dark-border pt-4 mt-4">
-                  <label className="block text-sm font-medium text-dark-text mb-3">
-                    📝 INSTRUÇÕES (Ordem de Execução)
-                  </label>
-
-                  <div className="space-y-3">
-                    {instructions.map((instr, index) => (
+              <div className="space-y-3">
+                {instructions.map((instr, index) => (
                 <div
-                  key={index}
+                  key={instr.id ?? index}
                   className="border border-dark-border rounded-lg p-3 bg-dark-surface/50"
                 >
                   <div className="flex items-center justify-between mb-2">
@@ -841,6 +755,7 @@ export default function CreateRuleModal({
                       instruction={instr}
                       onChange={(updated) => updateInstruction(index, updated)}
                       espnowSlaves={espnowSlaves}
+                      masterRelays={masterRelays}
                     />
                   )}
 
@@ -849,6 +764,7 @@ export default function CreateRuleModal({
                       instruction={instr}
                       onChange={(updated) => updateInstruction(index, updated)}
                       espnowSlaves={espnowSlaves}
+                      masterRelays={masterRelays}
                     />
                   )}
 
@@ -857,6 +773,7 @@ export default function CreateRuleModal({
                       instruction={instr}
                       onChange={(updated) => updateInstruction(index, updated)}
                       espnowSlaves={espnowSlaves}
+                      masterRelays={masterRelays}
                     />
                   )}
 
@@ -1020,41 +937,111 @@ export default function CreateRuleModal({
                   )}
                     </div>
                     ))}
-                  </div>
+              </div>
+            </div>
+          </div>
 
-                  {/* Botões para adicionar instruções */}
-                  <div className="mt-4 p-3 border border-dark-border rounded-lg bg-aqua-500/10">
-                    <div className="flex gap-2 flex-wrap">
-                      <button
-                        onClick={() => addInstruction('while')}
-                        className="px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border rounded-lg text-sm text-white transition-colors flex items-center gap-2"
-                      >
-                        <PlusIcon className="w-4 h-4" />
-                        LOOP
-                      </button>
-                      <button
-                        onClick={() => addInstruction('if')}
-                        className="px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border rounded-lg text-sm text-white transition-colors flex items-center gap-2"
-                      >
-                        <PlusIcon className="w-4 h-4" />
-                        Se
-                      </button>
-                      <button
-                        onClick={() => addInstruction('relay_action')}
-                        className="px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border rounded-lg text-sm text-white transition-colors flex items-center gap-2"
-                      >
-                        <PlusIcon className="w-4 h-4" />
-                        Relé
-                      </button>
-                      <button
-                        onClick={() => addInstruction('switch')}
-                        className="px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border rounded-lg text-sm text-white transition-colors flex items-center gap-2"
-                      >
-                        <PlusIcon className="w-4 h-4" />
-                        SWITCH
-                      </button>
-                    </div>
-                  </div>
+          {/* Ações simples (relés slave) — opcional se não usar script */}
+          <div className="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setExpandedActions(!expandedActions)}
+              className="w-full p-4 flex items-center justify-between hover:bg-dark-card transition-colors"
+            >
+              <div className="flex items-center space-x-3">
+                {expandedActions ? (
+                  <ChevronUpIcon className="w-5 h-5 text-aqua-400" />
+                ) : (
+                  <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
+                )}
+                <h3 className="text-lg font-semibold text-dark-text">Ações simples (opcional)</h3>
+              </div>
+            </button>
+
+            {expandedActions && (
+              <div className="p-4 border-t border-dark-border space-y-4">
+                <p className="text-xs text-dark-textSecondary">
+                  Use apenas se a regra não tiver passos de script acima. Para dreno/fill, prefira{' '}
+                  <strong>LOOP</strong> + <strong>Relé</strong>.
+                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-dark-textSecondary">Então:</p>
+                  <button
+                    type="button"
+                    onClick={addAction}
+                    className="px-3 py-1.5 bg-primary-500/20 text-primary-400 border border-primary-500/30 rounded text-sm hover:bg-primary-500/30 transition-colors"
+                  >
+                    + Adicionar Ação
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {actions.map((action, index) => {
+                    const relayOptions: Array<{ value: string; label: string; slaveMac: string; relayId: number }> = [];
+
+                    espnowSlaves.forEach((slave) => {
+                      slave.relays.forEach((relay) => {
+                        relayOptions.push({
+                          value: `slave_${slave.macAddress}_${relay.id}`,
+                          label: `${slave.name || slave.device_id || 'HydroWave Atlas'}: ${relay.id} - ${relay.name || `Relé ${relay.id}`}`,
+                          slaveMac: slave.macAddress,
+                          relayId: relay.id,
+                        });
+                      });
+                    });
+
+                    const currentRelayValue = action.relayName && action.relayName.includes(':')
+                      ? relayOptions.find(opt => opt.label === action.relayName)?.value || (relayOptions.length > 0 ? relayOptions[0].value : '')
+                      : relayOptions.length > 0 ? relayOptions[0].value : '';
+
+                    const handleRelayChange = (value: string) => {
+                      const [type, ...parts] = value.split('_');
+                      if (type === 'slave') {
+                        const [, relayNum] = parts;
+                        const selectedOption = relayOptions.find(opt => opt.value === value);
+                        if (selectedOption) {
+                          updateAction(index, 'relayId', parseInt(relayNum));
+                          updateAction(index, 'relayName', selectedOption.label);
+                        }
+                      }
+                    };
+
+                    return (
+                      <div key={index} className="bg-dark-card p-4 rounded-lg border border-dark-border space-y-3">
+                        <div className="flex items-center space-x-2">
+                          <select
+                            value={currentRelayValue}
+                            onChange={(e) => handleRelayChange(e.target.value)}
+                            className="flex-1 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
+                          >
+                            {relayOptions.length === 0 ? (
+                              <option value="">Nenhum relé Atlas disponível</option>
+                            ) : (
+                              relayOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))
+                            )}
+                          </select>
+                          <select
+                            value={action.action}
+                            onChange={(e) => updateAction(index, 'action', e.target.value)}
+                            className="w-32 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
+                          >
+                            <option value="on">Ligar (ON)</option>
+                            <option value="off">Desligar (OFF)</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => removeAction(index)}
+                            className="px-3 py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-sm hover:bg-red-500/30 transition-colors"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

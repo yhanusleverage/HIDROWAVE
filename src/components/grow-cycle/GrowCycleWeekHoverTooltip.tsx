@@ -107,6 +107,10 @@ export function GrowCycleWeekHoverTooltip({
             <p className="text-dark-textSecondary">Dosagem</p>
             <p className="text-dark-text tabular-nums">{formatDosage(metrics.lastDosageEcMl)}</p>
           </div>
+          <div>
+            <p className="text-dark-textSecondary">Tanque</p>
+            <p className="text-dark-text tabular-nums">{metrics.tankVolumeL} L</p>
+          </div>
         </div>
 
         <div className="space-y-1.5">

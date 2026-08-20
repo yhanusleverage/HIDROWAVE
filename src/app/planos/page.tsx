@@ -33,7 +33,7 @@ const TIERS = [
     ctaStyle: 'secondary' as const,
     highlighted: false,
     features: [
-      '1 master ESP32 + dashboard em tempo real',
+      '1 HydroWave Core + dashboard em tempo real',
       'Auto EC e Auto pH básicos',
       'Histórico de sensores: 30 dias',
       'Suporte por email (resposta em até 48h)',
@@ -103,7 +103,7 @@ const ADDON_SERVICES = [
 ];
 
 const COMPARISON_ROWS = [
-  { feature: 'Dispositivos', free: '1 master', premium: 'Conforme contrato', enterprise: 'Ilimitado*' },
+  { feature: 'Dispositivos', free: '1 Core', premium: 'Conforme contrato', enterprise: 'Ilimitado*' },
   { feature: 'Histórico de dados', free: '30 dias', premium: '12 meses', enterprise: 'Ilimitado' },
   { feature: 'Auto EC / Auto pH', free: 'Sim', premium: 'Sim + prioridade', enterprise: 'Sim + SLA' },
   { feature: 'Alertas SMS', free: '—', premium: 'Sim', enterprise: 'Sim' },

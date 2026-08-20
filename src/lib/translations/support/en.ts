@@ -47,8 +47,8 @@ export const supportPagesEn: Record<SupportPageSlug, DocsPageContent> = {
         accent: 'brand',
         layers: [
           {
-            title: '1. Edge — ESP32 master + ESP-NOW slaves',
-            body: 'The master reads water sensors (pH, EC/TDS, level), runs Auto EC/pH via HydroControl, and sends commands to local relays or slaves (valves, peristaltic pumps, recirculation).',
+            title: '1. Edge — HydroWave Core + Atlas (ESP-NOW)',
+            body: 'The Core reads water sensors (pH, EC/TDS, level), runs Auto EC/pH, and sends commands to local relays or Atlas nodes (valves, peristaltic pumps, recirculation).',
             accent: 'wait',
           },
           {
@@ -148,7 +148,7 @@ export const supportPagesEn: Record<SupportPageSlug, DocsPageContent> = {
         steps: [
           { title: 'UI / Automation', body: 'Operator configures setpoints, nutrient plan, or rules. Next.js calls API routes that persist to Supabase.' },
           { title: 'Supabase', body: 'Tables: hydro_measurements, relay_master, ec_controller_config, ph_controller_config, decision_rules, relay_commands, nutrient_dosages, ph_dosages.' },
-          { title: 'ESP32 — HydroSystemCore', body: 'Config poll (~30 s), sensor reads, operation_state sync, pending relay_commands processing.' },
+          { title: 'ESP32 — HydroWave Core', body: 'Config poll (~30 s), sensor reads, operation_state sync, pending relay_commands processing.' },
           { title: 'HydroControl + DecisionEngine', body: 'EC/pH loops in main loop(); rules evaluated in dedicated task with cooldown and hourly limits.' },
         ],
       },
@@ -204,7 +204,7 @@ export const supportPagesEn: Record<SupportPageSlug, DocsPageContent> = {
         code: `WHILE level_4 != "vazio" DO\n  outlet_valve_relay = ON\nEND WHILE\n\nIF level_4 == "vazio" THEN\n  outlet_valve_relay = OFF\n  RETURN\nEND IF`,
         steps: [
           { title: 'Map level_4', body: 'Configure lowest probe (or derived logical state) as level_4 = empty when tank drained.' },
-          { title: 'Assign relay', body: 'Drain motorized valve on ESP-NOW slave or local relay (e.g. relay 5).' },
+          { title: 'Assign relay', body: 'Drain motorized valve on Atlas or local Core relay (e.g. relay 5).' },
           { title: 'Set loop_interval_ms', body: 'Typically 1000–5000 ms between WHILE evaluations to avoid valve chatter.' },
         ],
       },
@@ -220,7 +220,7 @@ export const supportPagesEn: Record<SupportPageSlug, DocsPageContent> = {
           {
             variant: 'warning',
             title: 'Design pattern',
-            body: 'Full recharge is documented as a script contract. Relay name exists in test firmware; validate GPIO/slave mapping on your installation before production use.',
+            body: 'Full recharge is documented as a script contract. Relay name exists in test firmware; validate GPIO/Atlas mapping on your installation before production use.',
           },
         ],
       },
@@ -339,7 +339,7 @@ export const supportPagesEn: Record<SupportPageSlug, DocsPageContent> = {
           rows: [
             { cells: ['WHILE', 'Loop while condition true (e.g. drain)'] },
             { cells: ['IF / ELSE', 'Conditional branch'] },
-            { cells: ['relay_action', 'ON/OFF on master or ESP-NOW slave relay'] },
+            { cells: ['relay_action', 'ON/OFF on Core or Atlas relay'] },
             { cells: ['DELAY', 'Pause between steps (ms)'] },
             { cells: ['RETURN', 'End script execution this cycle'] },
           ],

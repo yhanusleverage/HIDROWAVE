@@ -58,13 +58,25 @@ export const QUEM_SOMOS_MISSION = {
     'Pensamos na hidroponia como um sistema de elementos: eletrônica que sente, hidráulica que move, química que equilibra, nutrição que alimenta, ambiente que monitora, telemetria que revela e conectividade que une tudo.',
 };
 
+/** Manifesto de eficiência — princípio orientador do produto e da operação. */
+export const QUEM_SOMOS_MANIFESTO = {
+  eyebrow: 'Filosofia',
+  lead: 'Eficiência não é fazer mais.',
+  subtitle: 'É alcançar o melhor resultado com o mínimo necessário.',
+  paragraphs: [
+    'Quando cada ação acontece no momento certo, cada recurso encontra seu propósito. O equilíbrio substitui o excesso, a precisão elimina o desperdício e o desempenho torna-se uma consequência natural.',
+    'O controle nasce da compreensão. A simplicidade nasce da ordem. A excelência nasce da harmonia entre todas as partes.',
+    'Porque todo sistema atinge seu maior potencial quando nada é desperdiçado e tudo tem uma razão para existir.',
+  ],
+};
+
 export const QUEM_SOMOS_ELEMENTS: QuemSomosElement[] = [
   {
     id: 'electronics',
     element: 'Eletrônica',
     title: 'O Nervo do Sistema',
     subtitle: 'Controlador · sensores · bombas · relés',
-    technicalDetail: 'ESP32 · GPIO · peristálticas · matriz de relés',
+    technicalDetail: 'Controlador no tanque · sensores · bombas de dose · interruptores',
     plain:
       'Construímos o hardware que mede, decide e age no reservatório — sem depender de você ficar olhando o tanque o dia inteiro.',
     tagline: 'Cada pulso, cada leitura, cada relé — precisão no campo.',
@@ -77,7 +89,7 @@ export const QUEM_SOMOS_ELEMENTS: QuemSomosElement[] = [
     element: 'Hidráulica',
     title: 'Domínio das Águas',
     subtitle: 'Nível · recirculação · solução nutritiva',
-    technicalDetail: 'Sensor ultrassônico · tempo de recirculação · volume do reservatório',
+    technicalDetail: 'Medição de nível · tempo de recirculação · volume do tanque',
     plain:
       'Monitoramos o que entra, o que sai e o que a planta consome — porque hidroponia é equilíbrio líquido, não sorte.',
     tagline: 'Volume, fluxo e mistura sob controle.',
@@ -90,7 +102,7 @@ export const QUEM_SOMOS_ELEMENTS: QuemSomosElement[] = [
     element: 'Química',
     title: 'Equilíbrio Ácido-Base',
     subtitle: 'Auto pH · calibragem · banda morta',
-    technicalDetail: 'AdaptivePHController · domínio H⁺ · max_dose_ml_per_cycle',
+    technicalDetail: 'Auto pH · faixa de tolerância · limite de dose por ciclo',
     plain:
       'Pequenas variações de acidez mudam tudo. O sistema corrige dentro da tolerância que você define — claro, previsível, seguro.',
     tagline: 'pH estável é colheita previsível.',
@@ -103,7 +115,7 @@ export const QUEM_SOMOS_ELEMENTS: QuemSomosElement[] = [
     element: 'Nutrição',
     title: 'Força da Solução',
     subtitle: 'Auto EC · plano nutricional · dose proporcional',
-    technicalDetail: 'Setpoint EC · banda morta · dosagem sequencial por nutriente',
+    technicalDetail: 'Meta de EC · faixa morta · dose de cada nutriente na ordem certa',
     plain:
       'EC é a força nutritiva da sua cultura. Calculamos a dose certa, respeitamos a banda morta e só agimos quando faz sentido.',
     tagline: 'Nutrientes na medida — nem falta, nem excesso.',
@@ -116,7 +128,7 @@ export const QUEM_SOMOS_ELEMENTS: QuemSomosElement[] = [
     element: 'Ambiente',
     title: 'Clima da Solução',
     subtitle: 'Temperatura da água · alertas · tendências',
-    technicalDetail: 'Sonda DS18B20 · histórico no dashboard · umbrais configuráveis',
+    technicalDetail: 'Sensor de temperatura da água · histórico no painel · alertas na faixa que você define',
     plain:
       'A temperatura muda a oxigenação e a absorção de nutrientes. Acompanhamos a água e avisamos quando sair da faixa ideal — sem prometer controle climático que ainda não existe.',
     tagline: 'Monitorar antes de corrigir no escuro.',
@@ -129,7 +141,7 @@ export const QUEM_SOMOS_ELEMENTS: QuemSomosElement[] = [
     element: 'Telemetria',
     title: 'Visão em Tempo Real',
     subtitle: 'Dashboard · gráficos · status dos ciclos',
-    technicalDetail: 'Supabase Realtime · gráfico hidro combinado · cards de sensores',
+    technicalDetail: 'Atualização ao vivo · gráfico de pH/EC/temp · cartões de sensores',
     plain:
       'Tudo o que acontece no campo chega ao seu painel: pH, EC, temperatura e status dos ciclos — num só lugar.',
     tagline: 'Decisão com dados, não com achismo.',
@@ -142,7 +154,7 @@ export const QUEM_SOMOS_ELEMENTS: QuemSomosElement[] = [
     element: 'Conectividade',
     title: 'Ponte Campo-Nuvem',
     subtitle: 'Wi‑Fi · nuvem · alertas no celular',
-    technicalDetail: 'MQTT · bridge · telemetria contínua · status online',
+    technicalDetail: 'Wi‑Fi · nuvem · leitura contínua · aviso se o equipamento cair',
     plain:
       'O equipamento fala com a nuvem em tempo real. Você sabe se está online antes que um problema vire prejuízo.',
     tagline: 'O tanque nunca fica sozinho.',
@@ -189,7 +201,7 @@ export const QUEM_SOMOS_BEFORE_AFTER: QuemSomosBeforeAfterRow[] = [
   },
   {
     without: 'EC oscilando entre visitas ao tanque',
-    with: 'Auto EC proporcional + gráfico no dashboard',
+    with: 'Auto EC proporcional, gráfico no dashboard e consumo diário da EC',
   },
   {
     without: 'Não saber se o equipamento está online',
@@ -200,6 +212,31 @@ export const QUEM_SOMOS_BEFORE_AFTER: QuemSomosBeforeAfterRow[] = [
     with: 'Calibragem de bombas e validação antes de ativar o automático',
   },
 ];
+
+export const QUEM_SOMOS_PRODUCT_LINE = {
+  title: 'A linha HydroWave',
+  subtitle: 'Três caixas. Um sistema. Nomes claros para o campo.',
+  modules: [
+    {
+      name: 'HydroWave Core',
+      role: 'Controlador central',
+      body: 'O cérebro do tanque. Sensores, regras e rede em uma caixa.',
+      accent: 'brand' as const,
+    },
+    {
+      name: 'HydroWave Atlas',
+      role: 'Relés e válvulas',
+      body: 'Sustenta a carga do campo. Válvulas, bombas e relés sob comando.',
+      accent: 'wait' as const,
+    },
+    {
+      name: 'HydroWave Pulse',
+      role: 'Módulo dosador pH/EC',
+      body: 'O pulso do nutriente. pH e EC na proporção certa.',
+      accent: 'ec' as const,
+    },
+  ],
+};
 
 export const QUEM_SOMOS_JOURNEY: QuemSomosJourneyStep[] = [
   {
@@ -238,7 +275,8 @@ export const QUEM_SOMOS_CTA = {
 };
 
 export const QUEM_SOMOS_TEASER = {
-  title: 'Conheça os elementos do HydroWave',
-  subtitle: 'Do sensor no tanque ao gráfico no celular — veja como cada grandeza ganha um instrumento.',
+  title: 'Conheça Core · Atlas · Pulse',
+  subtitle:
+    'Eficiência não é fazer mais — é o melhor resultado com o mínimo necessário. Veja a linha HydroWave e os elementos do cultivo.',
   cta: 'Quem somos',
 };

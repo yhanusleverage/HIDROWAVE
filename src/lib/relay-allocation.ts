@@ -65,6 +65,8 @@ export interface EcNutrientRelaySlice {
   relayNumber?: number;
   mlPerLiter?: number;
   active?: boolean;
+  /** Vazão desta bomba (ml/s). Ausente = usa flow_rate global. */
+  flowRate?: number;
 }
 
 export interface EcConfigRelaySlice {
@@ -380,13 +382,20 @@ function claimBlocksContext(claim: RelaySlotClaim, context: RelaySelectContext):
   }
 
   if (field === 'ec_nutrient') {
-    if (claim.owner === 'ec_nutrient' && claim.sourceId === String(nutrientIndex ?? -1)) {
-      return false;
+    // Un relé, un nutriente (salvo la fila en edición).
+    if (claim.owner === 'ec_nutrient') {
+      return claim.sourceId !== String(nutrientIndex ?? -1);
     }
-    return claim.owner === 'ec_nutrient' || claim.owner === 'ph_up' || claim.owner === 'ph_down' ||
-      claim.owner === 'ec_dilution_drain' || claim.owner === 'ec_dilution_fill' ||
-      claim.owner === 'runtime_active' || claim.owner === 'decision_rule' || claim.owner === 'manual' ||
-      claim.owner === 'calibragem';
+    return (
+      claim.owner === 'ph_up' ||
+      claim.owner === 'ph_down' ||
+      claim.owner === 'ec_dilution_drain' ||
+      claim.owner === 'ec_dilution_fill' ||
+      claim.owner === 'runtime_active' ||
+      claim.owner === 'decision_rule' ||
+      claim.owner === 'manual' ||
+      claim.owner === 'calibragem'
+    );
   }
 
   if (field === 'ec_dilution_drain') {
@@ -605,7 +614,7 @@ export function validateEcDilutionSlaveFields(
   const drainMac = config.dilution_drain_slave_mac!.toString().trim().toUpperCase();
   const fillMac = config.dilution_fill_slave_mac!.toString().trim().toUpperCase();
   if (drainMac === fillMac && drainRelay === fillRelay) {
-    return { ok: false, error: 'Dreno e reposição não podem ser o mesmo relé slave.' };
+    return { ok: false, error: 'Dreno e reposição não podem ser o mesmo relé Atlas.' };
   }
 
   return { ok: true };

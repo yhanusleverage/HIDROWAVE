@@ -6,15 +6,18 @@ import { SIMULATION_RULES } from '@/lib/grow-cycle-timeline/simulation-engine';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 
+import { HW_PROCESS_LAYER_ACCENT, HW_TEXT } from '@/lib/design-tokens';
+import type { ProcessLayer } from '@/lib/grow-cycle-timeline/types';
+
 interface SimulationRulesPanelProps {
   log: SimulatedLogEntry[];
 }
 
-const LAYER_COLOR: Record<string, string> = {
-  P1: 'text-amber-300',
-  P2: 'text-emerald-300',
-  P3: 'text-violet-300',
-  P4: 'text-dark-textSecondary',
+const LAYER_COLOR: Record<ProcessLayer, string> = {
+  P1: HW_TEXT[HW_PROCESS_LAYER_ACCENT.P1],
+  P2: HW_TEXT[HW_PROCESS_LAYER_ACCENT.P2],
+  P3: HW_TEXT[HW_PROCESS_LAYER_ACCENT.P3],
+  P4: HW_TEXT[HW_PROCESS_LAYER_ACCENT.P4],
 };
 
 export function SimulationRulesPanel({ log }: SimulationRulesPanelProps) {

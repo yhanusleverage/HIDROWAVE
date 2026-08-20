@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import TimelineCultivoClient from './TimelineCultivoClient';
 
 export const metadata: Metadata = {
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function TimelineCultivoPage() {
-  return <TimelineCultivoClient />;
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-dark-bg" />}>
+      <TimelineCultivoClient />
+    </Suspense>
+  );
 }

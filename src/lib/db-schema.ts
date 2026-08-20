@@ -106,3 +106,10 @@ export function isSupabaseMissingTableError(error: {
     msg.includes('could not find the table')
   );
 }
+
+/** Variante para blocos catch (error: unknown). */
+export function isUnknownSupabaseMissingTableError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { code?: string; message?: string };
+  return isSupabaseMissingTableError(e);
+}

@@ -1,5 +1,6 @@
 import type { ChartData, ChartOptions, Plugin } from 'chart.js';
 import { formatSensorValue } from '@/lib/format-sensor-value';
+import { HYDRO_CHART_RAW_LIMIT } from '@/lib/realtime/chart-history';
 import { resolveEcForDisplay } from '@/lib/realtime/hydro-ec';
 import { resolvePhForChart as resolvePhForChartRow } from '@/lib/realtime/hydro-ph';
 import type { HydroMeasurement } from '@/lib/supabase';
@@ -124,16 +125,16 @@ function formatTimeLabel(createdAt: string): string {
   return date.toLocaleTimeString('pt-BR', {
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
   });
 }
 
 /**
- * Construye series QC a partir del histórico (más reciente primero).
- * Invierte a orden cronológico: antiguo (izq) → reciente (der).
+ * Series QC a partir do histórico (mais recente primeiro na origem).
+ * Ordem cronológica no gráfico: antigo (esq) → recente (dir).
  */
 export function buildHydroChartSeries(history: HydroMeasurement[]): HydroChartSeries {
-  const chronological = [...history].reverse();
+  const recent = history.slice(0, HYDRO_CHART_RAW_LIMIT);
+  const chronological = [...recent].reverse();
   const labels: string[] = [];
   const timestamps: string[] = [];
   const ph: (number | null)[] = [];
@@ -210,6 +211,9 @@ export function buildHydroCombinedChartData(series: HydroChartSeries): ChartData
   const phMeta = HYDRO_PARAM_META.ph;
   const ecMeta = HYDRO_PARAM_META.ec;
   const tempMeta = HYDRO_PARAM_META.temp;
+  const dense = series.labels.length > 48;
+  const pointRadius = dense ? 0 : 2;
+  const pointHoverRadius = dense ? 4 : 5;
 
   return {
     labels: series.labels,
@@ -220,10 +224,10 @@ export function buildHydroCombinedChartData(series: HydroChartSeries): ChartData
         yAxisID: 'y',
         borderColor: phMeta.color.border,
         backgroundColor: phMeta.color.fill,
-        tension: 0.3,
+        tension: 0.25,
         spanGaps: true,
-        pointRadius: 3,
-        pointHoverRadius: 6,
+        pointRadius,
+        pointHoverRadius,
         pointHoverBackgroundColor: phMeta.color.border,
         pointHoverBorderColor: '#e0f2fe',
         pointHoverBorderWidth: 2,
@@ -235,10 +239,10 @@ export function buildHydroCombinedChartData(series: HydroChartSeries): ChartData
         yAxisID: 'y1',
         borderColor: ecMeta.color.border,
         backgroundColor: ecMeta.color.fill,
-        tension: 0.3,
+        tension: 0.25,
         spanGaps: true,
-        pointRadius: 3,
-        pointHoverRadius: 6,
+        pointRadius,
+        pointHoverRadius,
         pointHoverBackgroundColor: ecMeta.color.border,
         pointHoverBorderColor: '#e0f2fe',
         pointHoverBorderWidth: 2,
@@ -250,10 +254,10 @@ export function buildHydroCombinedChartData(series: HydroChartSeries): ChartData
         yAxisID: 'yTemp',
         borderColor: tempMeta.color.border,
         backgroundColor: tempMeta.color.fill,
-        tension: 0.3,
+        tension: 0.25,
         spanGaps: true,
-        pointRadius: 3,
-        pointHoverRadius: 6,
+        pointRadius,
+        pointHoverRadius,
         pointHoverBackgroundColor: tempMeta.color.border,
         pointHoverBorderColor: '#e0f2fe',
         pointHoverBorderWidth: 2,
@@ -295,6 +299,7 @@ export function buildHydroCombinedChartOptions(series: HydroChartSeries): ChartO
   return {
     responsive: true,
     maintainAspectRatio: false,
+    animation: { duration: 0 },
     interaction: {
       mode: 'index',
       axis: 'x',
@@ -307,7 +312,9 @@ export function buildHydroCombinedChartOptions(series: HydroChartSeries): ChartO
         labels: {
           color: CHART_TICK_COLOR,
           usePointStyle: true,
-          padding: 16,
+          boxWidth: 10,
+          font: { size: 11 },
+          padding: 12,
         },
       },
       title: { display: false },
@@ -338,11 +345,12 @@ export function buildHydroCombinedChartOptions(series: HydroChartSeries): ChartO
     scales: {
       x: {
         ticks: {
-          maxRotation: 45,
-          minRotation: 45,
+          maxRotation: 0,
+          minRotation: 0,
           color: CHART_TICK_COLOR,
           autoSkip: true,
-          maxTicksLimit: 12,
+          maxTicksLimit: 8,
+          font: { size: 10 },
         },
         grid: { color: CHART_GRID_COLOR },
       },
@@ -355,27 +363,21 @@ export function buildHydroCombinedChartOptions(series: HydroChartSeries): ChartO
           display: true,
           text: 'pH',
           color: HYDRO_CHART_COLORS.ph.border,
+          font: { size: 10 },
         },
         ticks: {
           color: HYDRO_CHART_COLORS.ph.border,
-          maxTicksLimit: 8,
+          maxTicksLimit: 6,
+          font: { size: 10 },
         },
         grid: { color: CHART_GRID_COLOR },
       },
       yTemp: {
         type: 'linear',
+        display: false,
         position: 'left',
         min: tempBounds.min,
         max: tempBounds.max,
-        title: {
-          display: true,
-          text: 'Temperatura (°C)',
-          color: HYDRO_CHART_COLORS.temp.border,
-        },
-        ticks: {
-          color: HYDRO_CHART_COLORS.temp.border,
-          maxTicksLimit: 8,
-        },
         grid: { drawOnChartArea: false },
       },
       y1: {
@@ -387,8 +389,9 @@ export function buildHydroCombinedChartOptions(series: HydroChartSeries): ChartO
           display: true,
           text: 'EC (µS/cm)',
           color: HYDRO_CHART_COLORS.ec.border,
+          font: { size: 10 },
         },
-        ticks: { color: HYDRO_CHART_COLORS.ec.border },
+        ticks: { color: HYDRO_CHART_COLORS.ec.border, maxTicksLimit: 6, font: { size: 10 } },
         grid: { drawOnChartArea: false },
       },
     },

@@ -1,11 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { supabaseAnonKey, supabaseUrl } from './env';
+import { hasHydroSensorReading } from '@/lib/realtime/hydro-sensor';
 import {
-  hasHydroSensorReading,
-  hasPhReading,
-  hasTemperatureReading,
-} from '@/lib/realtime/hydro-sensor';
-import { mergeHydroMeasurements } from '@/lib/realtime/hydro-ph';
+  isHydroRowFresh,
+  mergeHydroLiveSnapshot,
+} from '@/lib/realtime/hydro-freshness';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -47,6 +46,8 @@ export type HydroMeasurement = {
   level_3?: boolean;
   level_4?: boolean;
   water_level?: string;
+  /** true = L1-L4 simulados en firmware (HIDRO_SIMULATE_WATER_LEVELS) */
+  levels_simulated?: boolean | null;
 };
 
 export type EnvironmentMeasurement = {
@@ -56,45 +57,6 @@ export type EnvironmentMeasurement = {
   temperature: number;
   humidity: number;
 };
-
-async function backfillPartialHydroRow(
-  latest: HydroMeasurement,
-  deviceId: string
-): Promise<HydroMeasurement> {
-  const needsPh = !hasPhReading(latest);
-  const needsTemp = !hasTemperatureReading(latest);
-  if (!needsPh && !needsTemp) return latest;
-  if (!hasHydroSensorReading(latest) && !needsPh && !needsTemp) return latest;
-
-  const { data: recentRows } = await supabase
-    .from('hydro_measurements')
-    .select('*')
-    .eq('device_id', deviceId)
-    .order('created_at', { ascending: false })
-    .limit(50);
-
-  if (!recentRows?.length) return latest;
-
-  let merged = latest;
-
-  if (needsPh) {
-    const donor = recentRows.find((row) => hasPhReading(row));
-    if (donor) {
-      merged = mergeHydroMeasurements(donor as HydroMeasurement, merged);
-      console.log('ℹ️ [SUPABASE] Backfill pH desde fila', donor.id);
-    }
-  }
-
-  if (!hasTemperatureReading(merged)) {
-    const donor = recentRows.find((row) => hasTemperatureReading(row));
-    if (donor) {
-      merged = mergeHydroMeasurements(donor as HydroMeasurement, merged);
-      console.log('ℹ️ [SUPABASE] Backfill temperatura desde fila', donor.id);
-    }
-  }
-
-  return merged;
-}
 
 export async function getLatestHydroData(deviceId: string): Promise<HydroMeasurement | null> {
   console.log('🔍 [SUPABASE] getLatestHydroData device_id=', deviceId);
@@ -131,24 +93,28 @@ export async function getLatestHydroData(deviceId: string): Promise<HydroMeasure
       console.log('✅ [SUPABASE] Created At:', data.created_at);
       console.log('✅ [SUPABASE] Dados completos:', JSON.stringify(data, null, 2));
 
-      if (!hasHydroSensorReading(data)) {
-        const { data: recentRows } = await supabase
-          .from('hydro_measurements')
-          .select('*')
-          .eq('device_id', deviceId)
-          .order('created_at', { ascending: false })
-          .limit(50);
-        const lastWithSensor = (recentRows ?? []).find((row) => hasHydroSensorReading(row));
-        if (lastWithSensor) {
-          const merged = mergeHydroMeasurements(lastWithSensor as HydroMeasurement, data);
-          console.log('ℹ️ [SUPABASE] Última fila solo-niveles — PV de fila', lastWithSensor.id);
-          return merged;
-        }
+      const { data: recentRows } = await supabase
+        .from('hydro_measurements')
+        .select('*')
+        .eq('device_id', deviceId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      const latestFreshSensor = (recentRows ?? []).find(
+        (row) => hasHydroSensorReading(row) && isHydroRowFresh(row)
+      );
+
+      const liveSnapshot = mergeHydroLiveSnapshot(
+        data as HydroMeasurement,
+        latestFreshSensor as HydroMeasurement | undefined
+      );
+
+      if (!latestFreshSensor) {
+        console.log('ℹ️ [SUPABASE] Sem PV sensor fresco — cards devem mostrar --');
       }
 
-      const backfilled = await backfillPartialHydroRow(data as HydroMeasurement, deviceId);
       console.log('✅ [SUPABASE] ========== getLatestHydroData() CONCLUÍDO ==========');
-      return backfilled;
+      return liveSnapshot;
     }
 
     console.warn('⚠️ [SUPABASE] ========== NENHUM DADO HIDROPÔNICO ENCONTRADO ==========');
@@ -209,7 +175,10 @@ export async function getLatestEnvironmentData(deviceId: string): Promise<Enviro
   }
 }
 
-export async function getHydroDataHistory(deviceId: string, limit: number = 24): Promise<HydroMeasurement[]> {
+export async function getHydroDataHistory(
+  deviceId: string,
+  limit: number = 24
+): Promise<HydroMeasurement[]> {
   console.log(`🔍 [SUPABASE] Histórico hidropônico device_id=${deviceId} limit=${limit}`);
 
   try {

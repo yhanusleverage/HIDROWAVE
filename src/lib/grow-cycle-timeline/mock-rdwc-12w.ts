@@ -5,9 +5,10 @@ function week(
   phase: GrowWeekProfile['phase'],
   ecSetpointUsCm: number,
   phSetpoint: number,
+  tankVolumeL: number,
   label?: string
 ): GrowWeekProfile {
-  return { weekIndex, phase, ecSetpointUsCm, phSetpoint, label };
+  return { weekIndex, phase, ecSetpointUsCm, phSetpoint, tankVolumeL, label };
 }
 
 function changeoutEvent(fromWeek: number): TankEvent {
@@ -25,19 +26,19 @@ function changeoutEvent(fromWeek: number): TankEvent {
 }
 
 const weeks: GrowWeekProfile[] = [
-  week(0, 'establishment', 800, 5.8, 'Initial Fill'),
-  week(1, 'vegetative', 900, 5.8),
-  week(2, 'vegetative', 1000, 5.8),
-  week(3, 'vegetative', 1100, 5.8),
-  week(4, 'vegetative', 1200, 5.8),
-  week(5, 'flip', 1400, 6.0, 'Flip'),
-  week(6, 'flower', 1600, 6.1),
-  week(7, 'flower', 1650, 6.15),
-  week(8, 'flower', 1700, 6.2),
-  week(9, 'flower', 1750, 6.25),
-  week(10, 'flower', 1780, 6.28),
-  week(11, 'flower', 1800, 6.3),
-  week(12, 'flush', 400, 5.5, 'Flush + Drain'),
+  week(0, 'establishment', 800, 5.8, 100, 'Initial Fill'),
+  week(1, 'vegetative', 900, 5.8, 98),
+  week(2, 'vegetative', 1000, 5.8, 96),
+  week(3, 'vegetative', 1100, 5.8, 94),
+  week(4, 'vegetative', 1200, 5.8, 92),
+  week(5, 'flip', 1400, 6.0, 90, 'Flip'),
+  week(6, 'flower', 1600, 6.1, 88),
+  week(7, 'flower', 1650, 6.15, 86),
+  week(8, 'flower', 1700, 6.2, 84),
+  week(9, 'flower', 1750, 6.25, 82),
+  week(10, 'flower', 1780, 6.28, 80),
+  week(11, 'flower', 1800, 6.3, 78),
+  week(12, 'flush', 400, 5.5, 76, 'Flush + Drain'),
 ];
 
 const tankEvents: TankEvent[] = [
@@ -69,6 +70,7 @@ const schedules: ScheduleBlock[] = weeks.flatMap((w) => [
     layer: 'P4',
     label: 'Circulação',
     cadence: 'every 2h',
+    kind: 'circulation' as const,
   },
   ...(w.weekIndex >= 1 && w.weekIndex % 7 === 0
     ? [
@@ -78,6 +80,7 @@ const schedules: ScheduleBlock[] = weeks.flatMap((w) => [
           layer: 'P4' as const,
           label: 'UC Roots',
           cadence: 'Dom 10:00',
+          kind: 'maintenance' as const,
         },
       ]
     : []),

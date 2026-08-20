@@ -4,11 +4,12 @@ import type { WaterLevelAggregate } from '@/hooks/useLevelSensors';
 export const PROBE_COUNT = 4;
 
 export const WATER_LEVEL_PT: Record<NonNullable<WaterLevelAggregate>, string> = {
-  vazio: 'Vazio',
-  baixo: 'Baixo',
-  medio: 'Médio',
-  alto: 'Alto',
-};
+  vazio: '0/4 — Vazio',
+  baixo: '1/4 — Baixo',
+    medio: '2/4 — Médio',
+    medio_alto: '3/4 — Médio alto',
+    alto: '4/4 — Alto',
+  };
 
 export const PROBE_STATE_REACHED = 'Alcançado';
 export const PROBE_STATE_NOT_REACHED = 'Não alcançado';
@@ -19,7 +20,7 @@ export type ProbeMeta = {
   positionHint: string | null;
 };
 
-/** L1 base → L4 topo (orden físico del tanque). */
+/** L1 base/vazio → L4 topo/alto (V2). Histórico V1: LEVEL_LOGIC_VERSIONS.md */
 export const PROBE_META: ProbeMeta[] = [
   { index: 1, shortLabel: 'Nível 1', positionHint: 'base' },
   { index: 2, shortLabel: 'Nível 2', positionHint: null },
@@ -27,7 +28,7 @@ export const PROBE_META: ProbeMeta[] = [
   { index: 4, shortLabel: 'Nível 4', positionHint: 'topo' },
 ];
 
-/** Visualización UI: topo del tanque (L4) arriba, base (L1) abajo. */
+/** Visualización UI: topo (L4) arriba, base (L1) abajo. */
 export const PROBE_META_DISPLAY: ProbeMeta[] = [...PROBE_META].reverse();
 
 export function getProbeValue(probes: (boolean | null)[], levelIndex: number): boolean | null {
@@ -41,7 +42,15 @@ export type ProbeCell = {
   ledClass: string;
 };
 
-export function getProbeCell(wet: boolean | null): ProbeCell {
+export function getProbeCell(wet: boolean | null, levelsSimulated = false): ProbeCell {
+  if (levelsSimulated) {
+    return {
+      text: '--',
+      variant: 'default',
+      accent: 'warn',
+      ledClass: 'bg-dark-border ring-1 ring-amber-500/40',
+    };
+  }
   if (wet === null) {
     return {
       text: '--',
@@ -66,18 +75,28 @@ export function getProbeCell(wet: boolean | null): ProbeCell {
   };
 }
 
-export function getAggregateLabel(level: WaterLevelAggregate, isLoading = false): string {
+export function getAggregateLabel(
+  level: WaterLevelAggregate,
+  isLoading = false,
+  levelsSimulated = false
+): string {
+  if (levelsSimulated) return 'Simulado (dev)';
   if (isLoading) return '…';
   if (!level) return '--';
   return WATER_LEVEL_PT[level] ?? level;
 }
 
-export function getAggregateBadgeAccent(level: WaterLevelAggregate): HwAccent {
+export function getAggregateBadgeAccent(
+  level: WaterLevelAggregate,
+  levelsSimulated = false
+): HwAccent {
+  if (levelsSimulated) return 'warn';
   switch (level) {
     case 'vazio':
     case 'baixo':
       return 'danger';
     case 'medio':
+    case 'medio_alto':
       return 'warn';
     case 'alto':
       return 'ok';
@@ -93,6 +112,7 @@ export function getAggregateVariant(level: WaterLevelAggregate): HwMetricVariant
     case 'baixo':
       return 'alarm';
     case 'medio':
+    case 'medio_alto':
       return 'default';
     case 'alto':
       return 'ok';
@@ -101,11 +121,17 @@ export function getAggregateVariant(level: WaterLevelAggregate): HwMetricVariant
   }
 }
 
-export function getInterlockLabel(waterLevelOk: boolean | null): {
+export function getInterlockLabel(
+  waterLevelOk: boolean | null,
+  levelsSimulated = false
+): {
   text: string;
   accent: HwAccent;
   variant: HwMetricVariant;
 } {
+  if (levelsSimulated) {
+    return { text: '--', accent: 'warn', variant: 'default' };
+  }
   if (waterLevelOk === null) {
     return { text: '--', accent: 'neutral', variant: 'default' };
   }
@@ -144,7 +170,9 @@ export function formatTelemetryTime(iso: string | null | undefined): string {
 
 export function hasLevelTelemetry(
   probes: (boolean | null)[],
-  waterLevel: WaterLevelAggregate
+  waterLevel: WaterLevelAggregate,
+  levelsSimulated = false
 ): boolean {
+  if (levelsSimulated) return true;
   return probes.some((v) => v !== null) || waterLevel != null;
 }

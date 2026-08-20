@@ -1,14 +1,23 @@
-'use client';
+﻿'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { Instruction } from '../SequentialScriptEditor';
 import { ESPNowSlave } from '@/lib/esp-now-slaves';
+import {
+  DEFAULT_MASTER_RELAYS,
+  type MasterRelayOption,
+  instructionToActuatorKey,
+  masterRelayKey,
+  parseActuatorKey,
+  slaveRelayKey,
+} from '@/lib/master-relay-options';
 
 interface RelayActionEditorProps {
   instruction: Instruction;
   onChange: (updated: Instruction) => void;
   espnowSlaves: ESPNowSlave[];
+  masterRelays?: MasterRelayOption[];
   onDelete?: () => void;
 }
 
@@ -16,6 +25,7 @@ export default function RelayActionEditor({
   instruction,
   onChange,
   espnowSlaves,
+  masterRelays = DEFAULT_MASTER_RELAYS,
   onDelete,
 }: RelayActionEditorProps) {
   const updateField = (field: string, value: string | number | boolean | string[] | number[]) => {
@@ -25,61 +35,67 @@ export default function RelayActionEditor({
     });
   };
 
-  // Gerar opções de relés (APENAS slaves)
-  const relayOptions: Array<{ value: string; label: string; isSlave: boolean; slaveMac?: string }> = [];
+  const relayOptions = useMemo(() => {
+    const options: Array<{ value: string; label: string }> = [];
 
-  // Relés Slaves (somente)
-  espnowSlaves.forEach((slave) => {
-    slave.relays.forEach((relay) => {
-      relayOptions.push({
-        value: `slave_${slave.macAddress}_${relay.id}`,
-        label: `${slave.name || slave.device_id || 'ESP-SLAVE'}: ${relay.id} - ${relay.name || `Relé ${relay.id}`}`,
-        isSlave: true,
-        slaveMac: slave.macAddress,
+    masterRelays.forEach((relay) => {
+      options.push({
+        value: masterRelayKey(relay.number),
+        label: `Core: ${relay.name}`,
       });
     });
-  });
 
-  // Se não há relayOptions (nenhum slave), usar valor padrão
-  const currentRelayValue = instruction.target === 'slave' && instruction.slave_mac
-    ? `slave_${instruction.slave_mac}_${instruction.relay_number}`
-    : relayOptions.length > 0 
-      ? relayOptions[0].value 
-      : '';
+    espnowSlaves.forEach((slave) => {
+      slave.relays.forEach((relay) => {
+        options.push({
+          value: slaveRelayKey(slave.macAddress, relay.id),
+          label: `${slave.name || slave.device_id || 'HydroWave Atlas'}: ${relay.id} - ${relay.name || `Relé ${relay.id}`}`,
+        });
+      });
+    });
+
+    return options;
+  }, [espnowSlaves, masterRelays]);
+
+  const currentRelayValue = useMemo(() => {
+    const key = instructionToActuatorKey(instruction);
+    if (key && relayOptions.some((o) => o.value === key)) return key;
+    if (instruction.target === 'master' && instruction.relay_number != null) {
+      return masterRelayKey(instruction.relay_number);
+    }
+    return relayOptions[0]?.value ?? '';
+  }, [instruction, relayOptions]);
 
   const handleRelayChange = (value: string) => {
-    const [type, ...parts] = value.split('_');
-    if (type === 'slave') {
-      const [mac, relayNum] = parts;
+    const parsed = parseActuatorKey(value);
+    if (!parsed) return;
+
+    if (parsed.target === 'slave') {
       updateField('target', 'slave');
-      updateField('slave_mac', mac);
-      updateField('relay_number', parseInt(relayNum));
-    } else {
-      updateField('target', 'master');
-      updateField('relay_number', parseInt(parts[0]));
-      // Remover slave_mac si existe usando spread operator (conversión segura a través de unknown)
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { slave_mac, ...restInstruction } = instruction as unknown as Record<string, unknown>;
-      onChange({
-        ...restInstruction,
-        target: 'master',
-        relay_number: parseInt(parts[0]),
-      } as Instruction);
+      updateField('slave_mac', parsed.slaveMac ?? '');
+      updateField('relay_number', parsed.relayIndex);
+      return;
     }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { slave_mac, ...restInstruction } = instruction as unknown as Record<string, unknown>;
+    onChange({
+      ...restInstruction,
+      target: 'master',
+      relay_number: parsed.relayIndex,
+    } as Instruction);
   };
 
   return (
     <div className="space-y-3">
-      {/* Layout horizontal compacto - Modelo da primeira imagem */}
       <div className="flex items-center space-x-2">
-        {/* Seleção de Relé */}
         <select
           value={currentRelayValue}
           onChange={(e) => handleRelayChange(e.target.value)}
           className="flex-1 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
         >
           {relayOptions.length === 0 ? (
-            <option value="">Nenhum relé slave disponível</option>
+            <option value="">Nenhum rele disponivel</option>
           ) : (
             relayOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -89,7 +105,6 @@ export default function RelayActionEditor({
           )}
         </select>
 
-        {/* Ação */}
         <select
           value={instruction.action || 'on'}
           onChange={(e) => updateField('action', e.target.value)}
@@ -100,11 +115,10 @@ export default function RelayActionEditor({
         </select>
       </div>
 
-      {/* Duração (opcional) - Abaixo do layout horizontal */}
       <div className="flex items-end space-x-2">
         <div className="flex-1">
           <label className="block text-xs text-dark-textSecondary mb-1">
-            Duração (segundos) <span className="text-dark-textSecondary/80">(opcional)</span>
+            Duracao (segundos) <span className="text-dark-textSecondary/80">(opcional)</span>
           </label>
           <input
             type="number"
@@ -121,7 +135,7 @@ export default function RelayActionEditor({
           <button
             onClick={onDelete}
             className="p-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/30 transition-colors flex-shrink-0"
-            title="Eliminar ação"
+            title="Eliminar acao"
           >
             <XMarkIcon className="w-5 h-5" />
           </button>

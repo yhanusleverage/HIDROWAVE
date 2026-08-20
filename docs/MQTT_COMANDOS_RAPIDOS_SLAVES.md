@@ -25,7 +25,7 @@ O **bridge** consome `command_ack` e `relay/state` para fechar `relay_commands` 
 
 | Variable | Valor |
 |----------|-------|
-| `MQTT_HOST` | `99.79.36.220` (IP Lightsail, **não** `127.0.0.1`) |
+| `MQTT_HOST` | `15.222.65.160` (IP Lightsail, **não** `127.0.0.1`) |
 | `MQTT_PORT` | `1883` |
 | `MQTT_PUBLISH_USER` | `hidrowave` |
 | `MQTT_PUBLISH_PASS` | password ACL |

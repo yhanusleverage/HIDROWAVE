@@ -18,6 +18,7 @@ import {
   buildHydroCombinedChartOptions,
   hydroCrosshairPlugin,
 } from '@/lib/hydro-chart';
+import { HYDRO_CHART_RAW_LIMIT } from '@/lib/realtime/chart-history';
 import type { HydroMeasurement } from '@/lib/supabase';
 
 ChartJS.register(
@@ -52,6 +53,7 @@ export default function HydroMonitoringChart({ history, className = '' }: HydroM
           <span>Monitoramento hidropónico</span>
           <span className="text-xs font-normal text-dark-textSecondary">
             últimas {series.labels.length || 0} leituras
+            {series.labels.length >= HYDRO_CHART_RAW_LIMIT ? ` (máx. ${HYDRO_CHART_RAW_LIMIT})` : ''}
           </span>
         </div>
       }

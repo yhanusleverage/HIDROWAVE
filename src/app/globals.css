@@ -30,6 +30,23 @@
   .hw-section-ph {
     @apply border-l-4 border-l-violet-500 pl-3;
   }
+  .timeline-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(34, 211, 238, 0.35) transparent;
+  }
+  .timeline-scroll::-webkit-scrollbar {
+    height: 6px;
+  }
+  .timeline-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .timeline-scroll::-webkit-scrollbar-thumb {
+    background: rgba(34, 211, 238, 0.35);
+    border-radius: 3px;
+  }
+  .timeline-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(34, 211, 238, 0.55);
+  }
 }
 
 body {

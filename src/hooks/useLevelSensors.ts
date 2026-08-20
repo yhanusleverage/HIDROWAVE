@@ -5,7 +5,15 @@ import { supabase } from '@/lib/supabase';
 import { subscribeLevelSensorUpdates, type LevelSensorRow } from '@/lib/realtime/level-sensors';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 
-export type WaterLevelAggregate = 'vazio' | 'baixo' | 'medio' | 'alto' | null;
+export type WaterLevelAggregate =
+  | 'vazio'
+  | 'baixo'
+  | 'medio'
+  | 'medio_alto'
+  | 'alto'
+  | null;
+
+export type LevelInterlockMode = 'normal' | 'carrera' | null;
 
 export interface LevelSensorsState {
   level1: boolean | null;
@@ -14,6 +22,8 @@ export interface LevelSensorsState {
   level4: boolean | null;
   waterLevel: WaterLevelAggregate;
   waterLevelOk: boolean | null;
+  levelInterlockMode: LevelInterlockMode;
+  levelsSimulated: boolean;
   lastTelemetryAt: string | null;
   isLoading: boolean;
 }
@@ -27,13 +37,33 @@ const EMPTY: LevelSensorsState = {
   level4: null,
   waterLevel: null,
   waterLevelOk: null,
+  levelInterlockMode: null,
+  levelsSimulated: false,
   lastTelemetryAt: null,
   isLoading: false,
 };
 
+function parseWaterLevel(wl: unknown): WaterLevelAggregate {
+  if (wl === 'medio_baixo') return 'medio';
+  if (
+    wl === 'vazio' ||
+    wl === 'baixo' ||
+    wl === 'medio' ||
+    wl === 'medio_alto' ||
+    wl === 'alto'
+  ) {
+    return wl;
+  }
+  return null;
+}
+
+function parseInterlockMode(raw: unknown): LevelInterlockMode {
+  if (raw === 'normal' || raw === 'carrera') return raw;
+  return null;
+}
+
 function parseRow(row: LevelSensorRow | Record<string, unknown> | null): LevelSensorsState {
   if (!row) return { ...EMPTY };
-  const wl = row.water_level;
   const updatedAt = typeof row.updated_at === 'string' ? row.updated_at : null;
   const lastSeen = typeof row.last_seen === 'string' ? row.last_seen : null;
   return {
@@ -41,9 +71,10 @@ function parseRow(row: LevelSensorRow | Record<string, unknown> | null): LevelSe
     level2: typeof row.level_2 === 'boolean' ? row.level_2 : null,
     level3: typeof row.level_3 === 'boolean' ? row.level_3 : null,
     level4: typeof row.level_4 === 'boolean' ? row.level_4 : null,
-    waterLevel:
-      wl === 'vazio' || wl === 'baixo' || wl === 'medio' || wl === 'alto' ? wl : null,
+    waterLevel: parseWaterLevel(row.water_level),
     waterLevelOk: typeof row.water_level_ok === 'boolean' ? row.water_level_ok : null,
+    levelInterlockMode: parseInterlockMode(row.level_interlock_mode),
+    levelsSimulated: row.levels_simulated === true,
     lastTelemetryAt: updatedAt ?? lastSeen,
     isLoading: false,
   };
@@ -59,7 +90,9 @@ export function useLevelSensors(deviceId: string, enabled = true): LevelSensorsS
     setState((s) => ({ ...s, isLoading: true }));
     const { data, error } = await supabase
       .from('device_status')
-      .select('level_1, level_2, level_3, level_4, water_level, water_level_ok, updated_at, last_seen')
+      .select(
+        'level_1, level_2, level_3, level_4, water_level, water_level_ok, level_interlock_mode, levels_simulated, updated_at, last_seen'
+      )
       .eq('device_id', id)
       .maybeSingle();
 

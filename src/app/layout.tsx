@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { SidebarProvider } from '@/contexts/SidebarContext';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { LanguageProvider } from '@/contexts/LanguageContext';
 import LayoutContent from '@/components/LayoutContent';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -33,9 +34,11 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className={inter.className}>
         <AuthProvider>
-          <SidebarProvider>
-            <LayoutContent>{children}</LayoutContent>
-          </SidebarProvider>
+          <LanguageProvider>
+            <SidebarProvider>
+              <LayoutContent>{children}</LayoutContent>
+            </SidebarProvider>
+          </LanguageProvider>
         </AuthProvider>
       </body>
     </html>

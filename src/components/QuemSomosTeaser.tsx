@@ -18,7 +18,7 @@ export default function QuemSomosTeaser() {
         </div>
       </div>
       <NavLink
-        href="/quem-somos#elementos"
+        href="/quem-somos#linha-produto"
         className="inline-flex items-center gap-1 text-sm font-medium text-aqua-400 hover:text-aqua-300 shrink-0"
       >
         {QUEM_SOMOS_TEASER.cta}

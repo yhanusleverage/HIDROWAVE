@@ -25,6 +25,7 @@ const DEFAULT_PH_CONFIG = {
   intervalo_auto_ph: 300,
   tempo_recirculacao: 60,
   aggressiveness: 0.5,
+  consumo_24h: false,
   gain_alpha: 0.2,
   k_acid: null,
   k_base: null,

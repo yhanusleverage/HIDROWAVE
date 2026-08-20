@@ -7,7 +7,7 @@ import BrandLoading from '@/components/BrandLoading';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { HwBadge } from '@/components/ui/HwBadge';
 import { HydroMeasurement, EnvironmentMeasurement } from '@/lib/supabase';
-import { hasHydroSensorReading } from '@/lib/realtime/hydro-ph';
+import { hasFreshHydroSensorReading } from '@/lib/realtime/hydro-freshness';
 import { formatSensorValue } from '@/lib/format-sensor-value';
 import { AdjustmentsHorizontalIcon } from '@heroicons/react/24/outline';
 
@@ -17,7 +17,8 @@ export interface DashboardSensorsSectionProps {
   environmentData: EnvironmentMeasurement | null;
   displayTemp: number | null;
   displayPh: number | null;
-  calculateEC: (data: HydroMeasurement) => number | null;
+  displayEc: number | null;
+  sensorUpdatedAt: string | null;
   getECStatus: (ec: number) => 'normal' | 'warning' | 'danger';
   getPHStatus: (ph: number) => 'normal' | 'warning' | 'danger';
   onOpenEcConfig: () => void;
@@ -31,14 +32,18 @@ export function DashboardSensorsSection({
   environmentData,
   displayTemp,
   displayPh,
-  calculateEC,
+  displayEc,
+  sensorUpdatedAt,
   getECStatus,
   getPHStatus,
   onOpenEcConfig,
   onOpenTempConfig,
   onOpenPhConfig,
 }: DashboardSensorsSectionProps) {
-  const ecValue = hydroData ? calculateEC(hydroData) : null;
+  const hasFreshPv = hasFreshHydroSensorReading(hydroData, sensorUpdatedAt);
+  const hasLevelsSimulated = hydroData?.levels_simulated === true;
+  const hasLevelsOnly =
+    hydroData != null && !hasFreshPv && hydroData.water_level_ok !== undefined && !hasLevelsSimulated;
 
   return (
     <section className="mb-8">
@@ -55,8 +60,12 @@ export function DashboardSensorsSection({
         />
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {hydroData ? (
-            hasHydroSensorReading(hydroData) ? (
+            hasFreshPv ? (
               <HwBadge accent="ok">Hydro OK</HwBadge>
+            ) : hasLevelsSimulated ? (
+              <HwBadge accent="warn">Níveis simulados (dev)</HwBadge>
+            ) : hasLevelsOnly ? (
+              <HwBadge accent="warn">Sem leitura recente</HwBadge>
             ) : (
               <HwBadge accent="brand">Niveles (sem pH/EC/temp)</HwBadge>
             )
@@ -119,9 +128,9 @@ export function DashboardSensorsSection({
             <SensorCard
               title="EC"
               domain="ec"
-              value={ecValue !== null ? formatSensorValue(ecValue, 0) : '--'}
+              value={displayEc !== null ? formatSensorValue(displayEc, 0) : '--'}
               unit="µS/cm"
-              status={ecValue !== null ? getECStatus(ecValue) : 'normal'}
+              status={displayEc !== null ? getECStatus(displayEc) : 'normal'}
             />
             <button
               type="button"
@@ -145,7 +154,7 @@ export function DashboardSensorsSection({
               <div>
                 <strong className="text-aqua-400">Hydro Data:</strong>
                 <pre className="mt-1 p-2 bg-dark-bg rounded text-dark-textSecondary overflow-auto">
-                  {JSON.stringify(hydroData, null, 2)}
+                  {JSON.stringify({ hydroData, sensorUpdatedAt, hasFreshPv }, null, 2)}
                 </pre>
               </div>
               <div>

@@ -17,7 +17,7 @@ export interface DecisionRule {
     conditions: Array<{
       sensor: string;
       operator: string;
-      value: number;
+      value: number | string;
       logic?: 'AND' | 'OR';
     }>;
     actions: Array<{

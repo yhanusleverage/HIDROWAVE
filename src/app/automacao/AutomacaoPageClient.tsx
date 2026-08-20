@@ -1,13 +1,11 @@
-'use client';
+﻿'use client';
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import NavLink from '@/components/NavLink';
 import { toast, type Toast } from 'react-hot-toast';
 import { hwToast } from '@/lib/control-toast';
 import BrandLoading from '@/components/BrandLoading';
-import OperationStateBadges from '@/components/OperationStateBadges';
-import OperationStateBanners from '@/components/OperationStateBanners';
 import {
   ClockIcon,
   CheckCircleIcon,
@@ -23,21 +21,17 @@ import {
   ClipboardDocumentCheckIcon,
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
-import { formatSensorValue } from '@/lib/format-sensor-value';
-import { formatInstructionType } from '@/lib/instruction-labels';
+import { formatInstructionPreview } from '@/lib/instruction-labels';
 import { getDecisionRules, createDecisionRule, updateDecisionRule, deleteDecisionRule, DecisionRule } from '@/lib/automation';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import { useAuth } from '@/contexts/AuthContext';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
-import { supabase } from '@/lib/supabase';
-import { subscribeRelayStateUpdates, type RelayMasterRow } from '@/lib/realtime/relay-states';
+import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
 import {
   applySlaveRelayRow,
   mergeRelayStatesMap,
   RELAY_REST_FALLBACK_MS,
 } from '@/lib/realtime/relay-apply';
-import { useLastDosage } from '@/hooks/useLastDosage';
-import { useEcOperationState } from '@/hooks/useEcOperationState';
 import { useHydroEcReading } from '@/hooks/useHydroEcReading';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import {
@@ -49,24 +43,12 @@ import { subscribeDeviceStatusUpdates } from '@/lib/realtime/device-status';
 import { subscribeRelayCommandUpdates } from '@/lib/realtime/relay-commands';
 import { applyRelayCommandAck, type PendingRelayCommand } from '@/lib/relay-pending-commands';
 import { sendSlaveRelayCommand } from '@/lib/slave-relay-command';
-// Removido: import { getRelayStates } from '@/lib/automation'; // ❌ Não usar mais relay_states
-import { getMasterLocalRelayNames, saveMasterLocalRelayName } from '@/lib/nutrition-plan';
-import { formatFlowRate } from '@/lib/pump-calibration';
+// Removido: import { getRelayStates } from '@/lib/automation'; // não usar mais relay_states
+import { getMasterLocalRelayNames } from '@/lib/nutrition-plan';
 import { useRelayAllocation } from '@/hooks/useRelayAllocation';
-import { DoserRelaySelect } from '@/components/DoserRelaySelect';
-import { DoserRelayMapPanel } from '@/components/DoserRelayMapPanel';
-import { serializeRegistryForDebug, validateEcNutrientsAssignment } from '@/lib/relay-allocation';
-import {
-  composeRelayControlDisabled,
-  getManualPendingRelaySet,
-  isEcCycleActive,
-  resolveEcManualDoseButtonLock,
-  resolveRelayNamingLock,
-} from '@/lib/relay-naming-lock';
-import { parseConfigApiError, sanitizeEcNumericFields } from '@/lib/controller-config-api';
-import { InstrumentCard } from '@/components/ui/InstrumentCard';
-import { MetricRow } from '@/components/ui/MetricRow';
-import ControllerMetricsPanel from '@/components/ControllerMetricsPanel';
+import { AutomacaoTabs, useAutomacaoTab } from '@/components/automacao/AutomacaoTabs';
+import { ProceduresTabPanel } from '@/components/automacao/ProceduresTabPanel';
+import { showLockUnlockToast, validateAdminPassword } from '@/lib/automacao/admin-lock';
 
 const SectionSkeleton = ({ className = 'h-32' }: { className?: string }) => (
   <div className={`animate-pulse rounded-lg bg-dark-surface border border-dark-border ${className}`} />
@@ -85,23 +67,15 @@ const PhControllerPanel = dynamic(() => import('@/components/PhControllerPanel')
   loading: () => <SectionSkeleton className="h-48" />,
 });
 
-const WaterLevelSection = dynamic(
-  () => import('@/components/WaterLevelSection').then((m) => m.WaterLevelSection),
-  { loading: () => <SectionSkeleton className="h-48" /> }
-);
+const AutoEcControllerPanel = dynamic(() => import('@/components/AutoEcControllerPanel'), {
+  loading: () => <SectionSkeleton className="h-48" />,
+});
 
-const NutrientDosageDetail = dynamic(
-  () => import('@/components/NutrientDosageDetail').then((m) => m.NutrientDosageDetail),
-  { loading: () => <SectionSkeleton className="h-16" /> }
+const GrowCycleTimelinePanel = dynamic(
+  () =>
+    import('@/components/grow-cycle/GrowCycleTimelinePanel').then((m) => m.GrowCycleTimelinePanel),
+  { loading: () => <SectionSkeleton className="h-64" /> }
 );
-
-const EcDilutionSection = dynamic(
-  () => import('@/components/EcDilutionSection').then((m) => m.EcDilutionSection),
-  { loading: () => <SectionSkeleton className="h-40" /> }
-);
-
-/** Mínimo ml/L por nutriente na tabela nutricional (Auto EC). Para excluir um nutriente, remova a linha. */
-const MIN_NUTRIENT_ML_PER_LITER = 0.1;
 
 interface Relay {
   id: number;
@@ -111,7 +85,7 @@ interface Relay {
 interface RuleCondition {
   sensor: string;
   operator: string;
-  value: number;
+  value: number | string;
   logic?: 'AND' | 'OR';
 }
 
@@ -209,10 +183,10 @@ const validateTimeFormat = (timeStr: string): boolean => {
 
 export default function AutomacaoPageClient() {
   const { userProfile } = useAuth();
+  const [activeTab, setActiveTab] = useAutomacaoTab();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<AutomationRule | null>(null); // ✅ Regra sendo editada
   const [jsonPreviewRule, setJsonPreviewRule] = useState<AutomationRule | null>(null); // ✅ Regra para vista previa JSON
-  const [showECConfigPreview, setShowECConfigPreview] = useState<boolean>(false); // ✅ Vista previa de EC Config
   const [copiedRuleId, setCopiedRuleId] = useState<string | null>(null); // ✅ rule_id copiado para feedback visual
   const [loading, setLoading] = useState(true);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default_device');
@@ -263,93 +237,11 @@ export default function AutomacaoPageClient() {
   
   // ✅ NOVO: Estado para rastrear si cada slave está bloqueado (MAC address -> boolean)
   const [lockedSlaves, setLockedSlaves] = useState<Map<string, boolean>>(new Map());
-  const [ecControllerLocked, setEcControllerLocked] = useState<boolean>(false);
   const [decisionEngineLocked, setDecisionEngineLocked] = useState<boolean>(false);
-  
-  // Estado para Controle Nutricional Proporcional
-  const [expandedNutritionalControl, setExpandedNutritionalControl] = useState<boolean>(true);
+
   const [expandedDecisionEngine, setExpandedDecisionEngine] = useState<boolean>(true);
-  const [pumpFlowRate, setPumpFlowRate] = useState<number>(1.0);
-  const [totalVolume, setTotalVolume] = useState<number>(10);
-  
-  // ✅ EC Controller - Parâmetros Básicos
-  const [baseDose, setBaseDose] = useState<number>(1525.0); // EC base em µS/cm
-  const [ecSetpoint, setEcSetpoint] = useState<number>(1500.0); // EC Setpoint em µS/cm
-  const [ecTolerance, setEcTolerance] = useState<number>(50); // Banda muerta µS/cm
-  const [intervaloAutoEC, setIntervaloAutoEC] = useState<number>(300); // Intervalo entre verificações (segundos)
-  const [tempoRecirculacao, setTempoRecirculacao] = useState<string>('00:02'); // Tempo de recirculação (formato HH:MM)
-  const [tempoRecirculacaoHours, setTempoRecirculacaoHours] = useState<number>(0);
-  const [tempoRecirculacaoMinutes, setTempoRecirculacaoMinutes] = useState<number>(2);
-  const [autoEnabled, setAutoEnabled] = useState<boolean>(false); // Controle automático ativado
-  
-  // ✅ REF para prevenir recarga automática después de guardar (previene data race)
-  const justSavedRef = useRef<boolean>(false);
-  const savingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // ✅ Funções helper para converter entre formato de tempo (HH:MM) e milissegundos
-  const timeToMilliseconds = (timeStr: string): number => {
-    const parts = timeStr.split(':');
-    if (parts.length < 2) return 60000; // Default: 1 minuto em ms
-    const hours = parseInt(parts[0], 10) || 0;
-    const minutes = parseInt(parts[1], 10) || 0;
-    return (hours * 3600 + minutes * 60) * 1000;
-  };
-  
-  const millisecondsToTime = (ms: number): string => {
-    const totalSeconds = Math.floor(ms / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-  };
-  
-  const validateTimeFormat = (timeStr: string): boolean => {
-    const regex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
-    return regex.test(timeStr);
-  };
 
-  /** BD/firmware: tempo_recirculacao em segundos → HH:MM para UI */
-  const secondsToHHMM = (totalSec: number): string => {
-    const sec = Math.max(0, Math.floor(totalSec));
-    const hours = Math.floor(sec / 3600);
-    const minutes = Math.floor((sec % 3600) / 60);
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-  };
-  
-  // ✅ EC Controller - Status e Monitoramento
-  const [ecError, setEcError] = useState<number>(0); // Erro atual (µS/cm)
-  // ✅ REMOVIDO: Nutrientes hardcodeados - agora inicia vazio e carrega apenas do Supabase
-  const [nutrientsState, setNutrientsState] = useState<Array<{name: string, relayNumber: number, mlPerLiter: number}>>([]);
-  const [isLoadingNutrients, setIsLoadingNutrients] = useState<Record<number, boolean>>({});
-  const [isNutrientModalOpen, setIsNutrientModalOpen] = useState<boolean>(false);
-  const [editingNutrientIndex, setEditingNutrientIndex] = useState<number | null>(null);
-  const [modalRelayNumber, setModalRelayNumber] = useState(0);
-  
-  // ✅ NOVO: Nomes de relés LOCAIS do Master
-  const [localRelayNames, setLocalRelayNames] = useState<Map<number, string>>(new Map());
   const [availableRelays, setAvailableRelays] = useState<Array<{number: number, name: string}>>([]);
-  const [doserRelayStates, setDoserRelayStates] = useState<boolean[]>([]);
-
-  const loadDoserRelayStates = useCallback(async () => {
-    if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
-
-    try {
-      const { data, error } = await supabase
-        .from('relay_master')
-        .select('doser_relay_states')
-        .eq('device_id', selectedDeviceId)
-        .maybeSingle();
-
-      if (error) {
-        console.warn('[EC Controller] relay_master doser states:', error.message);
-        return;
-      }
-      if (data?.doser_relay_states?.length) {
-        setDoserRelayStates(data.doser_relay_states);
-      }
-    } catch (err) {
-      console.warn('[EC Controller] Falha ao carregar doser_relay_states:', err);
-    }
-  }, [selectedDeviceId]);
 
   const ecDeviceActive = Boolean(
     selectedDeviceId && selectedDeviceId !== 'default_device'
@@ -359,166 +251,7 @@ export default function AutomacaoPageClient() {
     enabled: ecDeviceActive,
   });
 
-  const ecRelayRegistry = useMemo(
-    () =>
-      relayAllocation.buildRegistry({
-        ecConfig: {
-          nutrients: nutrientsState.map((n) => ({
-            name: n.name,
-            relay: n.relayNumber,
-            mlPerLiter: n.mlPerLiter,
-            active: true,
-          })),
-        },
-      }),
-    [relayAllocation, nutrientsState]
-  );
-
-  useEffect(() => {
-    if (!isNutrientModalOpen) return;
-    if (editingNutrientIndex !== null) {
-      setModalRelayNumber(nutrientsState[editingNutrientIndex]?.relayNumber ?? 0);
-      return;
-    }
-    const selectable = relayAllocation.getSelectableRelays({
-      field: 'ec_nutrient',
-      currentValue: 0,
-      nutrientIndex: nutrientsState.length,
-    });
-    setModalRelayNumber(selectable[0]?.number ?? 0);
-  }, [
-    isNutrientModalOpen,
-    editingNutrientIndex,
-    nutrientsState,
-    relayAllocation,
-    ecRelayRegistry,
-  ]);
-
-  const { ec: ecAtual, ph: phAtual, phRaw } = useHydroEcReading(
-    selectedDeviceId,
-    ecDeviceActive
-  );
-
-  useEffect(() => {
-    if (ecAtual === null) {
-      setEcError(0);
-      return;
-    }
-    setEcError(ecSetpoint - ecAtual);
-  }, [ecAtual, ecSetpoint]);
-
-  const ecDoseThreshold = useMemo(
-    () => ecSetpoint - ecTolerance,
-    [ecSetpoint, ecTolerance]
-  );
-
-  const ecWithinDeadBand = useMemo(() => {
-    if (ecAtual === null || isNaN(ecAtual)) return null;
-    return ecAtual >= ecDoseThreshold;
-  }, [ecAtual, ecDoseThreshold]);
-
-  const {
-    totalMl: lastDosageMl,
-    sequenceId: lastDosageSequenceId,
-  } = useLastDosage(selectedDeviceId, ecDeviceActive);
-
-  const {
-    isDosando: firmwareDosando,
-    isAguardandoRecirculacao,
-    operationRemainingSec: recirculacaoRestanteSec,
-    nextCheckInSec: ecNextCheckInSec,
-    isEcCheckPending,
-    isDiluting,
-  } = useEcOperationState(selectedDeviceId, ecDeviceActive, {
-    intervalCeilingSec: intervaloAutoEC,
-    autoEnabled,
-  });
-
-  const isDosandoRelayFallback = useMemo(() => {
-    if (!autoEnabled || doserRelayStates.length === 0 || nutrientsState.length === 0) {
-      return false;
-    }
-    return nutrientsState.some(
-      (nut) => nut.relayNumber >= 0 && doserRelayStates[nut.relayNumber] === true
-    );
-  }, [autoEnabled, doserRelayStates, nutrientsState]);
-
-  /** Firmware ec_operation_state; fallback relé se colunas ainda não migradas */
-  const isDosando =
-    autoEnabled && (firmwareDosando || isDosandoRelayFallback);
-
-  const ecOperationSlice = useMemo(
-    () => ({ isDosando, isAguardandoRecirculacao, isDiluting }),
-    [isDosando, isAguardandoRecirculacao, isDiluting]
-  );
-
-  const manualPendingRelays = useMemo(
-    () => getManualPendingRelaySet(relayAllocation.pendingCommands),
-    [relayAllocation.pendingCommands]
-  );
-
-  const ecNamingGloballyLocked = isEcCycleActive(ecOperationSlice);
-
-  const getEcRelayNamingLock = useCallback(
-    (relayNumber: number) =>
-      resolveRelayNamingLock({
-        relayNumber,
-        domain: 'ec',
-        ec: ecOperationSlice,
-        manualPendingRelays,
-        ecManualDosingRelay: Boolean(isLoadingNutrients[relayNumber]),
-      }),
-    [ecOperationSlice, manualPendingRelays, isLoadingNutrients]
-  );
-
-  const ecGlobalNamingLock = useMemo(
-    () =>
-      ecNamingGloballyLocked
-        ? resolveRelayNamingLock({
-            relayNumber: 0,
-            domain: 'ec',
-            ec: ecOperationSlice,
-          })
-        : { locked: false as const, tooltip: '' },
-    [ecNamingGloballyLocked, ecOperationSlice]
-  );
-
-  const modalRelayNamingLock = useMemo(() => {
-    const baseRelay =
-      editingNutrientIndex !== null
-        ? nutrientsState[editingNutrientIndex]?.relayNumber ?? modalRelayNumber
-        : modalRelayNumber;
-    const currentLock = getEcRelayNamingLock(baseRelay);
-    const targetLock = getEcRelayNamingLock(modalRelayNumber);
-    if (currentLock.locked) return currentLock;
-    if (targetLock.locked) return targetLock;
-    return { locked: false as const, tooltip: '' };
-  }, [editingNutrientIndex, nutrientsState, modalRelayNumber, getEcRelayNamingLock]);
-
-  const addNutrientControl = useMemo(
-    () => composeRelayControlDisabled(ecControllerLocked, ecGlobalNamingLock),
-    [ecControllerLocked, ecGlobalNamingLock]
-  );
-
-  const modalNutrientControl = useMemo(
-    () => composeRelayControlDisabled(ecControllerLocked, modalRelayNamingLock),
-    [ecControllerLocked, modalRelayNamingLock]
-  );
-
-  const showEcNextCheck =
-    autoEnabled &&
-    !isDosando &&
-    !isAguardandoRecirculacao &&
-    (isEcCheckPending || ecNextCheckInSec > 0);
-
-  const formatRecircCountdown = useCallback((totalSec: number) => {
-    const minutes = Math.floor(totalSec / 60);
-    const seconds = totalSec % 60;
-    if (minutes > 0) {
-      return `${minutes}:${String(seconds).padStart(2, '0')}`;
-    }
-    return `${seconds}s`;
-  }, []);
+  const { ph: phAtual, phRaw } = useHydroEcReading(selectedDeviceId, ecDeviceActive);
 
   useEffect(() => {
     if (availableMasters.length > 0 && selectedDeviceId === 'default_device') {
@@ -532,8 +265,7 @@ export default function AutomacaoPageClient() {
     
     try {
       const names = await getMasterLocalRelayNames(selectedDeviceId);
-      setLocalRelayNames(names);
-      
+
       // ✅ PCF1: Criar lista de relés disponíveis (0-6) - 7 relays para peristálticos
       // ✅ PCF2: Será usado para sensores de nível (não incluído aqui)
       const relays: Array<{number: number, name: string}> = [];
@@ -547,495 +279,6 @@ export default function AutomacaoPageClient() {
     }
   }, [selectedDeviceId]);
   
-  // ✅ NOVO: Carregar configuração do EC Controller do Supabase
-  const loadECControllerConfig = useCallback(async () => {
-    if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
-    
-    // ✅ PREVENIR DATA RACE: No recargar si acabamos de guardar (dentro de 2 segundos)
-    if (justSavedRef.current) {
-      console.log('⏸️ [EC Controller] Recarga bloqueada: acabamos de guardar, usando estado local');
-      return;
-    }
-    
-    try {
-      const response = await fetch(`/api/ec-controller/config?device_id=${encodeURIComponent(selectedDeviceId)}`);
-      if (!response.ok) {
-        console.error('Erro ao carregar config EC Controller:', response.statusText);
-        return;
-      }
-      
-      const config = await response.json();
-      
-      interface NutrientFromConfig {
-        name?: string;
-        relay?: number;
-        relayNumber?: number;
-        mlPerLiter?: number;
-      }
-      
-      // Carregar nutrientes do array JSONB
-      if (config.nutrients && Array.isArray(config.nutrients) && config.nutrients.length > 0) {
-        const nutrients = config.nutrients.map((nut: NutrientFromConfig) => ({
-          name: nut.name || '',
-          relayNumber: nut.relay || nut.relayNumber || 0,
-          mlPerLiter: nut.mlPerLiter || 0,
-        }));
-        setNutrientsState(nutrients);
-      } else {
-        // Iniciar vazio se não houver nutrientes
-        setNutrientsState([]);
-      }
-      
-      // Carregar pumpFlowRate e totalVolume
-      if (config.flow_rate !== undefined && !isNaN(config.flow_rate)) setPumpFlowRate(config.flow_rate);
-      if (config.volume !== undefined && !isNaN(config.volume)) setTotalVolume(config.volume);
-      
-      // ✅ Carregar parâmetros do EC Controller
-      if (config.base_dose !== undefined && !isNaN(config.base_dose)) setBaseDose(config.base_dose);
-      if (config.ec_setpoint !== undefined && !isNaN(config.ec_setpoint)) setEcSetpoint(config.ec_setpoint);
-      if (config.tolerance !== undefined && !isNaN(config.tolerance)) setEcTolerance(config.tolerance);
-      if (config.intervalo_auto_ec !== undefined && !isNaN(config.intervalo_auto_ec)) setIntervaloAutoEC(config.intervalo_auto_ec);
-      if (config.tempo_recirculacao !== undefined && config.tempo_recirculacao !== null) {
-        // ✅ BD/firmware: tempo_recirculacao em SEGUNDOS (integer)
-        const sec =
-          typeof config.tempo_recirculacao === 'number'
-            ? config.tempo_recirculacao
-            : parseInt(String(config.tempo_recirculacao), 10);
-
-        if (!isNaN(sec) && sec > 0) {
-          const timeStr = secondsToHHMM(sec);
-          setTempoRecirculacao(timeStr);
-          const parts = timeStr.split(':');
-          if (parts.length >= 2) {
-            setTempoRecirculacaoHours(parseInt(parts[0], 10) || 0);
-            setTempoRecirculacaoMinutes(parseInt(parts[1], 10) || 1);
-          }
-        } else {
-          console.warn('⚠️ [EC Controller] tempo_recirculacao inválido ao carregar, usando default:', config.tempo_recirculacao);
-          setTempoRecirculacao('00:02'); // Default: 2 minutos
-          setTempoRecirculacaoHours(0);
-          setTempoRecirculacaoMinutes(2);
-        }
-      }
-      // ✅ SOLUCIÓN DATA RACE: Solo actualizar auto_enabled si NO acabamos de guardar
-      if (config.auto_enabled !== undefined && !justSavedRef.current) {
-        setAutoEnabled(config.auto_enabled);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar config EC Controller:', error);
-    }
-  }, [selectedDeviceId]);
-  
-  // ✅ Sincronizar tempoRecirculacao com campos separados (horas e minutos)
-  useEffect(() => {
-    const formatted = `${String(tempoRecirculacaoHours).padStart(2, '0')}:${String(tempoRecirculacaoMinutes).padStart(2, '0')}`;
-    if (formatted !== tempoRecirculacao) {
-      setTempoRecirculacao(formatted);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tempoRecirculacaoHours, tempoRecirculacaoMinutes]);
-  
-  // ✅ Função para calcular distribuição proporcional de nutrientes
-  // Similar ao Hydro-Controller-main: calcula como u(t) será distribuído entre nutrientes
-  // Fórmulas:
-  // - k = baseDose / totalMlPerLiter
-  // - u(t) = (V / (k × q)) × e
-  // - proporção = mlPerLiter / totalMlPerLiter
-  // - utNutriente = totalUt × proporção
-  // - tempoDosagem = utNutriente / flowRate
-  const calculateDistribution = useCallback(() => {
-    const activeNutrients = nutrientsState.filter(
-      (n) => n.mlPerLiter >= MIN_NUTRIENT_ML_PER_LITER
-    );
-    const totalMlPerLiter = activeNutrients.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
-    
-    if (totalMlPerLiter <= 0 || baseDose <= 0 || pumpFlowRate <= 0 || totalVolume <= 0) {
-      console.warn('⚠️ [EC Controller] Dados insuficientes para calcular distribution:', {
-        totalMlPerLiter,
-        baseDose,
-        pumpFlowRate,
-        totalVolume
-      });
-      return null;
-    }
-    
-    // Calcular k = baseDose / totalMlPerLiter
-    const k = baseDose / totalMlPerLiter;
-    
-    // u(t) = (V / (k × q)) × e — e = SP − EC (só déficit, alinhado ao firmware)
-    const error = Math.max(0, ecError);
-    const totalUt = (totalVolume / (k * pumpFlowRate)) * error;
-    
-    // Se u(t) é muito pequeno ou zero, retornar null
-    if (totalUt <= 0.001) {
-      console.warn('⚠️ [EC Controller] u(t) muito pequeno ou zero:', totalUt);
-      return null;
-    }
-    
-    interface NutrientDistribution {
-      name: string;
-      relayNumber: number;
-      mlPerLiter: number;
-      proporcao: number;
-      utNutriente: number;
-      tempoDosagem: number;
-      relay?: number; // Para compatibilidad
-      dosage?: number; // Dosagem em ml
-      duration?: number; // Duração em segundos
-    }
-    
-    // Calcular distribuição proporcional para cada nutriente
-    const distribution: NutrientDistribution[] = [];
-    
-    activeNutrients.forEach(nut => {
-      if (nut.mlPerLiter >= MIN_NUTRIENT_ML_PER_LITER && totalMlPerLiter > 0) {
-        // Calcular proporção
-        const proporcao = nut.mlPerLiter / totalMlPerLiter;
-        
-        // Calcular u(t) para este nutriente
-        const utNutriente = totalUt * proporcao;
-        
-        // Calcular tempo de dosagem (segundos)
-        const tempoDosagem = utNutriente / pumpFlowRate;
-        
-        // Agregar à distribuição (formato compatível com Hydro-Controller)
-        // Hydro-Controller executeWebDosage() espera APENAS: name, relay, dosage, duration
-        distribution.push({
-          name: nut.name,
-          relayNumber: nut.relayNumber,
-          mlPerLiter: nut.mlPerLiter,
-          proporcao,
-          utNutriente,
-          tempoDosagem,
-          relay: nut.relayNumber,             // ✅ Número do relé (Hydro-Controller converte para índice: relay - 1)
-          dosage: parseFloat(utNutriente.toFixed(2)),  // ✅ Dosagem em ml
-          duration: parseFloat(tempoDosagem.toFixed(2)) // ✅ Duração em segundos (Hydro-Controller converte para ms: duration * 1000)
-        });
-      }
-    });
-    
-    // Retornar estrutura completa (todos os valores com 2 casas decimais)
-    return {
-      totalUt: parseFloat(totalUt.toFixed(2)),  // ✅ 2 casas decimais
-      intervalo: intervaloAutoEC || 5,
-      distribution: distribution
-    };
-  }, [nutrientsState, baseDose, pumpFlowRate, totalVolume, ecError, intervaloAutoEC]);
-  
-  // ✅ NOVA ARQUITETURA: Salvar configuração do EC Controller em ec_config_view
-  // Similar ao padrão relay_slaves/relay_commands_slave
-  // Este botão apenas salva na view table, não ativa o Auto EC
-  // Para ativar, use o botão "Ativar Auto EC" que chama RPC activate_auto_ec
-  const saveECControllerConfig = useCallback(async (silent: boolean = false, overrideAutoEnabled?: boolean) => {
-    if (!selectedDeviceId || selectedDeviceId === 'default_device') return false;
-
-    const invalidNutrients = nutrientsState.filter(
-      (n) => n.mlPerLiter < MIN_NUTRIENT_ML_PER_LITER
-    );
-    if (invalidNutrients.length > 0) {
-      toast.error(
-        `Cada nutriente deve ter pelo menos ${MIN_NUTRIENT_ML_PER_LITER} ml/L (ex.: ${invalidNutrients[0].name}). Para excluir um nutriente, remova a linha da tabela.`
-      );
-      return false;
-    }
-
-    if (nutrientsState.length === 0) {
-      toast.error('Adicione pelo menos um nutriente na tabela nutricional');
-      return false;
-    }
-    
-    try {
-      const activeNutrients = nutrientsState.filter(
-        (n) => n.mlPerLiter >= MIN_NUTRIENT_ML_PER_LITER
-      );
-
-      const nutrientsJson = activeNutrients.map((nut) => ({
-        name: nut.name,
-        relay: nut.relayNumber,
-        mlPerLiter: nut.mlPerLiter,
-        active: true,
-      }));
-      
-      const totalMl = activeNutrients.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
-      
-      interface ECConfigPayload {
-        device_id: string;
-        base_dose: number;
-        flow_rate: number;
-        volume: number;
-        total_ml: number;
-        kp: number;
-      ec_setpoint: number;
-      tolerance: number;
-      auto_enabled: boolean;
-        nutrients: Array<{ name: string; relay: number; mlPerLiter: number }>;
-        intervalo_auto_ec?: number;
-        tempo_recirculacao?: number;
-        [key: string]: unknown;
-      }
-      
-      // ✅ JSON OPTIMIZADO: Solo los 9 parámetros básicos + nutrients[] (sin distribution)
-      // Construir payload optimizado com apenas os campos essenciais
-      // ✅ CORRIGIDO: Usar overrideAutoEnabled se fornecido, senão usar autoEnabled do estado
-      const payload: ECConfigPayload = {
-        device_id: selectedDeviceId,
-        base_dose: baseDose,
-        flow_rate: pumpFlowRate,
-        volume: totalVolume,
-        total_ml: totalMl,
-        kp: 1.0, // ✅ Ganho proporcional (default: 1.0)
-        ec_setpoint: ecSetpoint,
-        tolerance: ecTolerance,
-        auto_enabled: overrideAutoEnabled !== undefined ? overrideAutoEnabled : autoEnabled,
-        nutrients: nutrientsJson, // ✅ Se necesita para que ESP32 sepa qué relé usar
-      };
-      
-      // Adicionar intervalo_auto_ec (requer coluna criada via script SQL)
-      if (intervaloAutoEC !== undefined && intervaloAutoEC !== null) {
-        payload.intervalo_auto_ec = Math.max(1, Math.floor(Number(intervaloAutoEC) || 300));
-      }
-      
-      // ✅ ATUALIZADO: Converter tempo_recirculacao de HH:MM para SEGUNDOS (INTEGER)
-      // ✅ IMPORTANTE: Enviar em SEGUNDOS, no milisegundos ni formato string
-      let tempoRecirculacaoSegundos = 120; // Default: 120 segundos (2 minutos)
-      
-      if (tempoRecirculacao !== undefined && tempoRecirculacao !== null && tempoRecirculacao.trim() !== '') {
-        // Validar formato HH:MM
-        if (validateTimeFormat(tempoRecirculacao)) {
-          // Converter HH:MM para SEGUNDOS (no milisegundos)
-          const ms = timeToMilliseconds(tempoRecirculacao);
-          if (ms > 0 && !isNaN(ms) && isFinite(ms)) {
-            tempoRecirculacaoSegundos = Math.floor(ms / 1000); // ✅ Convertir a SEGUNDOS
-            if (tempoRecirculacaoSegundos < 1) {
-              tempoRecirculacaoSegundos = 120; // Mínimo fallback: 2 minutos
-            }
-          } else {
-            console.warn('⚠️ [EC Controller] tempo_recirculacao resultou em valor inválido, usando default:', tempoRecirculacao, ms);
-          }
-        } else {
-          console.warn('⚠️ [EC Controller] tempo_recirculacao não passou na validação regex, usando default:', tempoRecirculacao);
-        }
-      }
-      
-      // ✅ SEMPRE enviar tempo_recirculacao como INTEGER em SEGUNDOS (constraint requer > 0)
-      payload.tempo_recirculacao = Math.max(1, tempoRecirculacaoSegundos);
-
-      const relayCheck = validateEcNutrientsAssignment(
-        nutrientsJson,
-        relayAllocation.phConfig ?? undefined
-      );
-      if (!relayCheck.ok) {
-        toast.error(relayCheck.error || 'Conflito de relés EC/pH');
-        return false;
-      }
-
-      const sanitizedPayload = sanitizeEcNumericFields(
-        payload as unknown as Record<string, unknown>
-      ) as typeof payload;
-      
-      console.log('📤 [EC Controller] Payload optimizado:', JSON.stringify(sanitizedPayload, null, 2));
-      
-      const response = await fetch('/api/ec-controller/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sanitizedPayload),
-      });
-      
-      if (!response.ok) {
-        const parsed = await parseConfigApiError(response);
-        console.error('❌ [EC Controller] Erro ao salvar:', {
-          status: parsed.status,
-          message: parsed.message,
-          body: parsed.body,
-          payload: sanitizedPayload,
-          device_id: selectedDeviceId,
-        });
-        toast.error(`Erro ao salvar: ${parsed.message}`);
-        return false;
-      }
-      
-      const result = await response.json();
-      console.log('✅ [EC Controller] Configuração salva com sucesso em ec_config_view:', result);
-      void relayAllocation.refresh();
-      console.log('📤 [EC Controller] Dados salvos na view table (prontos para RPC activate_auto_ec):', {
-        table: 'ec_config_view',
-        device_id: selectedDeviceId,
-        nutrients_available: nutrientsJson.length,
-        next_step: 'Pressione "Ativar Auto EC" para enviar ao ESP32 via RPC'
-      });
-      
-      // ✅ SOLUCIÓN DATA RACE: Marcar que acabamos de guardar para prevenir recarga inmediata
-      justSavedRef.current = true;
-      
-      // Limpar timeout anterior si existe
-      if (savingTimeoutRef.current) {
-        clearTimeout(savingTimeoutRef.current);
-      }
-      
-      // Desactivar flag después de 2 segundos (tiempo suficiente para que el guardado se complete en Supabase)
-      savingTimeoutRef.current = setTimeout(() => {
-        justSavedRef.current = false;
-        console.log('✅ [EC Controller] Flag de guardado desactivado, recargas permitidas nuevamente');
-      }, 2000);
-      
-      // Só mostrar toast se não estiver em modo silencioso
-      if (!silent) {
-        hwToast.success('Configuração salva com sucesso!', 'AUTO EC');
-      }
-      return true;
-    } catch (error) {
-      console.error('❌ [EC Controller] Erro ao salvar config:', error);
-      toast.error(`Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`);
-      return false;
-    }
-  }, [selectedDeviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, availableRelays, relayAllocation]);
-  
-  // ✅ Cleanup: Limpiar timeout al desmontar componente
-  useEffect(() => {
-    return () => {
-      if (savingTimeoutRef.current) {
-        clearTimeout(savingTimeoutRef.current);
-      }
-    };
-  }, []);
-  
-  // ✅ Função para construir JSON optimizado de EC Config (para vista previa)
-  const getECConfigJson = useCallback(() => {
-    const activeNutrients = nutrientsState.filter(
-      (n) => n.mlPerLiter >= MIN_NUTRIENT_ML_PER_LITER
-    );
-    const nutrientsJson = activeNutrients.map((nut) => ({
-      name: nut.name,
-      relay: nut.relayNumber,
-      mlPerLiter: nut.mlPerLiter,
-      active: true,
-      relayName: availableRelays.find(r => r.number === nut.relayNumber)?.name || `Relay ${nut.relayNumber}`,
-    }));
-    
-    const totalMl = activeNutrients.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
-    const kFactor = totalMl > 0 ? baseDose / totalMl : 0;
-    
-    interface ECConfigJSON {
-      device_id: string;
-      base_dose: number;
-      flow_rate: number;
-      volume: number;
-      total_ml: number;
-      kp: number;
-      ec_setpoint: number;
-      tolerance?: number;
-      auto_enabled: boolean;
-      nutrients: Array<{ name: string; relay: number; mlPerLiter: number }>;
-      intervalo_auto_ec?: number;
-      tempo_recirculacao?: number;
-      _debug?: unknown;
-      [key: string]: unknown;
-    }
-    
-    // ✅ JSON OPTIMIZADO: Solo los 9 parámetros básicos + nutrients[] (sin distribution)
-    const ecConfigJson: ECConfigJSON = {
-      device_id: selectedDeviceId,
-      base_dose: baseDose,
-      flow_rate: pumpFlowRate,
-      volume: totalVolume,
-      total_ml: totalMl,
-      kp: 1.0, // ✅ Ganho proporcional (default: 1.0)
-      ec_setpoint: ecSetpoint,
-      tolerance: ecTolerance,
-      auto_enabled: autoEnabled,
-      nutrients: nutrientsJson,
-    };
-    
-    // Adicionar intervalo_auto_ec
-    if (intervaloAutoEC !== undefined && intervaloAutoEC !== null) {
-      ecConfigJson.intervalo_auto_ec = intervaloAutoEC;
-    }
-    
-    // ✅ ATUALIZADO: tempo_recirculacao en SEGUNDOS (INTEGER)
-    if (tempoRecirculacao !== undefined && tempoRecirculacao !== null && tempoRecirculacao.trim() !== '') {
-      if (validateTimeFormat(tempoRecirculacao)) {
-        const ms = timeToMilliseconds(tempoRecirculacao);
-        ecConfigJson.tempo_recirculacao = Math.floor(ms / 1000); // ✅ SEGUNDOS
-      } else {
-        ecConfigJson.tempo_recirculacao = 60; // Default: 60 segundos
-      }
-    } else {
-      ecConfigJson.tempo_recirculacao = 60; // Default: 60 segundos
-    }
-    
-    // ❌ ELIMINADO: distribution - Se calcula en tiempo real en el ESP32
-    // ❌ ELIMINADO: tempo_recirculacao_ms - Redundante
-    
-    // Informações calculadas adicionais para debug
-    ecConfigJson._debug = {
-      total_volume_liters: totalVolume,
-      pump_flow_rate_ml_per_sec: pumpFlowRate,
-      base_dose_us_per_cm: baseDose,
-      total_ml_per_liter: totalMl,
-      nutrients_count: nutrientsJson.length,
-      k_factor: kFactor > 0 ? kFactor.toFixed(3) : '—',
-      equation: kFactor > 0
-        ? `u(t) = (${totalVolume} / ${kFactor.toFixed(3)} × ${pumpFlowRate}) × e`
-        : 'Configure nutrientes com ml/L > 0 para calcular k',
-      tolerance_us_cm: ecTolerance,
-      relay_allocation: serializeRegistryForDebug(
-        relayAllocation.buildRegistry({
-          ecConfig: {
-            nutrients: nutrientsJson.map((n) => ({
-              name: n.name,
-              relay: n.relay,
-              mlPerLiter: n.mlPerLiter,
-              active: true,
-            })),
-          },
-        })
-      ),
-      note: '✅ JSON optimizado: Sin distribution (se calcula en ESP32), tempo_recirculacao en SEGUNDOS',
-    };
-    
-    return ecConfigJson;
-  }, [selectedDeviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, availableRelays, relayAllocation]);
-  
-  // ✅ NOVO: Salvar mapeamento nutriente → relé
-  const handleRelayChange = useCallback(async (nutrientIndex: number, newRelayNumber: number) => {
-    const nutrient = nutrientsState[nutrientIndex];
-    const currentRelay = nutrient?.relayNumber ?? newRelayNumber;
-    const lockCurrent = getEcRelayNamingLock(currentRelay);
-    const lockTarget = getEcRelayNamingLock(newRelayNumber);
-    if (lockCurrent.locked || lockTarget.locked) {
-      toast.error(lockTarget.locked ? lockTarget.tooltip : lockCurrent.tooltip);
-      return;
-    }
-
-    const updatedNutrients = [...nutrientsState];
-    updatedNutrients[nutrientIndex] = {
-      ...updatedNutrients[nutrientIndex],
-      relayNumber: newRelayNumber,
-    };
-    setNutrientsState(updatedNutrients);
-    
-    // Salvar nome do nutriente no relé escolhido
-    if (selectedDeviceId && selectedDeviceId !== 'default_device') {
-      const updatedNutrient = updatedNutrients[nutrientIndex];
-      await saveMasterLocalRelayName(selectedDeviceId, newRelayNumber, updatedNutrient.name);
-      
-      // Atualizar nomes locais
-      await loadLocalRelayNames();
-      
-      // Salvar automaticamente no Supabase
-      await saveECControllerConfig();
-    }
-  }, [selectedDeviceId, nutrientsState, loadLocalRelayNames, saveECControllerConfig, getEcRelayNamingLock]);
-  
-  const totalMlPerLiter = useMemo(
-    () => nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0),
-    [nutrientsState]
-  );
-
-  const canActivateAutoEc = useMemo(() => {
-    const activeCount = nutrientsState.filter((n) => n.mlPerLiter >= MIN_NUTRIENT_ML_PER_LITER).length;
-    return activeCount > 0 && totalMlPerLiter > 0;
-  }, [nutrientsState, totalMlPerLiter]);
 
   // Carregar regras do Supabase quando selectedDeviceId mudar
   useEffect(() => {
@@ -1043,24 +286,11 @@ export default function AutomacaoPageClient() {
       loadRules();
       loadESPNOWSlaves();
       loadLocalRelayNames(); // ✅ NOVO: Carregar nomes de relés locais
-      loadECControllerConfig(); // ✅ NOVO: Carregar config EC Controller
     }
     // ✅ SOLUCIÓN DATA RACE: Remover funciones de las dependencias
     // Solo debe ejecutarse cuando cambia selectedDeviceId o userProfile?.email
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, userProfile?.email]);
-
-  // Sincronizar vazão após calibragem em /calibragem
-  useEffect(() => {
-    const onFlowRateUpdated = (e: Event) => {
-      const detail = (e as CustomEvent<{ deviceId: string; flowRate: number }>).detail;
-      if (detail?.deviceId === selectedDeviceId && detail.flowRate > 0) {
-        setPumpFlowRate(detail.flowRate);
-      }
-    };
-    window.addEventListener('flowRateUpdated', onFlowRateUpdated);
-    return () => window.removeEventListener('flowRateUpdated', onFlowRateUpdated);
-  }, [selectedDeviceId]);
 
   // ✅ Auto-expandir seção e slave quando há apenas 1 slave
   useEffect(() => {
@@ -1277,15 +507,10 @@ export default function AutomacaoPageClient() {
     if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
 
     updateRelayStatesOnly();
-    loadDoserRelayStates();
 
     const unsubscribe = subscribeRelayStateUpdates(
       selectedDeviceId,
-      (masterRow: RelayMasterRow) => {
-        if (masterRow.doser_relay_states?.length) {
-          setDoserRelayStates(masterRow.doser_relay_states);
-        }
-      },
+      () => {},
       (slaveRow) => {
         setEspnowSlaves((prev) => {
           const { slaves: updated, matched } = applySlaveRelayRow(prev, slaveRow);
@@ -1304,7 +529,6 @@ export default function AutomacaoPageClient() {
 
     const clearFallback = setVisibleInterval(() => {
       updateRelayStatesOnly();
-      loadDoserRelayStates();
     }, RELAY_REST_FALLBACK_MS);
 
     return () => {
@@ -1312,7 +536,7 @@ export default function AutomacaoPageClient() {
       clearFallback();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDeviceId, updateRelayStatesOnly, loadDoserRelayStates]);
+  }, [selectedDeviceId, updateRelayStatesOnly]);
 
   const loadRules = async () => {
     setLoading(true);
@@ -1417,7 +641,7 @@ export default function AutomacaoPageClient() {
       }
     } catch (error) {
       console.error('❌ Erro ao carregar slaves ESP-NOW:', error);
-      toast.error('Erro ao carregar dispositivos ESP-NOW');
+      toast.error('Erro ao carregar HydroWave Atlas');
     } finally {
       setLoadingSlaves(false);
     }
@@ -1743,91 +967,6 @@ export default function AutomacaoPageClient() {
     setIsModalOpen(true);
   };
 
-  // ✅ Função para validar contraseña de administrador
-  // ✅ Usada para bloquear/desbloquear: EC Controller, Slave Relay Manager, Decision Engine
-  // ✅ Todos os 3 toasts de bloqueio usam a mesma senha: "admin"
-  const validateAdminPassword = (password: string): boolean => {
-    const adminPassword = 'admin';  // ✅ Contraseña única para todos os bloqueios
-    return password === adminPassword;
-  };
-
-  // ✅ Função helper para mostrar toast de bloqueio/desbloqueio (reutilizável)
-  const showLockUnlockToast = (
-    isLocked: boolean,
-    sectionName: string,
-    onConfirm: () => void
-  ) => {
-    let passwordInputRef: HTMLInputElement | null = null;
-    
-    toast.custom((t) => {
-      const handleConfirm = () => {
-        const password = passwordInputRef?.value || '';
-        
-        if (password && validateAdminPassword(password)) {
-          onConfirm();
-          toast.dismiss(t.id);
-          toast.success(isLocked ? `✅ ${sectionName} desbloqueado` : `🔒 ${sectionName} bloqueado`);
-        } else {
-          toast.error('Senha incorreta!', { id: 'password-error' });
-          if (passwordInputRef) {
-            passwordInputRef.value = '';
-            passwordInputRef.focus();
-          }
-        }
-      };
-      
-      return (
-        <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-dark-card border border-dark-border shadow-lg rounded-lg pointer-events-auto flex flex-col p-4`}>
-          <div className="flex items-start">
-            <div className="flex-shrink-0">
-              <LockClosedIcon className="h-6 w-6 text-yellow-400" />
-            </div>
-            <div className="ml-3 w-full">
-              <h3 className="text-sm font-medium text-dark-text mb-2">
-                🔒 {isLocked ? 'Desbloquear' : 'Bloquear'} {sectionName}
-              </h3>
-              <p className="text-xs text-dark-textSecondary mb-3">
-                Esta ação requer senha de administrador para proteger a configuração.
-              </p>
-              <input
-                ref={(el) => { 
-                  passwordInputRef = el;
-                  if (el) {
-                    setTimeout(() => el.focus(), 100);
-                  }
-                }}
-                type="password"
-                className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none mb-3"
-                placeholder="Digite a senha de administrador"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleConfirm();
-                  }
-                }}
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={handleConfirm}
-                  className="flex-1 px-3 py-2 bg-aqua-500 hover:bg-aqua-600 text-white rounded-md text-sm font-medium transition-colors"
-                >
-                  Confirmar
-                </button>
-                <button
-                  onClick={() => toast.dismiss(t.id)}
-                  className="flex-1 px-3 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border text-dark-text rounded-md text-sm font-medium transition-colors"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }, {
-      duration: Infinity,
-    });
-  };
 
   // ✅ Componente de confirmación con contraseña (usando React state)
   const DeleteConfirmationToast = ({ 
@@ -2013,15 +1152,18 @@ export default function AutomacaoPageClient() {
           {/* Primeira linha: Título e Seletor */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">⚙️ Automação</h1>
-              <p className="text-sm sm:text-base text-dark-textSecondary mt-1">Configure regras automáticas para seu sistema</p>
+              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent flex items-center gap-2">
+                <ClipboardIcon className="w-8 h-8 text-aqua-400 shrink-0" aria-hidden />
+                Automação
+              </h1>
+              <p className="text-base sm:text-lg text-dark-textSecondary mt-1">Configure regras automáticas para seu sistema</p>
             </div>
             {/* Seletor de Master */}
             {availableMasters.length > 0 && (
               <select
                 value={selectedDeviceId}
                 onChange={(e) => setSelectedDeviceId(e.target.value)}
-                className="w-full sm:w-auto min-w-[200px] px-4 py-2.5 text-sm sm:text-base bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
+                className="w-full sm:w-auto min-w-[200px] px-4 py-3 text-base sm:text-lg bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
               >
                 {availableMasters.map(master => (
                   <option key={master.device_id} value={master.device_id || ''}>
@@ -2035,49 +1177,49 @@ export default function AutomacaoPageClient() {
           {/* Segunda linha: Informações em tempo real */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-dark-border">
             {/* Regra Vigente */}
-            <div className="bg-dark-surface/50 border border-aqua-500/20 rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs text-aqua-400 font-semibold">📌 Regra Vigente</span>
+            <div className="bg-dark-surface/50 border border-aqua-500/20 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-sm text-aqua-400 font-semibold">📌 Regra Vigente</span>
                 {currentActiveRule && (
-                  <span className="px-2 py-0.5 bg-aqua-500/20 text-aqua-400 text-xs rounded-full">
+                  <span className="px-2 py-0.5 bg-aqua-500/20 text-aqua-400 text-sm rounded-full">
                     P{currentActiveRule.priority || 50}
                   </span>
                 )}
               </div>
               {currentActiveRule ? (
-                <p className="text-sm font-medium text-dark-text truncate" title={currentActiveRule.rule_name || currentActiveRule.name}>
+                <p className="text-base font-medium text-dark-text truncate" title={currentActiveRule.rule_name || currentActiveRule.name}>
                   {currentActiveRule.rule_name || currentActiveRule.name}
                 </p>
               ) : (
-                <p className="text-xs text-dark-textSecondary italic">Nenhuma regra ativa</p>
+                <p className="text-sm text-dark-textSecondary italic">Nenhuma regra ativa</p>
               )}
             </div>
             
             {/* Status do Motor de Decisão */}
-            <div className="bg-dark-surface/50 border border-dark-border rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs text-dark-textSecondary font-semibold">🔧 Motor de Decisão</span>
-                <span className={`w-2 h-2 rounded-full ${decisionEngineActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></span>
+            <div className="bg-dark-surface/50 border border-dark-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-sm text-dark-textSecondary font-semibold">🔧 Motor de Decisão</span>
+                <span className={`w-2.5 h-2.5 rounded-full ${decisionEngineActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></span>
               </div>
-              <p className={`text-sm font-medium ${decisionEngineActive ? 'text-green-400' : 'text-dark-textSecondary'}`}>
+              <p className={`text-base font-medium ${decisionEngineActive ? 'text-green-400' : 'text-dark-textSecondary'}`}>
                 {decisionEngineActive ? 'Ativo' : selectedMaster?.is_online ? 'Inativo' : 'Offline'}
               </p>
             </div>
             
             {/* Estatísticas Rápidas */}
-            <div className="bg-dark-surface/50 border border-dark-border rounded-lg p-3">
+            <div className="bg-dark-surface/50 border border-dark-border rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-dark-textSecondary mb-1">📊 Estatísticas</p>
-                  <p className="text-sm font-medium text-dark-text">
+                  <p className="text-sm text-dark-textSecondary mb-1.5">📊 Estatísticas</p>
+                  <p className="text-base font-medium text-dark-text">
                     <span className="text-aqua-400">{activeRules}</span> ativas / <span className="text-dark-textSecondary">{inactiveRules}</span> inativas
                   </p>
                 </div>
                 {selectedMaster?.is_online && (
                   <div className="flex flex-col items-end">
-                    <span className="text-xs text-green-400">🟢 Online</span>
+                    <span className="text-sm text-green-400">🟢 Online</span>
                     {selectedMaster.last_seen && (
-                      <span className="text-xs text-dark-textSecondary">
+                      <span className="text-sm text-dark-textSecondary">
                         {new Date(selectedMaster.last_seen).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     )}
@@ -2090,6 +1232,27 @@ export default function AutomacaoPageClient() {
       </header>
       
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <AutomacaoTabs activeTab={activeTab} onTabChange={setActiveTab} />
+
+        {activeTab === 'timeline' && (
+          <GrowCycleTimelinePanel
+            deviceId={selectedDeviceId}
+            userEmail={userProfile?.email}
+            embedded
+          />
+        )}
+
+        {activeTab === 'procedures' && (
+          <ProceduresTabPanel
+            deviceId={selectedDeviceId}
+            espnowSlaves={espnowSlaves}
+            waterLevelEnabled={ecDeviceActive}
+            onSlavesRefresh={loadESPNOWSlaves}
+          />
+        )}
+
+        {activeTab === 'rules' && (
+          <>
         {/* Box de Estatísticas */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="bg-dark-card border border-aqua-500/30 rounded-lg shadow-lg p-4 sm:p-6">
@@ -2115,7 +1278,7 @@ export default function AutomacaoPageClient() {
         {/* ⚡ TESTE RELAYS MANUALMENTE (ESP-NOW - CARGA) - EXISTENTE */}
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
           <div className="p-4 border-b border-dark-border">
-            <h2 className="text-base sm:text-lg font-semibold text-dark-text break-words">⚡ Teste Relays Manualmente (ESP-NOW - Carga)</h2>
+            <h2 className="text-base sm:text-lg font-semibold text-dark-text break-words">⚡ Teste Relays Manualmente (HydroWave Atlas)</h2>
             <p className="text-xs sm:text-sm text-dark-textSecondary mt-1 break-words">Controle manual dos relays para testes</p>
           </div>
           
@@ -2132,7 +1295,7 @@ export default function AutomacaoPageClient() {
                   <ChevronDownIcon className="w-4 h-4 sm:w-5 sm:h-5 text-dark-textSecondary flex-shrink-0" />
                 )}
                 <h3 className="text-sm sm:text-md font-semibold text-dark-text truncate">
-                  📡 Gerenciar Nomes dos Relés ESP-NOW Slaves
+                  📡 Gerenciar Nomes dos Relés HydroWave Atlas
                 </h3>
               </div>
               <div className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0 ml-2">
@@ -2145,7 +1308,7 @@ export default function AutomacaoPageClient() {
                     loadESPNOWSlaves();
                   }}
                   className="px-2 sm:px-3 py-1.5 sm:py-1 bg-dark-card hover:bg-dark-border border border-dark-border rounded text-xs text-dark-text transition-colors"
-                  title="Atualizar lista de slaves"
+                  title="Atualizar lista de Atlas"
                 >
                   🔄
                 </button>
@@ -2156,13 +1319,13 @@ export default function AutomacaoPageClient() {
               <div className="p-4 border-t border-dark-border">
                 {loadingSlaves ? (
                   <div className="text-center py-8">
-                    <BrandLoading message="Carregando dispositivos ESP-NOW..." size={40} />
+                    <BrandLoading message="Carregando HydroWave Atlas..." size={40} />
                   </div>
                 ) : espnowSlaves.length === 0 ? (
                   <div className="text-center py-8 bg-dark-card border border-dark-border rounded-lg">
-                    <p className="text-dark-textSecondary mb-2">Nenhum dispositivo ESP-NOW encontrado</p>
+                    <p className="text-dark-textSecondary mb-2">Nenhum HydroWave Atlas encontrado</p>
                     <p className="text-xs text-dark-textSecondary mb-4">
-                      Os dispositivos ESP-NOW serão descobertos automaticamente pelo ESP32 Master
+                      Os Atlas serão descobertos automaticamente pelo HydroWave Core
                       <br />
                       e registrados no Supabase quando conectados.
                     </p>
@@ -2215,7 +1378,7 @@ export default function AutomacaoPageClient() {
                                   const isLocked = lockedSlaves.get(slave.macAddress) ?? false;
                                   showLockUnlockToast(
                                     isLocked,
-                                    `Controles do Slave ${slave.name}`,
+                                    `Controles do Atlas ${slave.name}`,
                                     () => {
                                       setLockedSlaves(prev => {
                                         const next = new Map(prev);
@@ -2253,7 +1416,7 @@ export default function AutomacaoPageClient() {
                                 {slave.status === 'offline' && (
                                   <p className="text-xs text-red-400/90 mb-3 flex items-center gap-1.5">
                                     <span className="w-2 h-2 rounded-full bg-red-400 flex-shrink-0" />
-                                    Slave offline — aguarde reconexão para enviar comandos
+                                    Atlas offline — aguarde reconexão para enviar comandos
                                   </p>
                                 )}
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -2395,7 +1558,7 @@ export default function AutomacaoPageClient() {
                                               `}
                                               title={
                                                 isSlaveOffline
-                                                  ? 'Slave offline'
+                                                  ? 'Atlas offline'
                                                   : isLocked
                                                     ? 'Controles bloqueados'
                                                     : isRelayOn
@@ -2922,6 +2085,7 @@ export default function AutomacaoPageClient() {
                 onClick={(e) => {
                   e.stopPropagation();
                   if (!decisionEngineLocked) {
+                    setEditingRule(null);
                     setIsModalOpen(true);
                   }
                 }}
@@ -2932,6 +2096,7 @@ export default function AutomacaoPageClient() {
                     e.preventDefault();
                     e.stopPropagation();
                     if (!decisionEngineLocked) {
+                      setEditingRule(null);
                       setIsModalOpen(true);
                     }
                   }
@@ -3034,12 +2199,7 @@ export default function AutomacaoPageClient() {
                                 <div className="mt-2 text-xs text-dark-textSecondary space-y-1 font-mono">
                                   {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
                                     <div key={idx} className="text-aqua-300">
-                                      {idx + 1}. {formatInstructionType(instr.type)}
-                                      {instr.condition && (
-                                        <span className="ml-2 text-dark-textSecondary">
-                                          {instr.condition.sensor} {instr.condition.operator} {instr.condition.value}
-                                        </span>
-                                      )}
+                                      {idx + 1}. {formatInstructionPreview(instr)}
                                     </div>
                                   ))}
                                   {script.rule_json.script.instructions.length > 2 && (
@@ -3163,12 +2323,7 @@ export default function AutomacaoPageClient() {
                                   <div className="mt-2 text-xs text-dark-textSecondary space-y-1 font-mono">
                                   {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
                                       <div key={idx} className="text-aqua-300">
-                                        {idx + 1}. {formatInstructionType(instr.type)}
-                                        {instr.condition && (
-                                          <span className="ml-2 text-dark-textSecondary">
-                                            {instr.condition.sensor} {instr.condition.operator} {instr.condition.value}
-                                          </span>
-                                        )}
+                                        {idx + 1}. {formatInstructionPreview(instr)}
                                       </div>
                                     ))}
                                     {script.rule_json.script.instructions.length > 2 && (
@@ -3253,1045 +2408,6 @@ export default function AutomacaoPageClient() {
         </div>
 
 
-        {selectedDeviceId && selectedDeviceId !== 'default_device' && (
-          <div className="mb-6">
-            <WaterLevelSection deviceId={selectedDeviceId} enabled={ecDeviceActive} />
-          </div>
-        )}
-
-        {/* Box de Controle Nutricional Proporcional - Colapsável */}
-        <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
-          {/* Header - Colapsável */}
-          <div
-            onClick={() => setExpandedNutritionalControl(!expandedNutritionalControl)}
-            className="w-full p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:bg-dark-surface transition-colors cursor-pointer"
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 flex-1 min-w-0">
-              <div className="flex items-center space-x-3 min-w-0">
-                {expandedNutritionalControl ? (
-                  <ChevronUpIcon className="w-5 h-5 text-aqua-400 shrink-0" />
-                ) : (
-                  <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary shrink-0" />
-                )}
-                <h3 className="text-lg font-semibold text-dark-text flex items-center gap-2 min-w-0">
-                  <ClipboardIcon className="w-5 h-5 text-aqua-400 shrink-0" aria-hidden />
-                  <span className="truncate">Controle Nutricional Proporcional</span>
-                </h3>
-              </div>
-              <OperationStateBadges
-                variant="header"
-                autoEnabled={autoEnabled}
-                autoActiveLabel="Auto EC ativo"
-                autoInactiveLabel="Auto EC inativo"
-                isDosando={isDosando}
-                isAguardandoRecirculacao={isAguardandoRecirculacao}
-                operationRemainingSec={recirculacaoRestanteSec}
-                showNextCheck={showEcNextCheck}
-                nextCheckInSec={ecNextCheckInSec}
-                nextCheckLabel="Próxima verificação EC"
-                accent="emerald"
-              />
-            </div>
-            {/* ✅ Candado para bloquear/desbloquear controles EC (com senha admin) */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                showLockUnlockToast(
-                  ecControllerLocked,
-                  'Controles EC',
-                  () => setEcControllerLocked(prev => !prev)
-                );
-              }}
-              className={`p-1.5 rounded transition-colors ${
-                ecControllerLocked
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
-                  : 'bg-aqua-500/20 text-aqua-400 hover:bg-aqua-500/30 border border-aqua-500/30'
-              }`}
-              title={ecControllerLocked ? 'Desbloquear controles (requer senha admin)' : 'Bloquear controles (requer senha admin)'}
-            >
-              {ecControllerLocked ? (
-                <LockClosedIcon className="w-4 h-4" />
-              ) : (
-                <LockOpenIcon className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-
-          {/* Conteúdo Expandido - Configuração EC Controller + Tabela de Nutrição */}
-          {expandedNutritionalControl && (
-            <div className="p-4 sm:p-6 border-t border-dark-border">
-              
-              {/* ===== SEÇÃO: CONFIGURAÇÃO EC CONTROLLER ===== */}
-              <div>
-                <h2 className="text-lg sm:text-xl font-bold text-dark-text mb-3 sm:mb-4">🎯 Controle Automático de EC</h2>
-                <p className="text-xs sm:text-sm text-dark-textSecondary mb-4">
-                  Configure o sistema adaptativo proporcional para controle automático da condutividade elétrica.
-                </p>
-
-                <details className="mb-6 rounded-lg border border-aqua-500/30 bg-aqua-500/5 p-4 group">
-                  <summary className="cursor-pointer text-sm font-semibold text-aqua-300 select-none list-none flex items-center gap-2">
-                    <span className="group-open:rotate-90 transition-transform">▶</span>
-                    ℹ️ Informação — como usar o Auto EC
-                  </summary>
-                  <div className="mt-3 space-y-2 text-xs sm:text-sm text-dark-textSecondary leading-relaxed">
-                    <p><strong className="text-dark-text">1. Plano nutricional</strong> — Adicione nutrientes, associe cada um a um relé e defina ml/L (mín. {MIN_NUTRIENT_ML_PER_LITER}). Calibre a bomba em Calibragem.</p>
-                    <p><strong className="text-dark-text">2. Parâmetros hidropônicos</strong> — Base de dose (EC da solução stock), setpoint desejado e <strong>banda morta</strong>. O firmware só dosifica se EC &lt; setpoint − banda (só por baixo do SP).</p>
-                    <p><strong className="text-dark-text">3. Parâmetros de ciclo</strong> — Intervalo entre <em>verificações</em> de EC (não confundir com pausa entre nutrientes no firmware, ~3 s). Tempo de recirculação após cada dose.</p>
-                    <p><strong className="text-dark-text">4. Salvar → Ativar</strong> — Salve os parâmetros, depois Ativar Auto EC. O ESP32 recebe a config via RPC <code className="text-aqua-400">activate_auto_ec</code>.</p>
-                    <p className="text-dark-textSecondary/80">Guia completo: menu <NavLink href="/informacao" className="text-aqua-400 hover:underline">Informação</NavLink>.</p>
-                  </div>
-                </details>
-                
-                {/* ===== TABELA DE NUTRIÇÃO (PRIMEIRO) ===== */}
-                <div className="mb-6 sm:mb-8 pb-6 sm:pb-8 border-b border-dark-border">
-                  {/* Header com título e botão + Nutriente */}
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4">
-                    <h3 className="text-base sm:text-lg font-bold text-dark-text">Tabela de Nutrição</h3>
-                    <button
-                      onClick={() => {
-                        setEditingNutrientIndex(null);
-                        setIsNutrientModalOpen(true);
-                      }}
-                      disabled={addNutrientControl.disabled}
-                      className={`flex items-center justify-center space-x-2 px-4 py-3 sm:py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm sm:text-base w-full sm:w-auto ${
-                        addNutrientControl.disabled ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
-                      title={addNutrientControl.title || 'Adicionar nutriente'}
-                    >
-                      <span className="text-base sm:text-lg">+</span>
-                      <span>Nutriente</span>
-                    </button>
-                  </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="bg-dark-surface/60 border border-aqua-500/25 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-dark-textSecondary">Vazão calibrada (bomba peristáltica)</p>
-                    <p className="text-xl font-semibold text-aqua-400 mt-1">{formatFlowRate(pumpFlowRate)}</p>
-                    <p className="text-xs text-dark-textSecondary mt-1">
-                      Usada para calcular tempo de dosagem na tabela abaixo
-                    </p>
-                  </div>
-                  <NavLink
-                    href="/calibragem"
-                    className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg border border-aqua-500/40 text-aqua-400 hover:bg-aqua-500/10 transition-colors whitespace-nowrap"
-                  >
-                    Calibrar bombas →
-                  </NavLink>
-                </div>
-
-                <div>
-                  <label htmlFor="totalVolume" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                    Volume do Reservatório (L):
-                  </label>
-                  <input
-                    id="totalVolume"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={isNaN(totalVolume) ? '' : totalVolume}
-                    onChange={(e) => {
-                      const value = parseInt(e.target.value, 10);
-                      setTotalVolume(isNaN(value) ? 10 : value);
-                    }}
-                    disabled={ecControllerLocked}
-                    className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
-                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  />
-                </div>
-              </div>
-              
-                  {/* ===== TABELA DE NUTRIENTES ===== */}
-                  <DoserRelayMapPanel registry={ecRelayRegistry} />
-                  <p className="mt-2 text-sm text-dark-textSecondary">
-                    Cada nutriente deve ter no mínimo {MIN_NUTRIENT_ML_PER_LITER} ml/L. Para excluir um nutriente do Auto EC, remova a linha (botão X) — não use 0 ml/L.
-                  </p>
-                  <div className="overflow-x-auto mt-2">
-                <table className="w-full">
-                  <thead className="bg-dark-surface">
-                    <tr>
-                      <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Nutriente</th>
-                      <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Relé</th>
-                      <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">ml por Litro</th>
-                      <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Quantidade (ml)</th>
-                      <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Tempo (seg)</th>
-                      <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {nutrientsState.map((nutrient, index) => {
-                      const calculateQuantity = (mlPerLiter: number): number => {
-                        return mlPerLiter * totalVolume;
-                      };
-
-                      const calculateTime = (mlPerLiter: number): number => {
-                        return calculateQuantity(mlPerLiter) / pumpFlowRate;
-                      };
-
-                      const relayNamingLock = getEcRelayNamingLock(nutrient.relayNumber);
-                      const relayControl = composeRelayControlDisabled(ecControllerLocked, relayNamingLock);
-                      const editNutrientControl = composeRelayControlDisabled(
-                        ecControllerLocked,
-                        relayNamingLock
-                      );
-                      const manualDoseLock = resolveEcManualDoseButtonLock({
-                        autoEnabled,
-                        relayNumber: nutrient.relayNumber,
-                        manualPendingRelays,
-                        ecManualDosingRelay: Boolean(isLoadingNutrients[nutrient.relayNumber]),
-                      });
-                      const manualDoseControl = composeRelayControlDisabled(
-                        ecControllerLocked,
-                        manualDoseLock
-                      );
-
-                          const handleMlPerLiterChange = async (idx: number, value: number) => {
-                        const updatedNutrients = [...nutrientsState];
-                        updatedNutrients[idx] = { ...updatedNutrients[idx], mlPerLiter: value };
-                        setNutrientsState(updatedNutrients);
-                            await saveECControllerConfig();
-                      };
-
-                          const handleDoseNutrient = async (nut: { name: string; relayNumber: number; mlPerLiter: number }, idx: number) => {
-                        const doseLock = resolveEcManualDoseButtonLock({
-                          autoEnabled,
-                          relayNumber: nut.relayNumber,
-                          manualPendingRelays,
-                          ecManualDosingRelay: Boolean(isLoadingNutrients[nut.relayNumber]),
-                        });
-                        if (doseLock.locked) {
-                          toast.error(doseLock.tooltip);
-                          return;
-                        }
-
-                        let timeNeeded = 0;
-                        if (nut.mlPerLiter > 0) {
-                          timeNeeded = calculateTime(nut.mlPerLiter);
-                          if (timeNeeded <= 0) {
-                            toast.error('O tempo de dosagem deve ser maior que zero');
-                            return;
-                          }
-                        } else {
-                          timeNeeded = 10;
-                        }
-
-                        setIsLoadingNutrients({ ...isLoadingNutrients, [nut.relayNumber]: true });
-                        
-                        try {
-                          const response = await fetch('/api/esp-now/command', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              master_device_id: selectedDeviceId,
-                                  slave_mac_address: null,
-                              relay_number: nut.relayNumber,
-                              action: 'on',
-                              duration_seconds: Math.ceil(timeNeeded),
-                              triggered_by: 'manual',
-                                  command_type: 'manual',
-                              rule_name: nut.mlPerLiter > 0 ? `Dosagem: ${nut.name}` : `Ativação: ${nut.name}`,
-                            }),
-                          });
-                          
-                          if (response.ok) {
-                            if (nut.mlPerLiter > 0) {
-                              toast.success(`Dosificando ${nut.name} por ${timeNeeded.toFixed(1)} segundos`);
-                            } else {
-                              toast.success(`${nut.name} ativado por ${timeNeeded} segundos`);
-                            }
-                            void relayAllocation.refresh();
-                          } else {
-                            const error = await response.json();
-                            toast.error(`Erro ao acionar ${nut.name}: ${error.error || 'Erro desconhecido'}`);
-                          }
-                        } catch (error) {
-                          toast.error(`Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`);
-                        } finally {
-                          setTimeout(() => {
-                            setIsLoadingNutrients({ ...isLoadingNutrients, [nut.relayNumber]: false });
-                          }, 1000);
-                        }
-                      };
-
-                      return (
-                        <tr key={index} className="border-b border-dark-border">
-                          <td className="py-2 px-4 text-dark-text">{nutrient.name}</td>
-                          <td className="py-2 px-4">
-                            <span title={relayControl.title || undefined}>
-                              <DoserRelaySelect
-                                registry={ecRelayRegistry}
-                                context={{
-                                  field: 'ec_nutrient',
-                                  currentValue: nutrient.relayNumber,
-                                  nutrientIndex: index,
-                                }}
-                                value={nutrient.relayNumber}
-                                disabled={relayControl.disabled}
-                                onChange={(relayNum) => handleRelayChange(index, relayNum)}
-                                className="w-full p-1.5 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none disabled:opacity-50"
-                              />
-                            </span>
-                          </td>
-                          <td className="py-2 px-4">
-                            <input
-                              type="number"
-                              min={MIN_NUTRIENT_ML_PER_LITER}
-                              step={0.1}
-                              value={nutrient.mlPerLiter}
-                              onChange={(e) => {
-                                const value = parseFloat(e.target.value);
-                                handleMlPerLiterChange(index, isNaN(value) ? 0 : value);
-                              }}
-                              disabled={ecControllerLocked}
-                              className={`w-full p-1.5 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
-                                ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                              }`}
-                            />
-                          </td>
-                          <td className="py-2 px-4 text-dark-text">{calculateQuantity(nutrient.mlPerLiter).toFixed(1)}</td>
-                          <td className="py-2 px-4 text-dark-text">{calculateTime(nutrient.mlPerLiter).toFixed(1)}</td>
-                          <td className="py-2 px-4">
-                                <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleDoseNutrient(nutrient, index)}
-                              disabled={manualDoseControl.disabled}
-                              className={`px-3 py-1.5 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded transition-all shadow-lg hover:shadow-aqua-500/50 ${
-                                manualDoseControl.disabled ? 'opacity-50 cursor-not-allowed' : ''
-                              }`}
-                              title={manualDoseControl.title || 'Dosificar'}
-                            >
-                              {isLoadingNutrients[nutrient.relayNumber] ? 'Dosificando...' : 'Dosificar'}
-                            </button>
-                                  <button
-                                    onClick={() => {
-                                      setEditingNutrientIndex(index);
-                                      setIsNutrientModalOpen(true);
-                                    }}
-                                    disabled={editNutrientControl.disabled}
-                                    className={`px-3 py-1.5 bg-dark-surface hover:bg-dark-border border border-dark-border text-dark-text rounded transition-all ${
-                                      editNutrientControl.disabled ? 'opacity-50 cursor-not-allowed' : ''
-                                    }`}
-                                    title={editNutrientControl.title || 'Editar'}
-                                  >
-                                    ✏️
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      const updated = nutrientsState.filter((_, i) => i !== index);
-                                      setNutrientsState(updated);
-                                      saveECControllerConfig();
-                                    }}
-                                    disabled={ecControllerLocked}
-                                    className={`px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-all ${
-                                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                                    }`}
-                                    title={ecControllerLocked ? 'Controles bloqueados' : 'Remover'}
-                                  >
-                                    <XMarkIcon className="w-4 h-4" />
-                                  </button>
-                                </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                  </div>
-                </div>
-                
-                {/* Parâmetros hidropônicos */}
-                <div className="mb-8">
-                  <h3 className="text-base sm:text-lg font-bold text-dark-text mb-1">Parâmetros hidropônicos</h3>
-                  <p className="text-xs text-dark-textSecondary mb-4">
-                    Setpoint, banda morta e calibração da solução nutriente — fecham o loop de controle visível no status.
-                  </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                  <div>
-                    <label htmlFor="base-dose" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                      Base de dose (EC µS/cm):
-                    </label>
-                    <input
-                      id="base-dose"
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={isNaN(baseDose) ? '' : baseDose}
-                      onChange={(e) => {
-                        const value = parseFloat(e.target.value);
-                        setBaseDose(isNaN(value) ? 0 : value);
-                      }}
-                      disabled={ecControllerLocked}
-                      className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
-                        ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
-                      placeholder="Ex: 1525"
-                    />
-                    <small className="text-xs text-red-400 mt-1 block">
-                      EC total concentrada para um litro de solução
-                    </small>
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="total-ml" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                      Soma ml por Litro (concentração):
-                    </label>
-                    <input
-                      id="total-ml"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={totalMlPerLiter.toFixed(1)}
-                      readOnly
-                      className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none opacity-75"
-                    />
-                    <small className="text-xs text-green-400 mt-1 block">
-                      Calculado automaticamente pela soma dos ml/L do plano nutricional
-                    </small>
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="ec-setpoint" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                      EC Setpoint (µS/cm):
-                    </label>
-                    <input
-                      id="ec-setpoint"
-                      type="number"
-                      min="0"
-                      step="10"
-                      value={isNaN(ecSetpoint) ? '' : ecSetpoint}
-                      onChange={(e) => {
-                        const value = parseFloat(e.target.value);
-                        setEcSetpoint(isNaN(value) ? 0 : value);
-                      }}
-                      disabled={ecControllerLocked}
-                      className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
-                        ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
-                      placeholder="Ex: 1500"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="ec-tolerance" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                      Tolerância / banda morta (µS/cm):
-                    </label>
-                    <input
-                      id="ec-tolerance"
-                      type="number"
-                      min="1"
-                      step="5"
-                      value={isNaN(ecTolerance) ? '' : ecTolerance}
-                      onChange={(e) => {
-                        const value = parseFloat(e.target.value);
-                        setEcTolerance(isNaN(value) || value <= 0 ? 50 : value);
-                      }}
-                      disabled={ecControllerLocked}
-                      className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
-                        ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
-                      placeholder="Ex: 50"
-                    />
-                    <small className="text-xs text-aqua-400 mt-1 block">
-                      Sem dosagem se EC ≥ setpoint − {ecTolerance} µS/cm (banda só por baixo do SP)
-                    </small>
-                  </div>
-                </div>
-                </div>
-
-                {/* Parâmetros de ciclo */}
-                <div className="mb-8 pb-6 border-b border-dark-border">
-                  <h3 className="text-base sm:text-lg font-bold text-dark-text mb-1">Parâmetros de ciclo</h3>
-                  <p className="text-xs text-dark-textSecondary mb-4">
-                    Quando o firmware verifica a EC e quanto tempo aguarda a recirculação antes da próxima decisão.
-                  </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="intervalo-auto-ec" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                      Intervalo entre verificações de EC (segundos):
-                    </label>
-                    <input
-                      id="intervalo-auto-ec"
-                      type="number"
-                      min="30"
-                      max="86400"
-                      step="30"
-                      value={isNaN(intervaloAutoEC) ? '' : intervaloAutoEC}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value, 10);
-                        setIntervaloAutoEC(isNaN(value) ? 300 : value);
-                      }}
-                      disabled={ecControllerLocked}
-                      className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none ${
-                        ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
-                      placeholder="Ex: 300"
-                    />
-                    <small className="text-xs text-dark-textSecondary mt-1 block">
-                      Periodicidade do ciclo automático (ex.: 300 = a cada 5 min). Distinto da pausa ~3 s entre nutrientes na mesma dose.
-                    </small>
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="tempo-recirculacao" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                      Tempo de recirculação:
-                    </label>
-                    <div className="flex items-center gap-2">
-                      {/* Input de Horas */}
-                      <div className="flex-1">
-                        <input
-                          id="tempo-recirculacao-hours"
-                          type="number"
-                          min="0"
-                          max="23"
-                          step="1"
-                          value={tempoRecirculacaoHours}
-                          disabled={ecControllerLocked}
-                          onChange={(e) => {
-                            const value = parseInt(e.target.value, 10);
-                            if (!isNaN(value) && value >= 0 && value <= 23) {
-                              setTempoRecirculacaoHours(value);
-                            } else if (e.target.value === '') {
-                              setTempoRecirculacaoHours(0);
-                            }
-                          }}
-                          onBlur={(e) => {
-                            if (e.target.value === '' || isNaN(parseInt(e.target.value, 10))) {
-                              setTempoRecirculacaoHours(0);
-                            }
-                          }}
-                          className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none text-center font-semibold ${
-                            ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
-                          placeholder="00"
-                        />
-                        <small className="text-xs text-dark-textSecondary text-center block mt-1">Horas</small>
-                      </div>
-                      
-                      {/* Separador */}
-                      <span className="text-2xl font-bold text-dark-textSecondary pt-6">:</span>
-                      
-                      {/* Input de Minutos */}
-                      <div className="flex-1">
-                        <input
-                          id="tempo-recirculacao-minutes"
-                          type="number"
-                          min="0"
-                          max="59"
-                          step="1"
-                          value={tempoRecirculacaoMinutes}
-                          disabled={ecControllerLocked}
-                          onChange={(e) => {
-                            const value = parseInt(e.target.value, 10);
-                            if (!isNaN(value) && value >= 0 && value <= 59) {
-                              setTempoRecirculacaoMinutes(value);
-                            } else if (e.target.value === '') {
-                              setTempoRecirculacaoMinutes(0);
-                            }
-                          }}
-                          onBlur={(e) => {
-                            if (e.target.value === '' || isNaN(parseInt(e.target.value, 10))) {
-                              setTempoRecirculacaoMinutes(1);
-                            }
-                          }}
-                          className={`w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none text-center font-semibold ${
-                            ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
-                          placeholder="01"
-                        />
-                        <small className="text-xs text-dark-textSecondary text-center block mt-1">Minutos</small>
-                      </div>
-                    </div>
-                    <small className="text-xs text-dark-textSecondary mt-2 block">
-                      Formato: HH:MM (ex: 00:01 = 1 minuto, 01:30 = 1 hora e 30 minutos)
-                    </small>
-                  </div>
-                </div>
-                </div>
-                
-                {/* Controles e Status */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  {/* Status do EC Controller */}
-                  <InstrumentCard accent="ec" title="📊 Status do Controle" ariaLive="polite">
-                    <div className="space-y-2.5">
-                      <OperationStateBanners
-                        autoEnabled={autoEnabled}
-                        isDosando={isDosando}
-                        dosandoLabel="Dosando"
-                        isAguardandoRecirculacao={isAguardandoRecirculacao}
-                        operationRemainingSec={recirculacaoRestanteSec}
-                        showNextCheck={
-                          !isDosando &&
-                          !isAguardandoRecirculacao &&
-                          autoEnabled &&
-                          ecNextCheckInSec > 0
-                        }
-                        nextCheckInSec={ecNextCheckInSec}
-                        nextCheckLabel="Próxima verificação EC"
-                        formatCountdown={formatRecircCountdown}
-                      />
-                      <MetricRow
-                        label="Status:"
-                        value={autoEnabled ? '✅ Ativado' : '❌ Desativado'}
-                        variant={autoEnabled ? 'ok' : 'danger'}
-                      />
-                      <MetricRow
-                        label="Setpoint:"
-                        value={`${formatSensorValue(ecSetpoint, 0)} µS/cm`}
-                        variant="setpoint"
-                        domain="ec"
-                      />
-                      <MetricRow
-                        label="Banda morta:"
-                        value={`± ${formatSensorValue(ecTolerance, 0)} µS/cm`}
-                      />
-                      <MetricRow
-                        label="Erro (SP − EC):"
-                        value={
-                          ecAtual !== null
-                            ? `${formatSensorValue(Math.max(0, ecError), 1)} µS/cm`
-                            : '-- µS/cm'
-                        }
-                        variant={ecWithinDeadBand === false ? 'alarm' : 'default'}
-                      />
-                      <MetricRow
-                        label="Zona de controle:"
-                        value={
-                          ecWithinDeadBand === null
-                            ? '--'
-                            : ecWithinDeadBand
-                              ? '✓ Sem dosagem (EC ≥ limite)'
-                              : '⚡ Ajuste Kp (EC abaixo da banda)'
-                        }
-                        variant={
-                          ecWithinDeadBand === true ? 'ok' : ecWithinDeadBand === false ? 'alarm' : 'default'
-                        }
-                      />
-                      <MetricRow
-                        label="Última dosagem:"
-                        value={lastDosageMl != null ? `${lastDosageMl.toFixed(2)} ml` : '-- ml'}
-                        variant="preview"
-                        domain="ec"
-                      />
-                      <MetricRow
-                        label="EC Atual:"
-                        value={
-                          ecAtual !== null
-                            ? `${formatSensorValue(ecAtual, 1)} µS/cm`
-                            : '-- µS/cm'
-                        }
-                        variant="live"
-                      />
-                    </div>
-                    <NutrientDosageDetail
-                      deviceId={selectedDeviceId}
-                      sequenceId={lastDosageSequenceId}
-                      enabled={ecDeviceActive}
-                    />
-                  </InstrumentCard>
-                  
-                  <InstrumentCard accent="ec" title="🧮 Equação de Controle Proporcional" tinted>
-                    <div className="space-y-2.5 text-base">
-                      <div className="font-mono text-emerald-400 mb-2 text-lg">u(t) = (V / k × q) × e</div>
-                      <MetricRow label="V (Volume):" value={`${totalVolume} L`} />
-                      <MetricRow
-                        label="k (EC base / ml por L):"
-                        value={
-                          totalMlPerLiter > 0
-                            ? (baseDose / totalMlPerLiter).toFixed(3)
-                            : '—'
-                        }
-                      />
-                      <MetricRow label="q (Taxa de vazão):" value={`${pumpFlowRate.toFixed(3)} ml/s`} />
-                      <MetricRow
-                        label="e (SP − EC):"
-                        value={
-                          ecAtual !== null
-                            ? `${formatSensorValue(Math.max(0, ecError), 1)} µS/cm`
-                            : '--'
-                        }
-                        variant={ecWithinDeadBand === false ? 'alarm' : 'default'}
-                      />
-                    </div>
-                  </InstrumentCard>
-                </div>
-
-                {selectedDeviceId ? (
-                  <div className="mb-6">
-                    <ControllerMetricsPanel
-                      deviceId={selectedDeviceId}
-                      focus="ec"
-                      hideTabs
-                    />
-                  </div>
-                ) : null}
-                
-                {/* Botões de Controle */}
-                <div className="flex flex-wrap gap-3 mb-4">
-                  <button
-                    onClick={async () => {
-                      await saveECControllerConfig();
-                    }}
-                    disabled={ecControllerLocked}
-                    className={`px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg transition-all shadow-lg hover:shadow-green-500/50 ${
-                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                    title={ecControllerLocked ? 'Controles bloqueados' : 'Salvar parâmetros'}
-                  >
-                    💾 Salvar Parâmetros
-                  </button>
-                  <button
-                    onClick={async () => {
-                      const newValue = !autoEnabled;
-                      console.log('🔄 [EC Controller] Estado atual:', autoEnabled, '→ Novo valor:', newValue);
-                      
-                      try {
-                        if (newValue) {
-                          if (!canActivateAutoEc) {
-                            toast.error(
-                              'Configure pelo menos um nutriente com ml/L > 0 (total_ml > 0) antes de ativar o Auto EC'
-                            );
-                            return;
-                          }
-                          const saved = await saveECControllerConfig(true, true);
-                          if (!saved) {
-                            toast.error('Salve os parâmetros antes de ativar Auto EC');
-                            return;
-                          }
-                          const { error: rpcError } = await supabase.rpc('activate_auto_ec', {
-                            p_device_id: selectedDeviceId,
-                          });
-                          if (rpcError) {
-                            console.error('❌ [EC Controller] RPC activate_auto_ec:', rpcError);
-                            toast.error(`Erro ao ativar via RPC: ${rpcError.message}`);
-                            return;
-                          }
-                        }
-
-                        const { error } = await supabase
-                          .from('ec_config_view')
-                          .update({ 
-                            auto_enabled: newValue,
-                            updated_at: new Date().toISOString()
-                          })
-                          .eq('device_id', selectedDeviceId);
-                        
-                        if (error) {
-                          console.error('❌ [EC Controller] Erro ao alterar Auto EC:', error);
-                          toast.error(`Erro: ${error.message}`);
-                          return;
-                        }
-
-                        if (!newValue) {
-                          const { error: idleError } = await supabase
-                            .from('relay_master')
-                            .update({
-                              ec_operation_state: 'idle',
-                              ec_operation_remaining_sec: 0,
-                              ec_next_check_in_sec: 0,
-                            })
-                            .eq('device_id', selectedDeviceId);
-
-                          if (idleError) {
-                            console.warn(
-                              '⚠️ [EC Controller] Falha ao limpar ec_operation:',
-                              idleError.message
-                            );
-                          }
-                        }
-                        
-                        setAutoEnabled(newValue);
-                        
-                        justSavedRef.current = true;
-                        if (savingTimeoutRef.current) {
-                          clearTimeout(savingTimeoutRef.current);
-                        }
-                        savingTimeoutRef.current = setTimeout(() => {
-                          justSavedRef.current = false;
-                        }, 2000);
-                        
-                        if (newValue) {
-                          hwToast.success('Auto EC ativado', 'AUTO EC');
-                        } else {
-                          hwToast.info('Auto EC desativado', 'AUTO EC');
-                        }
-                        console.log(`✅ [EC Controller] Auto EC ${newValue ? 'ativado' : 'desativado'} no Supabase`);
-                        
-                      } catch (err) {
-                        console.error('❌ [EC Controller] Erro:', err);
-                        toast.error(`Erro: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
-                      }
-                    }}
-                    disabled={ecControllerLocked || (!autoEnabled && !canActivateAutoEc)}
-                    className={`px-4 py-2 rounded-lg transition-all shadow-lg ${
-                      autoEnabled
-                        ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'
-                        : 'bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white'
-                    } ${
-                      ecControllerLocked || (!autoEnabled && !canActivateAutoEc) ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                    title={
-                      ecControllerLocked
-                        ? 'Controles bloqueados'
-                        : !autoEnabled && !canActivateAutoEc
-                          ? 'Adicione nutrientes com ml/L > 0 antes de ativar'
-                          : autoEnabled
-                            ? 'Desativar Auto EC'
-                            : 'Ativar Auto EC'
-                    }
-                  >
-                    {autoEnabled ? '⏹️ Desativar Auto EC' : '🤖 Ativar Auto EC'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowECConfigPreview(true);
-                    }}
-                    disabled={ecControllerLocked}
-                    className={`px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-lg transition-all shadow-lg hover:shadow-purple-500/50 ${
-                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                    title={ecControllerLocked ? 'Controles bloqueados' : 'Ver preview da configuração'}
-                  >
-                    🔍 Debug Vista Previa
-                  </button>
-                  <button
-                    onClick={() => {
-                      setBaseDose(0);
-                      setEcSetpoint(0);
-                      setEcTolerance(50);
-                      setIntervaloAutoEC(300);
-                      setTempoRecirculacao('00:02');
-                      setTempoRecirculacaoHours(0);
-                      setTempoRecirculacaoMinutes(2);
-                      setAutoEnabled(false);
-                      toast.success('Valores limpos');
-                    }}
-                    disabled={ecControllerLocked}
-                    className={`px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all ${
-                      ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                    title={ecControllerLocked ? 'Controles bloqueados' : 'Limpar valores'}
-                  >
-                    <XMarkIcon className="w-4 h-4 inline mr-1" />
-                    Limpar Valores
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (confirm('🚨 ATENÇÃO: Isso irá parar TODOS os processos e resetar o sistema. Continuar?')) {
-                        try {
-                          // ✅ CRÍTICO: Actualizar auto_enabled = false en Supabase
-                        setAutoEnabled(false);
-                          
-                          // Actualizar en Supabase para que ESP32 pare inmediatamente
-                          const { error } = await supabase
-                            .from('ec_config_view')
-                            .update({ 
-                              auto_enabled: false,
-                              updated_at: new Date().toISOString()
-                            })
-                            .eq('device_id', selectedDeviceId);
-                          
-                          if (error) {
-                            console.error('❌ [EC Controller] Erro ao desativar Auto EC no Supabase:', error);
-                            toast.error(`Erro ao desativar: ${error.message}`);
-                          } else {
-                            // ✅ SOLUCIÓN DATA RACE: Marcar que acabamos de guardar para prevenir recarga
-                            justSavedRef.current = true;
-                            if (savingTimeoutRef.current) {
-                              clearTimeout(savingTimeoutRef.current);
-                            }
-                            savingTimeoutRef.current = setTimeout(() => {
-                              justSavedRef.current = false;
-                            }, 2000);
-                            console.log('✅ [EC Controller] Auto EC desativado no Supabase (Reset Emergencial)');
-                            hwToast.warning('Reset emergencial executado — Auto EC desativado', 'AUTO EC');
-                          }
-                        } catch (err) {
-                          console.error('❌ [EC Controller] Erro crítico no Reset Emergencial:', err);
-                          toast.error('Erro ao executar reset emergencial');
-                        }
-                      }
-                    }}
-                    className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg transition-all font-bold"
-                  >
-                    🚨 RESET EMERGENCIAL
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {selectedDeviceId && selectedDeviceId !== 'default_device' && (
-          <EcDilutionSection
-            deviceId={selectedDeviceId}
-            ecActual={ecAtual}
-            espnowSlaves={espnowSlaves}
-            locked={ecControllerLocked}
-            onToggleLock={() =>
-              showLockUnlockToast(
-                ecControllerLocked,
-                'Diluição EC',
-                () => setEcControllerLocked((prev) => !prev)
-              )
-            }
-          />
-        )}
-
-        {selectedDeviceId && selectedDeviceId !== 'default_device' && (
-          <PhControllerPanel
-            deviceId={selectedDeviceId}
-            currentPh={phAtual}
-            currentPhRaw={phRaw}
-            availableRelays={availableRelays}
-            relayAllocation={relayAllocation}
-          />
-        )}
-
-      {/* Modal Adicionar/Editar Nutriente */}
-      {isNutrientModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-dark-card border border-dark-border rounded-lg shadow-xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold text-dark-text mb-4">
-              {editingNutrientIndex !== null ? 'Editar Nutriente' : 'Adicionar Nutriente'}
-            </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                  Nome do Nutriente
-                </label>
-                <input
-                  type="text"
-                  id="nutrientName"
-                  defaultValue={editingNutrientIndex !== null ? nutrientsState[editingNutrientIndex]?.name : ''}
-                  disabled={modalNutrientControl.disabled}
-                  className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                  placeholder="Ex: Grow, Micro, pH-, etc."
-                  title={modalNutrientControl.title || undefined}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                  Relé (Master)
-                </label>
-                <span title={modalNutrientControl.title || undefined}>
-                  <DoserRelaySelect
-                    registry={ecRelayRegistry}
-                    context={{
-                      field: 'ec_nutrient',
-                      currentValue: modalRelayNumber,
-                      nutrientIndex: editingNutrientIndex ?? nutrientsState.length,
-                    }}
-                    value={modalRelayNumber}
-                    onChange={setModalRelayNumber}
-                    disabled={modalNutrientControl.disabled}
-                    className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none disabled:opacity-50"
-                  />
-                </span>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                  ml por Litro
-                </label>
-                <input
-                  type="number"
-                  id="nutrientMlPerLiter"
-                  min="0"
-                  step="0.1"
-                  defaultValue={editingNutrientIndex !== null ? nutrientsState[editingNutrientIndex]?.mlPerLiter : 0}
-                  className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none"
-                  placeholder="0.0"
-                />
-              </div>
-            </div>
-            
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => {
-                  setIsNutrientModalOpen(false);
-                  setEditingNutrientIndex(null);
-                }}
-                className="px-4 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border text-dark-text rounded-lg transition-all"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={async () => {
-                  if (modalNutrientControl.disabled) {
-                    toast.error(modalNutrientControl.title || 'Não é possível alterar nutriente agora');
-                    return;
-                  }
-
-                  const nameInput = document.getElementById('nutrientName') as HTMLInputElement;
-                  const mlInput = document.getElementById('nutrientMlPerLiter') as HTMLInputElement;
-                  
-                  if (!nameInput?.value.trim()) {
-                    toast.error('Nome do nutriente é obrigatório');
-                    return;
-                  }
-                  
-                  const newNutrient = {
-                    name: nameInput.value.trim(),
-                    relayNumber: modalRelayNumber,
-                    mlPerLiter: parseFloat(mlInput.value) || 0,
-                  };
-
-                  const saveLock = getEcRelayNamingLock(newNutrient.relayNumber);
-                  if (saveLock.locked) {
-                    toast.error(saveLock.tooltip);
-                    return;
-                  }
-                  
-                  if (editingNutrientIndex !== null) {
-                    // Editar nutriente existente
-                    const updated = [...nutrientsState];
-                    updated[editingNutrientIndex] = newNutrient;
-                    setNutrientsState(updated);
-                  } else {
-                    // Adicionar novo nutriente
-                    setNutrientsState([...nutrientsState, newNutrient]);
-                  }
-                  
-                  // Salvar nome do nutriente no relé escolhido
-                  if (selectedDeviceId && selectedDeviceId !== 'default_device') {
-                    await saveMasterLocalRelayName(selectedDeviceId, newNutrient.relayNumber, newNutrient.name);
-                    await loadLocalRelayNames();
-                  }
-                  
-                  setIsNutrientModalOpen(false);
-                  setEditingNutrientIndex(null);
-                  
-                  // Toast de confirmação antes de salvar
-                  if (editingNutrientIndex !== null) {
-                    toast.success(`Nutriente "${newNutrient.name}" editado! Salvando no Supabase...`);
-                  } else {
-                    toast.success(`Nutriente "${newNutrient.name}" adicionado! Salvando no Supabase...`);
-                  }
-                  
-                  // Salvar automaticamente no Supabase (modo silencioso para evitar toast duplicado)
-                  const saved = await saveECControllerConfig(true);
-                  
-                  if (saved) {
-                    if (editingNutrientIndex !== null) {
-                      toast.success(`✅ Nutriente "${newNutrient.name}" salvo no Supabase!`);
-                    } else {
-                      toast.success(`✅ Nutriente "${newNutrient.name}" salvo no Supabase!`);
-                    }
-                  }
-                }}
-                disabled={modalNutrientControl.disabled}
-                className="px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={modalNutrientControl.title || undefined}
-              >
-                {editingNutrientIndex !== null ? 'Salvar' : 'Adicionar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
         <div className="mt-8 bg-dark-surface border border-dark-border rounded-lg p-6">
           <h3 className="text-lg font-semibold text-dark-text mb-2 flex items-center">
@@ -4302,6 +2418,22 @@ export default function AutomacaoPageClient() {
             As regras automáticas executadas aparecerão aqui. Nenhuma execução registrada ainda.
           </p>
         </div>
+          </>
+        )}
+
+        {activeTab === 'ec' && (
+          <AutoEcControllerPanel deviceId={selectedDeviceId} espnowSlaves={espnowSlaves} />
+        )}
+
+        {activeTab === 'ph' && selectedDeviceId && selectedDeviceId !== 'default_device' && (
+          <PhControllerPanel
+            deviceId={selectedDeviceId}
+            currentPh={phAtual}
+            currentPhRaw={phRaw}
+            availableRelays={availableRelays}
+            relayAllocation={relayAllocation}
+          />
+        )}
       </div>
 
       <CreateRuleModal
@@ -4394,79 +2526,6 @@ export default function AutomacaoPageClient() {
         </div>
       )}
 
-      {/* Modal de Vista Previa JSON - EC Config */}
-      {showECConfigPreview && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-card border border-dark-border rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-dark-border">
-              <h2 className="text-xl font-bold text-dark-text">
-                🔍 Debug Vista Previa - EC Controller Config
-              </h2>
-              <button
-                onClick={() => setShowECConfigPreview(false)}
-                className="p-2 hover:bg-dark-surface rounded-lg transition-colors text-dark-textSecondary hover:text-dark-text"
-              >
-                <XMarkIcon className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Content - JSON formateado */}
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-                <pre className="text-xs text-dark-textSecondary font-mono whitespace-pre-wrap break-words overflow-x-auto">
-                  {JSON.stringify(getECConfigJson(), null, 2)}
-                </pre>
-              </div>
-              
-              {/* Informação adicional */}
-              <div className="mt-4 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
-                <p className="text-xs text-purple-300 mb-2">
-                  💡 Este é o JSON completo que será enviado/salvo no Supabase (tabela ec_config_view)
-                </p>
-                <p className="text-xs text-dark-textSecondary mb-2">
-                  Este formato é o mesmo que aparece no console.log quando a configuração é salva.
-                </p>
-                <div className="mt-3 space-y-1 text-xs text-dark-textSecondary">
-                  <p><strong className="text-purple-300">device_id:</strong> ID do dispositivo Master</p>
-                  <p><strong className="text-purple-300">base_dose:</strong> EC base em µS/cm</p>
-                  <p><strong className="text-purple-300">flow_rate:</strong> Taxa de vazão da bomba (ml/s)</p>
-                  <p><strong className="text-purple-300">volume:</strong> Volume total do reservatório (L)</p>
-                  <p><strong className="text-purple-300">total_ml:</strong> Soma de ml/L de todos os nutrientes</p>
-                  <p><strong className="text-purple-300">ec_setpoint:</strong> Setpoint desejado de EC (µS/cm)</p>
-                  <p><strong className="text-purple-300">tolerance:</strong> Banda morta em µS/cm — needsAdjustment se (SP − EC) &gt; tolerance</p>
-                  <p><strong className="text-purple-300">auto_enabled:</strong> Controle automático ativado?</p>
-                  <p><strong className="text-purple-300">nutrients:</strong> Array de nutrientes com relés e ml/L</p>
-                  <p><strong className="text-purple-300">intervalo_auto_ec:</strong> Intervalo entre verificações de EC (segundos)</p>
-                  <p><strong className="text-purple-300">tempo_recirculacao:</strong> Tempo de recirculação em segundos (integer)</p>
-                  <p className="mt-2 text-purple-300"><strong>_debug:</strong> Informação calculada adicional (preview)</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between p-6 border-t border-dark-border">
-              <button
-                onClick={() => {
-                  const jsonStr = JSON.stringify(getECConfigJson(), null, 2);
-                  navigator.clipboard.writeText(jsonStr);
-                  toast.success('JSON copiado para a área de transferência!');
-                }}
-                className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-              >
-                <ClipboardIcon className="w-4 h-4" />
-                Copiar JSON
-              </button>
-              <button
-                onClick={() => setShowECConfigPreview(false)}
-                className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

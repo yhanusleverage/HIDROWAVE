@@ -8,6 +8,7 @@ import OperationStateBadges from '@/components/OperationStateBadges';
 import { AutoControlStatusMetrics } from '@/components/AutoControlStatusMetrics';
 import { useLastDosage } from '@/hooks/useLastDosage';
 import { useEcOperationState } from '@/hooks/useEcOperationState';
+import { useEcDilutionState } from '@/hooks/useEcDilutionState';
 import { useEcConfig } from '@/hooks/useEcConfig';
 import { useHydroEcReading } from '@/hooks/useHydroEcReading';
 import { ecErrorAbs } from '@/lib/ec-control-display';
@@ -21,7 +22,7 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
   const active = Boolean(deviceId?.trim());
   const ecConfig = useEcConfig(deviceId, active);
   const configReady = active && !ecConfig.isLoading;
-  const { ec: ecAtual } = useHydroEcReading(deviceId, active);
+  const { ec: ecAtual } = useHydroEcReading(deviceId, active, { liveOnly: true });
   const ecError =
     ecAtual != null && ecConfig.ec_setpoint > 0
       ? ecErrorAbs(ecConfig.ec_setpoint, ecAtual)
@@ -42,6 +43,11 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
     intervalCeilingSec: ecConfig.intervalo_auto_ec,
     autoEnabled: ecConfig.auto_enabled,
     mirrorFirmware: ecConfig.auto_enabled,
+  });
+
+  /** Litros A→B del YFB5 durante dilución (mismo dato que Automação). */
+  const dilutionState = useEcDilutionState(deviceId, active, {
+    mirrorFirmware: true,
   });
 
   if (!active) {
@@ -89,6 +95,31 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
           accent="emerald"
           operationInterrupted={operationInterrupted}
         />
+
+        {dilutionState.isDraining && dilutionState.targetL > 0 && (
+          <div className="mt-4 mb-2 space-y-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2.5">
+            <div className="flex justify-between text-xs text-cyan-300">
+              <span>Diluição · drenando</span>
+              <span className="font-medium tabular-nums">
+                {dilutionState.progressL.toFixed(1)} / {dilutionState.targetL.toFixed(1)} L
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-dark-surface overflow-hidden">
+              <div
+                className="h-full bg-cyan-500 transition-all duration-500"
+                style={{ width: `${Math.round(dilutionState.progressRatio * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {dilutionState.isFilling && (
+          <div className="mt-4 mb-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2.5">
+            <p className="text-xs text-cyan-300">
+              Diluição · repondo — aguardando nível alto
+            </p>
+          </div>
+        )}
 
         <AutoControlStatusMetrics
           accent="ec"

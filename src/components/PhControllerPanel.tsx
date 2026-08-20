@@ -53,6 +53,7 @@ import {
   resolveRelayNamingLock,
   type PendingCommandSlice,
 } from '@/lib/relay-naming-lock';
+import { saveMasterLocalRelayName } from '@/lib/nutrition-plan';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { MetricRow } from '@/components/ui/MetricRow';
@@ -64,6 +65,8 @@ export interface RelayAllocationBridge {
     overrides?: Parameters<typeof buildRegistryFromConfigs>[0]
   ) => RelayAllocationRegistry;
   pendingCommands?: PendingCommandSlice[];
+  refresh?: () => Promise<void> | void;
+  phConfig?: { relay_ph_up?: number | null; relay_ph_down?: number | null } | null;
 }
 
 interface PhControllerPanelProps {
@@ -164,6 +167,9 @@ export default function PhControllerPanel({
   const [phConfigRaw, setPhConfigRaw] = useState<Record<string, unknown>>({});
 
   const [aggressiveness, setAggressiveness] = useState(0.5);
+  const [consumo24h, setConsumo24h] = useState(false);
+  const [pulseMl, setPulseMl] = useState(2.0);
+  const [pulseGapSec, setPulseGapSec] = useState(2.0);
   const [maxDoseMlPerCycle, setMaxDoseMlPerCycle] = useState(50);
   const [kAcid, setKAcid] = useState<number | null>(null);
   const [kBase, setKBase] = useState<number | null>(null);
@@ -282,6 +288,15 @@ export default function PhControllerPanel({
       setTempoRecirculacao(Number(data.tempo_recirculacao) || 60);
       setAutoEnabled(Boolean(data.auto_enabled));
       setAggressiveness(Number(data.aggressiveness) || 0.5);
+      setConsumo24h(Boolean(data.consumo_24h));
+      {
+        const p = Number(data.pulse_ml);
+        setPulseMl(Number.isFinite(p) && p > 0 ? Math.min(50, Math.max(0.05, p)) : 2.0);
+      }
+      {
+        const g = Number(data.pulse_gap_sec);
+        setPulseGapSec(Number.isFinite(g) && g >= 0 ? Math.min(120, Math.max(0, g)) : 2.0);
+      }
       const maxDose = Number(data.max_dose_ml_per_cycle);
       setMaxDoseMlPerCycle(Number.isFinite(maxDose) && maxDose > 0 ? maxDose : 50);
       setKAcid(data.k_acid != null ? Number(data.k_acid) : null);
@@ -405,6 +420,9 @@ export default function PhControllerPanel({
           tempo_recirculacao: tempoRecirculacao,
           auto_enabled: autoEnabled,
           aggressiveness,
+          consumo_24h: consumo24h,
+          pulse_ml: pulseMl,
+          pulse_gap_sec: pulseGapSec,
         }),
       });
       if (!res.ok) {
@@ -413,6 +431,11 @@ export default function PhControllerPanel({
       }
       justSavedRef.current = true;
       setTimeout(() => { justSavedRef.current = false; }, 2000);
+      if (deviceId && deviceId !== 'default_device') {
+        await saveMasterLocalRelayName(deviceId, relayPhUp, 'pH+');
+        await saveMasterLocalRelayName(deviceId, relayPhDown, 'pH-');
+        await relayAllocation?.refresh?.();
+      }
       if (!silent) hwToast.success('Parâmetros pH salvos', 'AUTO PH');
       return true;
     } catch (err) {
@@ -422,7 +445,8 @@ export default function PhControllerPanel({
   }, [
     deviceId, phSetpoint, phTolerance, flowRatePhUp, flowRatePhDown, volume,
     mlPerPhUnitAcid, mlPerPhUnitBase, relayPhUp, relayPhDown, intervaloAutoPh,
-    tempoRecirculacao, autoEnabled, aggressiveness, ecNutrientsForRelayCheck,
+    tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, ecNutrientsForRelayCheck,
+    relayAllocation,
   ]);
 
   const saveVolumeOnly = useCallback(async () => {
@@ -678,6 +702,51 @@ export default function PhControllerPanel({
     return buildRegistryFromConfigs({ phConfig: phSlice, relayNames: names });
   }, [relayAllocation, relayPhUp, relayPhDown, availableRelays]);
 
+  const isStandardPhRelayName = useCallback((name: string | undefined | null) => {
+    const n = (name || '').trim();
+    return (
+      n === 'pH+' ||
+      n === 'pH-' ||
+      n === 'pH+ (base)' ||
+      n === 'pH- (ácido)' ||
+      n === 'pH− (ácido)' ||
+      n === 'pH−'
+    );
+  }, []);
+
+  const autoNamePhRelay = useCallback(
+    async (nextRelay: number, prevRelay: number, label: 'pH+' | 'pH-') => {
+      if (!deviceId || deviceId === 'default_device') return;
+      await saveMasterLocalRelayName(deviceId, nextRelay, label);
+      if (prevRelay !== nextRelay) {
+        const prevName = relayRegistry.names.get(prevRelay);
+        if (isStandardPhRelayName(prevName)) {
+          await saveMasterLocalRelayName(deviceId, prevRelay, '');
+        }
+      }
+      await relayAllocation?.refresh?.();
+    },
+    [deviceId, relayRegistry.names, isStandardPhRelayName, relayAllocation]
+  );
+
+  const handleRelayPhUpChange = useCallback(
+    (next: number) => {
+      const prev = relayPhUp;
+      setRelayPhUp(next);
+      void autoNamePhRelay(next, prev, 'pH+');
+    },
+    [relayPhUp, autoNamePhRelay]
+  );
+
+  const handleRelayPhDownChange = useCallback(
+    (next: number) => {
+      const prev = relayPhDown;
+      setRelayPhDown(next);
+      void autoNamePhRelay(next, prev, 'pH-');
+    },
+    [relayPhDown, autoNamePhRelay]
+  );
+
   const phConfigJson = useMemo(
     () => ({
       device_id: deviceId,
@@ -694,6 +763,9 @@ export default function PhControllerPanel({
       tempo_recirculacao: tempoRecirculacao,
       auto_enabled: autoEnabled,
       aggressiveness,
+      consumo_24h: consumo24h,
+      pulse_ml: pulseMl,
+      pulse_gap_sec: pulseGapSec,
       k_acid: kAcid,
       k_base: kBase,
       _debug: {
@@ -753,6 +825,9 @@ export default function PhControllerPanel({
       tempoRecirculacao,
       autoEnabled,
       aggressiveness,
+      consumo24h,
+      pulseMl,
+      pulseGapSec,
       kAcid,
       kBase,
       displayPh,
@@ -902,6 +977,60 @@ export default function PhControllerPanel({
               />
               <span className="text-xs text-dark-textSecondary">0.2 conservador — 1.0 agressivo</span>
             </div>
+            <label className="flex items-start gap-3 sm:col-span-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1 accent-violet-500 disabled:opacity-50"
+                checked={consumo24h}
+                disabled={disabled}
+                onChange={(e) => setConsumo24h(e.target.checked)}
+              />
+              <span>
+                <span className="block text-sm text-dark-text">Consumo pH 24 h</span>
+                <span className="block text-xs text-dark-textSecondary">
+                  Camada sobre o Auto pH. Não muda o intervalo. Default OFF.
+                  O Core lê isto no mesmo GET de ph_config_view que auto_enabled.
+                </span>
+              </span>
+            </label>
+            <div>
+              <label className="block text-sm text-dark-textSecondary mb-1">ml por pulso</label>
+              <input
+                type="number"
+                min="0.05"
+                max="50"
+                step="0.1"
+                value={pulseMl}
+                disabled={disabled}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  setPulseMl(Number.isFinite(v) && v > 0 ? Math.min(50, Math.max(0.05, v)) : 2);
+                }}
+                className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text disabled:opacity-50"
+              />
+              <span className="text-xs text-dark-textSecondary">
+                Último pulso = resto. ON ≈ ml ÷ caudal da bomba activa.
+              </span>
+            </div>
+            <div>
+              <label className="block text-sm text-dark-textSecondary mb-1">Gap pulsos (s)</label>
+              <input
+                type="number"
+                min="0"
+                max="120"
+                step="0.5"
+                value={pulseGapSec}
+                disabled={disabled}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  setPulseGapSec(Number.isFinite(v) && v >= 0 ? Math.min(120, Math.max(0, v)) : 2);
+                }}
+                className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text disabled:opacity-50"
+              />
+              <span className="text-xs text-dark-textSecondary">
+                Descanso entre pulsos. Recirc = tempo_recirculacao após a dose.
+              </span>
+            </div>
           </div>
 
           <SectionHeader title="Actuação" accent="ph" />
@@ -914,7 +1043,7 @@ export default function PhControllerPanel({
                   context={{ field: 'ph_up', currentValue: relayPhUp }}
                   value={relayPhUp}
                   disabled={phUpRelayControl.disabled}
-                  onChange={setRelayPhUp}
+                  onChange={handleRelayPhUpChange}
                 />
               </span>
             </div>
@@ -926,7 +1055,7 @@ export default function PhControllerPanel({
                   context={{ field: 'ph_down', currentValue: relayPhDown }}
                   value={relayPhDown}
                   disabled={phDownRelayControl.disabled}
-                  onChange={setRelayPhDown}
+                  onChange={handleRelayPhDownChange}
                 />
               </span>
             </div>
@@ -1282,6 +1411,8 @@ export default function PhControllerPanel({
                   <p><strong className="text-violet-300">s (ml/unid pH):</strong> Sensibilidade da calibragem; u = A × |e| × s</p>
                   <p><strong className="text-violet-300">intervalo_auto_ph:</strong> Intervalo entre verificações (s)</p>
                   <p><strong className="text-violet-300">aggressiveness:</strong> A na equação u(t) = A × |e_H| / k</p>
+                  <p><strong className="text-violet-300">pulse_ml:</strong> ml por pulso (HMI pulseMl)</p>
+                  <p><strong className="text-violet-300">pulse_gap_sec:</strong> Gap pulsos (s) (HMI pulseGapSec)</p>
                   <p className="mt-2 text-violet-300"><strong>_debug:</strong> PV, erro, u(t) previsto, ph_operation_* em tempo real</p>
                 </div>
               </div>

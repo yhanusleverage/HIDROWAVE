@@ -43,6 +43,8 @@ export async function GET(request: Request) {
         ec_setpoint: 0,
         tolerance: 50,
         auto_enabled: false,
+        aggressiveness: 0.5,
+        consumo_24h: false,
       });
     }
 

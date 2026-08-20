@@ -8,6 +8,9 @@
 
 **Docs UI (operador):** `/processos` — stack P1–P4 en `src/lib/translations/processos/`
 
+**Naming comercial (congelado):** [MODULE_NAMING_PRODUCT_LINE.md](../MODULE_NAMING_PRODUCT_LINE.md) — **Core · Atlas · Pulse**  
+**Checklist UI/docs (fase 2):** [CORE_ATLAS_PULSE_UI_MAPPING.md](../CORE_ATLAS_PULSE_UI_MAPPING.md)
+
 ---
 
 ## Mapa serial
@@ -15,6 +18,7 @@
 | Paso | Documento | Capa | Duración est. |
 |------|-----------|------|---------------|
 | S01 | [S01_GROW_CYCLE_RULES_17JUN2026.md](S01_GROW_CYCLE_RULES_17JUN2026.md) | Schedules + Rules P1 + convivencia Auto EC/pH | 30–45 min lectura |
+| S02 | [S02_DECISION_ENGINE_F0_F1_HANDOFF.md](S02_DECISION_ENGINE_F0_F1_HANDOFF.md) | Timeline + Rule Builder + ScriptRunner estado | 15 min lectura |
 
 ```mermaid
 flowchart LR
@@ -34,6 +38,7 @@ flowchart LR
 | Doc | Uso |
 |-----|-----|
 | [ec/00_INDICE_SERIAL.md](../ec/00_INDICE_SERIAL.md) | Sendero EC S01–S02 (eventos + métricas) |
+| [ec/AUTO_EC_UI_SESSION_HANDOFF.md](../ec/AUTO_EC_UI_SESSION_HANDOFF.md) | **UI** abas Ciclo / Regras / Auto EC / Auto pH em `/automacao` |
 | [HANDOFF_ULTIMA_DOSAGEM_E2E.md](../../HANDOFF_ULTIMA_DOSAGEM_E2E.md) | Pipeline Auto EC post-fill |
 
 ---
@@ -52,9 +57,12 @@ flowchart LR
 
 | Doc | Uso |
 |-----|-----|
-| [HANDOFF_CHECKPOINT_JUN2026.md](../../HANDOFF_CHECKPOINT_JUN2026.md) | Macro Decision Engine ~35% |
-| [ARQUITETURA_DECISION_RULES_COMPLETA.md](../../../ARQUITETURA_DECISION_RULES_COMPLETA.md) | Schema `decision_rules` + `rule_json` |
-| [FLUXO_PANORAMICO_DECISION_RULES.md](../../../FLUXO_PANORAMICO_DECISION_RULES.md) | Flujo UI → Supabase → ESP32 |
+| [S02_DECISION_ENGINE_F0_F1_HANDOFF.md](S02_DECISION_ENGINE_F0_F1_HANDOFF.md) | **Estado actual** F0/F1 UI + firmware ScriptRunner |
+| [DECISION_ENGINE_PROCEDURE_STANDARD.md](DECISION_ENGINE_PROCEDURE_STANDARD.md) | Schema `RuleProcedure` + estándares |
+| [GROW_CYCLE_TIMELINE_IMPLEMENTATION.md](GROW_CYCLE_TIMELINE_IMPLEMENTATION.md) | Timeline S0–Sn |
+| [GROW_CYCLE_SCHEDULE_DESIGN_P0_P1.md](GROW_CYCLE_SCHEDULE_DESIGN_P0_P1.md) | **Schedules P4** — baseline P0 + redesign P1 |
+| [RULE_BUILDER_UX_SPEC.md](RULE_BUILDER_UX_SPEC.md) | UX `/automacao/procedimento` |
+| [HANDOFF_CHECKPOINT_JUN2026.md](../../HANDOFF_CHECKPOINT_JUN2026.md) | Macro Decision Engine |
 
 ---
 

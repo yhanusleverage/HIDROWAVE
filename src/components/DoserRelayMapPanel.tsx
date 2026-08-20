@@ -72,7 +72,7 @@ export function DoserRelayMapPanel({
         className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-dark-card/50 transition-colors"
       >
         <span className="text-sm font-semibold text-dark-text">
-          Mapa de relés dosificadores (0–7)
+          Mapa de relés dosificadores do Core (0–7)
         </span>
         {expanded ? (
           <ChevronUpIcon className="w-4 h-4 text-dark-textSecondary shrink-0" />

@@ -12,12 +12,17 @@ import {
 
 export type LevelTankSchematicProps = {
   probes: (boolean | null)[];
+  levelsSimulated?: boolean;
   className?: string;
 };
 
-export function LevelTankSchematic({ probes, className = '' }: LevelTankSchematicProps) {
+export function LevelTankSchematic({
+  probes,
+  levelsSimulated = false,
+  className = '',
+}: LevelTankSchematicProps) {
   const wetCount = countWetProbes(probes);
-  const fillPct = deriveFillHeightPct(wetCount);
+  const fillPct = levelsSimulated ? 0 : deriveFillHeightPct(wetCount);
 
   return (
     <div className={`flex flex-col ${className}`}>
@@ -25,7 +30,7 @@ export function LevelTankSchematic({ probes, className = '' }: LevelTankSchemati
         Esquema do reservatório
       </p>
       <div className="flex gap-4 flex-1 min-h-[220px]">
-        {/* Silueta del tanque — L4 topo arriba, L1 base abajo */}
+        {/* Silueta del tanque — L4 topo arriba, L1 base abajo (V2) */}
         <div className="relative w-16 shrink-0 flex flex-col min-h-[220px]">
           <p className="mb-1 text-center text-[9px] uppercase tracking-wide text-dark-textSecondary/70">
             topo
@@ -59,7 +64,7 @@ export function LevelTankSchematic({ probes, className = '' }: LevelTankSchemati
         {/* Lista L4 (topo) → L1 (base) */}
         <div className="flex flex-col justify-between flex-1 py-1">
           {PROBE_META_DISPLAY.map((meta) => {
-            const cell = getProbeCell(getProbeValue(probes, meta.index));
+            const cell = getProbeCell(getProbeValue(probes, meta.index), levelsSimulated);
             return (
               <div
                 key={meta.index}
@@ -96,7 +101,7 @@ export function LevelTankSchematic({ probes, className = '' }: LevelTankSchemati
         </div>
       </div>
       <p className="mt-2 text-[10px] text-dark-textSecondary tabular-nums">
-        Níveis alcançados: {wetCount}/{PROBE_META_DISPLAY.length}
+        Níveis alcançados: {levelsSimulated ? '--' : `${wetCount}/${PROBE_META_DISPLAY.length}`}
       </p>
     </div>
   );

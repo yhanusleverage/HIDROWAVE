@@ -4,11 +4,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { hwToast } from '@/lib/control-toast';
 import {
-  calculateFlowRateMlPerSecond,
-  formatFlowRate,
-  CALIBRATION_TEST_DURATIONS_SEC,
-} from '@/lib/pump-calibration';
-import {
   mlPerPhUnitFromDose,
   withVolume,
   formatMlPerPhUnit,
@@ -37,7 +32,6 @@ function PumpCalibrationCard({
   relayName,
   volumeLiters,
   flowRate,
-  onFlowRateChange,
   mlPerPhUnitStored,
   onSave,
   saving,
@@ -48,7 +42,6 @@ function PumpCalibrationCard({
   relayName: string;
   volumeLiters: number;
   flowRate: number;
-  onFlowRateChange: (v: number) => void;
   mlPerPhUnitStored: number | null;
   onSave: (mlPerPhUnit: number, flow: number) => Promise<void>;
   saving: boolean;
@@ -56,8 +49,6 @@ function PumpCalibrationCard({
   const [phBefore, setPhBefore] = useState(6.0);
   const [phAfter, setPhAfter] = useState(side === 'base' ? 6.2 : 5.8);
   const [mlDosed, setMlDosed] = useState(1.0);
-  const [measuredVolumeMl, setMeasuredVolumeMl] = useState(10);
-  const [measuredDurationSec, setMeasuredDurationSec] = useState(60);
 
   const chemical = useMemo(() => {
     const raw = mlPerPhUnitFromDose(mlDosed, phBefore, phAfter);
@@ -65,27 +56,12 @@ function PumpCalibrationCard({
     return withVolume(raw, volumeLiters);
   }, [mlDosed, phBefore, phAfter, volumeLiters]);
 
-  const calculatedFlow = calculateFlowRateMlPerSecond(measuredVolumeMl, measuredDurationSec);
-
-  const applyFlow = () => {
-    if (calculatedFlow == null) {
-      toast.error('Volume e tempo inválidos');
-      return;
-    }
-    onFlowRateChange(Math.round(calculatedFlow * 1000) / 1000);
-    toast.success(`Vazão: ${formatFlowRate(calculatedFlow)}`);
-  };
-
   const handleSave = async () => {
     if (!chemical) {
       toast.error('Informe pH antes/depois e ml com ΔpH ≥ 0.05');
       return;
     }
-    if (flowRate <= 0) {
-      toast.error('Calibre a vazão (ml/s) antes de salvar');
-      return;
-    }
-    await onSave(chemical.mlPerPhUnit, flowRate);
+    await onSave(chemical.mlPerPhUnit, flowRate > 0 ? flowRate : 1);
   };
 
   return (
@@ -101,13 +77,6 @@ function PumpCalibrationCard({
           </p>
         )}
       </div>
-
-      <ol className="text-xs text-dark-textSecondary list-decimal list-inside space-y-1">
-        <li>Prime da mangueira e recircule o tanque</li>
-        <li>Meça pH antes, dose ml de teste, recircule e meça pH depois</li>
-        <li>Calibre vazão (ml/s) com proveta cronometrada</li>
-        <li>Salve — valores usados no Auto pH</li>
-      </ol>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
@@ -167,81 +136,22 @@ function PumpCalibrationCard({
         )}
       </div>
 
-      <div className="border-t border-dark-border pt-4">
-        <p className="text-sm font-medium text-dark-text mb-2">Vazão desta bomba (ml/s)</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-          <div>
-            <label className="block text-xs text-dark-textSecondary mb-1">Volume medido (ml)</label>
-            <input
-              type="number"
-              min={0.1}
-              step={0.1}
-              value={measuredVolumeMl}
-              onChange={(e) => setMeasuredVolumeMl(parseFloat(e.target.value) || 0)}
-              className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-sm text-dark-text"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-dark-textSecondary mb-1">Tempo (s)</label>
-            <input
-              type="number"
-              min={1}
-              value={measuredDurationSec}
-              onChange={(e) => setMeasuredDurationSec(parseInt(e.target.value, 10) || 60)}
-              className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-sm text-dark-text"
-            />
-            <div className="flex flex-wrap gap-1 mt-1">
-              {CALIBRATION_TEST_DURATIONS_SEC.map((sec) => (
-                <button
-                  key={sec}
-                  type="button"
-                  onClick={() => setMeasuredDurationSec(sec)}
-                  className="text-xs px-2 py-0.5 rounded border border-dark-border text-dark-textSecondary hover:border-violet-500/50"
-                >
-                  {sec}s
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 mb-3">
-          <span className="text-violet-400 font-mono text-sm">
-            {calculatedFlow != null ? formatFlowRate(calculatedFlow) : '—'}
-          </span>
-          <button
-            type="button"
-            onClick={applyFlow}
-            className="text-xs px-3 py-1.5 border border-violet-500/40 text-violet-400 rounded-lg hover:bg-violet-500/10"
-          >
-            Usar vazão calculada
-          </button>
-        </div>
-        <div>
-          <label className="block text-xs text-dark-textSecondary mb-1">Vazão final (ml/s)</label>
-          <input
-            type="number"
-            min={0.001}
-            step={0.0001}
-            value={flowRate}
-            onChange={(e) => onFlowRateChange(parseFloat(e.target.value) || 0)}
-            className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-sm font-mono text-dark-text"
-          />
-        </div>
-      </div>
-
       <button
         type="button"
         onClick={handleSave}
         disabled={saving || !chemical}
         className="w-full py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
       >
-        {saving ? 'Salvando…' : `Salvar calibragem ${side === 'base' ? 'pH+' : 'pH−'}`}
+        {saving ? 'Salvando…' : `Salvar ganho ${side === 'base' ? 'pH+' : 'pH−'}`}
       </button>
     </InstrumentCard>
   );
 }
 
-export function PhCalibrationSection({ deviceId, relayOptions }: PhCalibrationSectionProps) {
+export function PhCalibrationSection({
+  deviceId,
+  relayOptions,
+}: PhCalibrationSectionProps) {
   const [loading, setLoading] = useState(true);
   const [savingSide, setSavingSide] = useState<PumpSide | null>(null);
   const [savingVolume, setSavingVolume] = useState(false);
@@ -500,11 +410,10 @@ export function PhCalibrationSection({ deviceId, relayOptions }: PhCalibrationSe
 
       <section className="bg-gradient-to-br from-violet-500/10 to-violet-600/5 border border-violet-500/30 rounded-xl p-5 text-sm text-dark-textSecondary space-y-4">
         <p>
-          Calibre <strong className="text-dark-text">cada bomba separadamente</strong> em escala pH:
-          informe pH antes/depois e ml dosados. O sistema calcula{' '}
-          <strong className="text-dark-text">ml/unid pH</strong> (ganho químico local da solução) e{' '}
-          <strong className="text-dark-text">ml/L/unid pH</strong> usando o volume do tanque onde
-          fez o teste. Ajuste o volume abaixo se calibrar num reservatório diferente do Auto EC.
+          Ganho químico do Auto pH: informe pH antes/depois e ml dosados. O sistema calcula{' '}
+          <strong className="text-dark-text">ml/unid pH</strong> e{' '}
+          <strong className="text-dark-text">ml/L/unid pH</strong> com o volume do tanque. A vazão
+          das bombas (ml/s) fica na aba Vazão / bombas.
         </p>
         <div className="max-w-xs">
           <label
@@ -553,24 +462,22 @@ export function PhCalibrationSection({ deviceId, relayOptions }: PhCalibrationSe
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <PumpCalibrationCard
           side="base"
-          title="Bomba pH+ (base)"
+          title="Ganho pH+ (base)"
           relayNumber={relayPhUp}
           relayName={relayUpName}
           volumeLiters={volumeLiters}
           flowRate={flowRatePhUp}
-          onFlowRateChange={setFlowRatePhUp}
           mlPerPhUnitStored={mlPerPhUnitBase}
           onSave={(ml, flow) => savePump('base', ml, flow)}
           saving={savingSide === 'base'}
         />
         <PumpCalibrationCard
           side="acid"
-          title="Bomba pH− (ácido)"
+          title="Ganho pH− (ácido)"
           relayNumber={relayPhDown}
           relayName={relayDownName}
           volumeLiters={volumeLiters}
           flowRate={flowRatePhDown}
-          onFlowRateChange={setFlowRatePhDown}
           mlPerPhUnitStored={mlPerPhUnitAcid}
           onSave={(ml, flow) => savePump('acid', ml, flow)}
           saving={savingSide === 'acid'}

@@ -21,6 +21,7 @@ import { hwToast } from '@/lib/control-toast';
 import {
   calcDrainVolumeL,
   clampDilutionVolume,
+  DILUTION_MAX_VOLUME_L_DEFAULT,
   needsDilution,
 } from '@/lib/ec-dilution';
 import { parseConfigApiError } from '@/lib/controller-config-api';
@@ -98,8 +99,8 @@ export function EcDilutionSection({
   const suggestedVolume = useMemo(() => {
     if (ecActual == null || config.ec_setpoint <= 0) return 0;
     const raw = calcDrainVolumeL(config.ec_setpoint, ecActual, config.volume);
-    return clampDilutionVolume(raw, config.dilution_max_volume_l);
-  }, [ecActual, config.ec_setpoint, config.volume, config.dilution_max_volume_l]);
+    return clampDilutionVolume(raw, DILUTION_MAX_VOLUME_L_DEFAULT);
+  }, [ecActual, config.ec_setpoint, config.volume]);
 
   useEffect(() => {
     if (suggestedVolume > 0 && !manualVolume) {
@@ -127,9 +128,6 @@ export function EcDilutionSection({
       dilution_fill_relay: config.dilution_fill_relay,
       dilution_drain_slave_mac: config.dilution_drain_slave_mac,
       dilution_fill_slave_mac: config.dilution_fill_slave_mac,
-      dilution_max_volume_l: config.dilution_max_volume_l,
-      flowmeter_pulses_per_liter: config.flowmeter_pulses_per_liter,
-      dilution_fill_flow_lps: config.dilution_fill_flow_lps,
       dilution_auto_enabled: config.dilution_auto_enabled,
     });
 
@@ -137,7 +135,7 @@ export function EcDilutionSection({
       toast.error(result.error || 'Erro ao salvar diluição');
       return;
     }
-    hwToast.success('Configuração de diluição salva (relés slave)', 'DILUIÇÃO EC');
+    hwToast.success('Configuração de diluição salva (Atlas)', 'DILUIÇÃO EC');
   }, [config, espnowSlaves]);
 
   const handleToggleAuto = useCallback(async () => {
@@ -157,10 +155,6 @@ export function EcDilutionSection({
     const vol = parseFloat(manualVolume.replace(',', '.'));
     if (!Number.isFinite(vol) || vol < 0.1) {
       toast.error('Volume inválido (mín. 0,1 L)');
-      return;
-    }
-    if (vol > config.dilution_max_volume_l) {
-      toast.error(`Volume excede o máximo (${config.dilution_max_volume_l} L)`);
       return;
     }
     if (!drainRef || !fillRef) {
@@ -227,7 +221,7 @@ export function EcDilutionSection({
             )}
             <h3 className="text-lg font-semibold text-dark-text flex items-center gap-2 min-w-0">
               <BeakerIcon className={`w-5 h-5 shrink-0 ${HW_TEXT.wait}`} aria-hidden />
-              <span className="truncate">Diluição EC (overshoot)</span>
+              <span className="truncate">Diluição automática da solução</span>
             </h3>
           </div>
           <OperationStateBadges
@@ -274,18 +268,17 @@ export function EcDilutionSection({
       {expanded && (
         <div className="p-4 sm:p-6 border-t border-dark-border space-y-6">
           <p className="text-xs sm:text-sm text-dark-textSecondary">
-            Modo A: dreno parcial medido por fluxómetro na saída do dreno + reposição de água.
-            Ativa quando EC &gt; setpoint + banda morta. Relés via{' '}
-            <span className="text-violet-300 font-medium">ESP-NOW slave</span> (não relés master
-            0–7).
+            Se a solução estiver com EC alta (acima do desejado + tolerância), o sistema drena um
+            volume medido, repõe água e recircula. Válvulas no HydroWave Atlas — não use os relés
+            dosificadores do Core (0–7).
           </p>
 
           <div className="flex items-center gap-2 text-xs text-dark-textSecondary rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2">
             <SignalIcon className="w-4 h-4 text-violet-400 shrink-0" />
             <span>
               {espnowSlaves.length === 0
-                ? 'Nenhum slave ESP-NOW — sincronize o master na bancada.'
-                : `${espnowSlaves.length} slave(s) · ${onlineSlaves} online`}
+                ? 'Nenhum HydroWave Atlas ligado — sincronize o Core na bancada.'
+                : `${espnowSlaves.length} Atlas · ${onlineSlaves} online`}
             </span>
           </div>
 
@@ -293,14 +286,13 @@ export function EcDilutionSection({
             ecSetpoint={config.ec_setpoint}
             tolerance={config.tolerance}
             tankVolumeL={config.volume}
-            maxVolumeL={config.dilution_max_volume_l}
             ecActual={ecActual}
           />
 
-          {dilutionState.isDiluting && dilutionState.targetL > 0 && (
+          {dilutionState.isDraining && dilutionState.targetL > 0 && (
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-cyan-300">
-                <span>{dilutionState.isDraining ? 'Drenando' : 'Reponendo'}</span>
+                <span>Diluição · drenando</span>
                 <span>
                   {dilutionState.progressL.toFixed(1)} / {dilutionState.targetL.toFixed(1)} L
                 </span>
@@ -319,9 +311,17 @@ export function EcDilutionSection({
             </div>
           )}
 
+          {dilutionState.isFilling && (
+            <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2.5">
+              <p className="text-xs text-cyan-300">
+                Diluição · repondo — aguardando nível alto
+              </p>
+            </div>
+          )}
+
           <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.04] p-4 space-y-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-violet-300/90">
-              Relés slave (dreno + reposição)
+              Relés Atlas (dreno + reposição)
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <SlaveRelaySelect
@@ -346,63 +346,6 @@ export function EcDilutionSection({
                 onChange={setFillRef}
                 disabled={controlsDisabled}
                 emptyMessage="Todos os relés slave estão reservados ou indisponíveis."
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                Volume máximo por ciclo (L)
-              </label>
-              <input
-                type="number"
-                min={0.1}
-                step={0.5}
-                value={config.dilution_max_volume_l}
-                onChange={(e) =>
-                  config.updateLocal({
-                    dilution_max_volume_l: parseFloat(e.target.value) || 0,
-                  })
-                }
-                disabled={controlsDisabled}
-                className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                Pulsos/L (fluxómetro dreno)
-              </label>
-              <input
-                type="number"
-                min={1}
-                step={1}
-                value={config.flowmeter_pulses_per_liter}
-                onChange={(e) =>
-                  config.updateLocal({
-                    flowmeter_pulses_per_liter: parseFloat(e.target.value) || 450,
-                  })
-                }
-                disabled={controlsDisabled}
-                className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                Vazão reposição (L/s)
-              </label>
-              <input
-                type="number"
-                min={0.01}
-                step={0.01}
-                value={config.dilution_fill_flow_lps}
-                onChange={(e) =>
-                  config.updateLocal({
-                    dilution_fill_flow_lps: parseFloat(e.target.value) || 0.5,
-                  })
-                }
-                disabled={controlsDisabled}
-                className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text"
               />
             </div>
           </div>

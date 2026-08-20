@@ -1,47 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { loadSettings } from '@/lib/settings';
+import React from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { getFundamentosTranslation } from '@/lib/translations/fundamentos';
 import { InformationCircleIcon } from '@heroicons/react/24/outline';
 import BrandLogo from '@/components/BrandLogo';
-import BrandLoading from '@/components/BrandLoading';
 
 export default function FundamentosPage() {
-  const { userProfile } = useAuth();
-  const [language, setLanguage] = useState<string>('pt-BR');
-  const [loading, setLoading] = useState(true);
-  const translations = getFundamentosTranslation(language);
-
-  useEffect(() => {
-    const loadLanguage = async () => {
-      if (userProfile?.email) {
-        try {
-          const settings = await loadSettings(userProfile.email);
-          setLanguage(settings.language || 'pt-BR');
-        } catch (error) {
-          console.error('Error loading settings:', error);
-        }
-      } else {
-        // Fallback: intentar cargar desde localStorage
-        if (typeof window !== 'undefined') {
-          try {
-            const savedSettings = localStorage.getItem('hydrowave_settings');
-            if (savedSettings) {
-              const parsed = JSON.parse(savedSettings);
-              setLanguage(parsed.language || 'pt-BR');
-            }
-          } catch (error) {
-            console.error('Error loading from localStorage:', error);
-          }
-        }
-      }
-      setLoading(false);
-    };
-
-    loadLanguage();
-  }, [userProfile?.email]);
+  const { locale } = useLanguage();
+  const translations = getFundamentosTranslation(locale);
 
   // Función para determinar el color de la fila según la condición
   const getRowColor = (condition: { waterLevel: string; ec: string; ph: string }): string => {
@@ -90,14 +57,6 @@ export default function FundamentosPage() {
     // Rojo: Todas las demás condiciones
     return 'bg-red-900/20 border-red-700/30 hover:bg-red-900/30';
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
-        <BrandLoading message="Carregando..." />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-dark-bg">

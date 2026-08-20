@@ -7,12 +7,19 @@ import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements'
 import {
   appendToHistoryDesc,
   CHART_HISTORY_FALLBACK_MS,
+  HYDRO_CHART_RAW_LIMIT,
 } from '@/lib/realtime/chart-history';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { getPollingInterval, loadSettings, saveSettings, type Settings } from '@/lib/settings';
-import { resolvePh, hasHydroSensorReading, mergeHydroMeasurements } from '@/lib/realtime/hydro-ph';
-import { resolveEcForDisplay } from '@/lib/realtime/hydro-ec';
-import { resolveTemperatureForDisplay } from '@/lib/realtime/hydro-sensor';
+import { hasHydroSensorReading } from '@/lib/realtime/hydro-ph';
+import {
+  emptyHydroLiveState,
+  mergeHydroLiveState,
+  resolveLiveEcForDisplay,
+  resolveLivePhForDisplay,
+  resolveLiveTemperatureForDisplay,
+  type HydroLiveState,
+} from '@/lib/realtime/hydro-freshness';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import QuemSomosTeaser from '@/components/QuemSomosTeaser';
@@ -32,7 +39,9 @@ export default function DashboardPage() {
   const userEmail = userProfile?.email || '';
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const { devices } = useDevicesWithRealtime(userEmail || undefined);
-  const [hydroData, setHydroData] = useState<HydroMeasurement | null>(null);
+  const [hydroLive, setHydroLive] = useState<HydroLiveState>(emptyHydroLiveState());
+  const hydroData = hydroLive.row;
+  const hydroSensorUpdatedAt = hydroLive.sensorUpdatedAt;
   const [environmentData, setEnvironmentData] = useState<EnvironmentMeasurement | null>(null);
   const [hydroHistory, setHydroHistory] = useState<HydroMeasurement[]>([]);
   const [envHistory, setEnvHistory] = useState<EnvironmentMeasurement[]>([]);
@@ -82,10 +91,10 @@ export default function DashboardPage() {
     loadECThresholds();
   }, [userEmail]);
 
-  const applyHydroRow = (data: unknown, prev: HydroMeasurement | null): HydroMeasurement | null => {
+  const applyHydroRow = (data: unknown, prev: HydroLiveState): HydroLiveState => {
     const row = parseHydroRow(data);
     if (!row) return prev;
-    return mergeHydroMeasurements(prev, row) as HydroMeasurement;
+    return mergeHydroLiveState(prev, row);
   };
 
   const parseHydroRow = (data: unknown): HydroMeasurement | null => {
@@ -99,7 +108,8 @@ export default function DashboardPage() {
         obj.ph !== undefined ||
         obj.tds !== undefined ||
         obj.ec !== undefined ||
-        obj.ec_raw !== undefined;
+        obj.ec_raw !== undefined ||
+        obj.levels_simulated !== undefined;
       if (hasAny) {
         return data as HydroMeasurement;
       }
@@ -123,12 +133,6 @@ export default function DashboardPage() {
     return null;
   };
 
-  // EC consistente para cards — usa resolveEcForDisplay (ignora sentinel 0)
-  const calculateEC = (item: HydroMeasurement | null | undefined): number | null => {
-    if (!item) return null;
-    return resolveEcForDisplay(item);
-  };
-
   // ✅ Cargar datos críticos primero (sensores) - carga paralela
   const fetchSensorData = async (deviceId: string) => {
     if (!deviceId) return;
@@ -144,16 +148,16 @@ export default function DashboardPage() {
       // Procesar datos hidropónicos
       if (hydroRes.ok) {
         const hydroJson = await hydroRes.json();
-        setHydroData((prev) => applyHydroRow(hydroJson, prev));
+        setHydroLive((prev) => applyHydroRow(hydroJson, prev));
         console.log('✅ [DASHBOARD] Dados hidropônicos carregados');
-        const snapshot = applyHydroRow(hydroJson, null);
-        if (snapshot) {
-          const ecValue = calculateEC(snapshot);
+        const snapshot = applyHydroRow(hydroJson, emptyHydroLiveState());
+        if (snapshot.row) {
+          const ecValue = resolveLiveEcForDisplay(snapshot.row, snapshot.sensorUpdatedAt);
           console.log('🔍 [DASHBOARD] EC para card:', ecValue);
         }
       } else {
         console.warn(`⚠️ [DASHBOARD] Erro ao buscar hydro-data: ${hydroRes.status}`);
-        setHydroData(null);
+        setHydroLive(emptyHydroLiveState());
       }
 
       // Procesar datos ambientales
@@ -184,41 +188,53 @@ export default function DashboardPage() {
     setLoadingCharts(true);
     try {
       const q = encodeURIComponent(deviceId);
-      const [hydroHistoryRes, envHistoryRes] = await Promise.all([
-        fetch(`/api/hydro-data?device_id=${q}&history=true&limit=24`),
-        fetch(`/api/environment-data?device_id=${q}&history=true&limit=24`),
-      ]);
+      const hydroHistoryRes = await fetch(
+        `/api/hydro-rollup?device_id=${q}&granularity=hour&hours=24`
+      );
+      const envHistoryRes = await fetch(
+        `/api/environment-data?device_id=${q}&history=true&limit=24`
+      );
 
       if (hydroHistoryRes.ok) {
-        const hydroHistoryData = await hydroHistoryRes.json();
-        if (Array.isArray(hydroHistoryData)) {
-          // ✅ Debug: Verificar datos de pH
-          const phData = hydroHistoryData.map(item => ({ 
-            ph: item.ph, 
-            phType: typeof item.ph,
-            phIsNull: item.ph === null,
-            phIsUndefined: item.ph === undefined,
-            created_at: item.created_at 
-          }));
-          const validPhCount = hydroHistoryData.filter(item => 
-            item.ph !== null && item.ph !== undefined && !isNaN(Number(item.ph))
-          ).length;
-          console.log(`✅ [DASHBOARD] Histórico hidropônico: ${hydroHistoryData.length} registros`);
-          console.log(`📊 [DASHBOARD] pH válidos: ${validPhCount}/${hydroHistoryData.length}`);
-          if (validPhCount < hydroHistoryData.length) {
-            console.warn('⚠️ [DASHBOARD] Alguns registros têm pH inválido:', phData.filter((_, i) => 
-              hydroHistoryData[i].ph === null || 
-              hydroHistoryData[i].ph === undefined || 
-              isNaN(Number(hydroHistoryData[i].ph))
-            ));
+        const hydroPayload = await hydroHistoryRes.json();
+        let hydroHistoryData: HydroMeasurement[] = [];
+
+        if (Array.isArray(hydroPayload.rows)) {
+          if (hydroPayload.granularity === 'hour') {
+            hydroHistoryData = hydroPayload.rows.map(
+              (row: {
+                bucket_start: string;
+                ec_avg?: number;
+                ph_avg?: number;
+                temp_avg?: number;
+              }) => ({
+                ec: row.ec_avg ?? undefined,
+                ph: row.ph_avg ?? undefined,
+                temperature: row.temp_avg ?? undefined,
+                created_at: row.bucket_start,
+                water_level_ok: true,
+              })
+            ) as HydroMeasurement[];
+          } else {
+            hydroHistoryData = hydroPayload.rows as HydroMeasurement[];
           }
+        }
+
+        const validPhCount = hydroHistoryData.filter(
+          (item) => item.ph !== null && item.ph !== undefined && !isNaN(Number(item.ph))
+        ).length;
+        console.log(
+          `✅ [DASHBOARD] Histórico hidropônico (${hydroPayload.granularity ?? 'unknown'}): ${hydroHistoryData.length} registros`
+        );
+        console.log(`📊 [DASHBOARD] pH válidos: ${validPhCount}/${hydroHistoryData.length}`);
+
+        if (hydroHistoryData.length > 0) {
           setHydroHistory(hydroHistoryData);
         } else {
-          setHydroHistory([]);
+          console.warn('⚠️ [DASHBOARD] Histórico hidropônico vazio — mantendo buffer Realtime se existir');
         }
       } else {
         console.warn(`⚠️ [DASHBOARD] Erro ao buscar histórico hidropônico: ${hydroHistoryRes.status}`);
-        setHydroHistory([]);
       }
 
       if (envHistoryRes.ok) {
@@ -255,9 +271,9 @@ export default function DashboardPage() {
       onHydro: (row) => {
         const parsed = parseHydroRow(row);
         if (!parsed) return;
-        setHydroData((prev) => applyHydroRow(parsed, prev));
+        setHydroLive((prev) => applyHydroRow(parsed, prev));
         if (hasHydroSensorReading(parsed)) {
-          setHydroHistory((prev) => appendToHistoryDesc(prev, parsed, deviceId));
+          setHydroHistory((prev) => appendToHistoryDesc(prev, parsed, deviceId, HYDRO_CHART_RAW_LIMIT));
         }
       },
       onEnvironment: (row) => {
@@ -273,7 +289,7 @@ export default function DashboardPage() {
   // Recarga REST al cambiar dispositivo (primer paint del gráfico)
   useEffect(() => {
     if (!selectedDeviceId) return;
-    setHydroData(null);
+    setHydroLive(emptyHydroLiveState());
     setEnvironmentData(null);
     setHydroHistory([]);
     setEnvHistory([]);
@@ -317,9 +333,18 @@ export default function DashboardPage() {
     return 'normal';
   };
 
-  /** pH com QC 4.0–9.0 — alinhado com /automacao e handoff Auto pH. */
-  const displayPh = useMemo(() => resolvePh(hydroData), [hydroData]);
-  const displayTemp = useMemo(() => resolveTemperatureForDisplay(hydroData), [hydroData]);
+  const displayPh = useMemo(
+    () => resolveLivePhForDisplay(hydroData, hydroSensorUpdatedAt),
+    [hydroData, hydroSensorUpdatedAt]
+  );
+  const displayTemp = useMemo(
+    () => resolveLiveTemperatureForDisplay(hydroData, hydroSensorUpdatedAt),
+    [hydroData, hydroSensorUpdatedAt]
+  );
+  const displayEc = useMemo(
+    () => resolveLiveEcForDisplay(hydroData, hydroSensorUpdatedAt),
+    [hydroData, hydroSensorUpdatedAt]
+  );
 
   // Function to determine EC status usando umbrales configurables
   const getECStatus = (ec: number): 'normal' | 'warning' | 'danger' => {
@@ -419,7 +444,8 @@ export default function DashboardPage() {
           environmentData={environmentData}
           displayTemp={displayTemp}
           displayPh={displayPh}
-          calculateEC={calculateEC}
+          displayEc={displayEc}
+          sensorUpdatedAt={hydroSensorUpdatedAt}
           getECStatus={getECStatus}
           getPHStatus={getPHStatus}
           onOpenEcConfig={() => setShowECConfig(true)}

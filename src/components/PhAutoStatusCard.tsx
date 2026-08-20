@@ -43,7 +43,7 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
     },
   });
 
-  const { ph: phAtual } = useHydroEcReading(deviceId, active);
+  const { ph: phAtual } = useHydroEcReading(deviceId, active, { liveOnly: true });
   const phError =
     phAtual != null && phConfig.ph_setpoint > 0
       ? phErrorAbs(phConfig.ph_setpoint, phAtual)

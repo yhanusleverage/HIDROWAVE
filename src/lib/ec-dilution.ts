@@ -58,3 +58,7 @@ export function clampDilutionVolume(
   if (!Number.isFinite(maxVolumeL) || maxVolumeL <= 0) return volumeL;
   return Math.min(volumeL, maxVolumeL);
 }
+
+/** Defaults firmware (Config.h / ec_config_view) — não expostos na UI. */
+export const DILUTION_MAX_VOLUME_L_DEFAULT = 50;
+export const FLOWMETER_PULSES_PER_LITER_DEFAULT = 450;

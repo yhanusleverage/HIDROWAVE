@@ -2,6 +2,8 @@
  * Traducciones para la página de Fundamentos Hidropónicos
  */
 
+import { normalizeLocale, toFundamentosKey } from '@/lib/locale';
+
 export interface FundamentosTranslations {
   title: string;
   subtitle: string;
@@ -688,6 +690,8 @@ export const fundamentosTranslations: Record<string, FundamentosTranslations> = 
 };
 
 export function getFundamentosTranslation(language: string): FundamentosTranslations {
-  return fundamentosTranslations[language] || fundamentosTranslations['pt-BR'];
+  const locale = normalizeLocale(language);
+  const key = toFundamentosKey(locale);
+  return fundamentosTranslations[key] || fundamentosTranslations['pt-BR'];
 }
 

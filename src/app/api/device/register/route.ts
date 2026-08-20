@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       p_device_id: device_id,
       p_mac_address: mac_address,
       p_user_email: user_email,
-      p_device_name: device_name || (device_type === 'ESP32_SLAVE' ? `ESP-NOW Slave ${mac_address}` : 'ESP32 Hidropônico'),
+      p_device_name: device_name || (device_type === 'ESP32_SLAVE' ? `HydroWave Atlas ${mac_address}` : 'HydroWave Core'),
       p_location: location,
       p_ip_address: ip_address,
     });
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Dispositivo ${device_type === 'ESP32_SLAVE' ? 'ESP-NOW Slave' : 'Master'} registrado com sucesso`,
+      message: `Dispositivo ${device_type === 'ESP32_SLAVE' ? 'HydroWave Atlas' : 'HydroWave Core'} registrado com sucesso`,
       device_id,
       device_type,
     });

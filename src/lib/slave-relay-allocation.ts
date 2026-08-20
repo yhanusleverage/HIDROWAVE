@@ -108,14 +108,14 @@ export function validateEcDilutionSlaveAssignment(
   if (!drain || !fill) {
     return {
       ok: false,
-      error: 'Selecione relé slave de dreno e reposição (ESP-NOW).',
+      error: 'Selecione relé Atlas de dreno e reposição (ESP-NOW).',
     };
   }
 
   if (slaveRelayKey(drain) === slaveRelayKey(fill)) {
     return {
       ok: false,
-      error: 'Dreno e reposição não podem ser o mesmo relé slave.',
+      error: 'Dreno e reposição não podem ser o mesmo relé Atlas.',
     };
   }
 
@@ -136,6 +136,42 @@ export function validateEcDilutionSlaveAssignment(
   return { ok: true };
 }
 
+/**
+ * Nome amigável do Atlas para UI.
+ * Evita defaults feos ("ESP-NOW Slave …", MAC crudo); MAC completo sigue en valueKey.
+ */
+export function friendlyAtlasName(
+  slaveName: string | null | undefined,
+  mac: string | null | undefined
+): string {
+  const macNorm = normalizeSlaveMac(mac);
+  const raw = (slaveName || '').trim();
+  const macCompact = macNorm.replace(/[^A-F0-9]/gi, '');
+  const looksLikeMac =
+    !!raw &&
+    normalizeSlaveMac(raw) === macNorm &&
+    macNorm.length > 0;
+  const looksLikeDefault =
+    !raw ||
+    looksLikeMac ||
+    /^ESP-NOW\s+Slave/i.test(raw) ||
+    /^HydroWave\s+Atlas\s+[0-9A-F:]{8,}/i.test(raw);
+
+  if (!looksLikeDefault) {
+    return raw;
+  }
+
+  const short =
+    macCompact.length >= 4
+      ? `…${macCompact.slice(-4)}`
+      : macNorm || 'Atlas';
+  return short;
+}
+
 export function formatSlaveRelayLabel(option: SlaveRelayOption): string {
-  return `${option.slaveName} · R${option.relayId} ${option.relayName}`;
+  const friendly = friendlyAtlasName(option.slaveName, option.slaveMac);
+  const relayPart = option.relayName?.trim()
+    ? `R${option.relayId} ${option.relayName}`
+    : `R${option.relayId}`;
+  return `Atlas · ${friendly} · ${relayPart}`;
 }

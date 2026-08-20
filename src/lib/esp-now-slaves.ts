@@ -230,6 +230,54 @@ export async function saveSlaveRelayName(
   }
 }
 
+export type SaveSlaveDeviceNameResult = {
+  ok: boolean;
+  error?: string;
+  code?: string;
+};
+
+/**
+ * Salva nome amigável do dispositivo slave em device_status.device_name
+ */
+export async function saveSlaveDeviceName(
+  slaveDeviceId: string,
+  deviceName: string
+): Promise<SaveSlaveDeviceNameResult> {
+  const trimmed = deviceName.trim();
+  if (!slaveDeviceId?.trim()) {
+    return { ok: false, error: 'device_id do slave ausente' };
+  }
+  if (!trimmed) {
+    return { ok: false, error: 'Nome do slave é obrigatório' };
+  }
+
+  try {
+    const db =
+      typeof window === 'undefined' ? getSupabaseServerClient() : supabase;
+
+    const { data: updated, error } = await db
+      .from('device_status')
+      .update({
+        device_name: trimmed,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('device_id', slaveDeviceId.trim())
+      .select('device_id')
+      .maybeSingle();
+
+    if (error) {
+      return { ok: false, error: error.message, code: error.code };
+    }
+    if (!updated) {
+      return { ok: false, error: 'Slave não encontrado em device_status' };
+    }
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro desconhecido';
+    return { ok: false, error: message };
+  }
+}
+
 /**
  * Carrega configurações de relés de um slave específico
  * 

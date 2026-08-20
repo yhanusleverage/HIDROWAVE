@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { loadSettings } from '@/lib/settings';
+import { normalizeLocale, type AppLocale } from '@/lib/locale';
 
-export function useDocsLanguage(): { language: string; loading: boolean } {
+export function useDocsLanguage(): { language: AppLocale; loading: boolean } {
   const { userProfile } = useAuth();
-  const [language, setLanguage] = useState('pt-BR');
+  const [language, setLanguage] = useState<AppLocale>('pt-BR');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,7 +15,7 @@ export function useDocsLanguage(): { language: string; loading: boolean } {
       if (userProfile?.email) {
         try {
           const settings = await loadSettings(userProfile.email);
-          setLanguage(settings.language || 'pt-BR');
+          setLanguage(normalizeLocale(settings.language));
         } catch {
           setLanguage('pt-BR');
         }
@@ -23,7 +24,7 @@ export function useDocsLanguage(): { language: string; loading: boolean } {
           const saved = localStorage.getItem('hydrowave_settings');
           if (saved) {
             const parsed = JSON.parse(saved);
-            setLanguage(parsed.language || 'pt-BR');
+            setLanguage(normalizeLocale(parsed.language));
           }
         } catch {
           setLanguage('pt-BR');
@@ -32,6 +33,15 @@ export function useDocsLanguage(): { language: string; loading: boolean } {
       setLoading(false);
     };
     loadLanguage();
+
+    const onSettingsUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ language?: string }>).detail;
+      if (detail?.language) {
+        setLanguage(normalizeLocale(detail.language));
+      }
+    };
+    window.addEventListener('settingsUpdated', onSettingsUpdated);
+    return () => window.removeEventListener('settingsUpdated', onSettingsUpdated);
   }, [userProfile?.email]);
 
   return { language, loading };

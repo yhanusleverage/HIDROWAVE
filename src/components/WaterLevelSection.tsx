@@ -38,8 +38,12 @@ export function WaterLevelSection({
       }
     >
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-        <LevelTankSchematic className="lg:col-span-5" probes={probes} />
-        <WaterLevelOperationalSummary className="lg:col-span-7" levels={levels} />
+        <LevelTankSchematic className="lg:col-span-5" probes={probes} levelsSimulated={levels.levelsSimulated} />
+        <WaterLevelOperationalSummary
+          className="lg:col-span-7"
+          levels={levels}
+          deviceId={deviceId}
+        />
       </div>
     </InstrumentCard>
   );

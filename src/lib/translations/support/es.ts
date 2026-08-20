@@ -47,8 +47,8 @@ export const supportPagesEs: Record<SupportPageSlug, DocsPageContent> = {
         accent: 'brand',
         layers: [
           {
-            title: '1. Edge — ESP32 master + slaves ESP-NOW',
-            body: 'El master lee sensores de agua (pH, EC/TDS, nivel), ejecuta Auto EC/pH vía HydroControl y envía comandos a relés locales o slaves (válvulas, bombas peristálticas, recirculación).',
+            title: '1. Edge — HydroWave Core + Atlas (ESP-NOW)',
+            body: 'El Core lee sensores de agua (pH, EC/TDS, nivel), ejecuta Auto EC/pH y envía comandos a relés locales o Atlas (válvulas, bombas peristálticas, recirculación).',
             accent: 'wait',
           },
           {
@@ -148,7 +148,7 @@ export const supportPagesEs: Record<SupportPageSlug, DocsPageContent> = {
         steps: [
           { title: 'UI / Automatización', body: 'Operador configura setpoints, plan nutricional o reglas.' },
           { title: 'Supabase', body: 'Tablas: hydro_measurements, relay_master, ec/ph_controller_config, decision_rules, relay_commands, dosages.' },
-          { title: 'ESP32 — HydroSystemCore', body: 'Poll de config (~30 s), lectura de sensores, sync operation_state.' },
+          { title: 'ESP32 — HydroWave Core', body: 'Poll de config (~30 s), lectura de sensores, sync operation_state.' },
           { title: 'HydroControl + DecisionEngine', body: 'Bucles EC/pH en loop(); reglas con cooldown y límites horarios.' },
         ],
       },
@@ -204,7 +204,7 @@ export const supportPagesEs: Record<SupportPageSlug, DocsPageContent> = {
         code: `WHILE level_4 != "vazio" DO\n  relé_válvula = ON\nEND WHILE\n\nIF level_4 == "vazio" THEN\n  relé_válvula = OFF\n  RETURN\nEND IF`,
         steps: [
           { title: 'Mapear level_4', body: 'Sonda más baja = vacío cuando el tanque se vació.' },
-          { title: 'Asociar relé', body: 'Válvula motorizada en slave ESP-NOW o relé local.' },
+          { title: 'Asociar relé', body: 'Válvula motorizada en Atlas o relé local del Core.' },
           { title: 'loop_interval_ms', body: '1000–5000 ms entre evaluaciones del WHILE.' },
         ],
       },
@@ -218,7 +218,7 @@ export const supportPagesEs: Record<SupportPageSlug, DocsPageContent> = {
           {
             variant: 'warning',
             title: 'Patrón de diseño',
-            body: 'Recarga completa documentada como contrato de script. Validar mapeo GPIO/slave antes de producción.',
+            body: 'Recarga completa documentada como contrato de script. Validar mapeo GPIO/Atlas antes de producción.',
           },
         ],
       },
@@ -336,7 +336,7 @@ export const supportPagesEs: Record<SupportPageSlug, DocsPageContent> = {
           rows: [
             { cells: ['WHILE', 'Bucle mientras condición verdadera'] },
             { cells: ['IF / ELSE', 'Ramificación condicional'] },
-            { cells: ['relay_action', 'ON/OFF en relé master o slave'] },
+            { cells: ['relay_action', 'ON/OFF en relé del Core o Atlas'] },
             { cells: ['DELAY', 'Pausa entre pasos (ms)'] },
             { cells: ['RETURN', 'Termina ejecución del script'] },
           ],

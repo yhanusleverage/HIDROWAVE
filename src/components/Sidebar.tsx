@@ -4,8 +4,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import NavLink from '@/components/NavLink';
 import { usePathname } from 'next/navigation';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import BrandLogo from '@/components/BrandLogo';
 import { hwNavActiveClasses, hwNavIconClasses } from '@/lib/design-tokens';
+import type { AppTranslations } from '@/lib/translations/app/types';
 import {
   HomeIcon,
   Cog6ToothIcon,
@@ -33,8 +35,13 @@ import {
   QueueListIcon as QueueListIconSolid,
 } from '@heroicons/react/24/solid';
 
+type SidebarNavKey = Exclude<
+  keyof AppTranslations['sidebar'],
+  'closeMenu' | 'collapseMenu' | 'expandMenu'
+>;
+
 interface MenuItem {
-  name: string;
+  id: SidebarNavKey;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   iconSolid: React.ComponentType<{ className?: string }>;
@@ -42,67 +49,67 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   {
-    name: 'Dashboard',
+    id: 'dashboard',
     href: '/dashboard',
     icon: HomeIcon,
     iconSolid: HomeIconSolid,
   },
   {
-    name: 'Automação',
+    id: 'automacao',
     href: '/automacao',
     icon: Cog6ToothIcon,
     iconSolid: Cog6ToothIconSolid,
   },
   {
-    name: 'Calibragem',
+    id: 'calibragem',
     href: '/calibragem',
     icon: BeakerIcon,
     iconSolid: BeakerIconSolid,
   },
   {
-    name: 'Dispositivos',
+    id: 'dispositivos',
     href: '/dispositivos',
     icon: DevicePhoneMobileIcon,
     iconSolid: DevicePhoneMobileIconSolid,
   },
   {
-    name: 'Configuração',
+    id: 'configuracao',
     href: '/configuracao',
     icon: WrenchScrewdriverIcon,
     iconSolid: WrenchScrewdriverIconSolid,
   },
   {
-    name: 'Fundamentos',
+    id: 'fundamentos',
     href: '/fundamentos',
     icon: BookOpenIcon,
     iconSolid: BookOpenIconSolid,
   },
   {
-    name: 'Suporte',
+    id: 'suporte',
     href: '/support',
     icon: AcademicCapIcon,
     iconSolid: AcademicCapIconSolid,
   },
   {
-    name: 'Processos',
+    id: 'processos',
     href: '/processos',
     icon: QueueListIcon,
     iconSolid: QueueListIconSolid,
   },
   {
-    name: 'Informação',
+    id: 'informacao',
     href: '/informacao',
     icon: QuestionMarkCircleIcon,
     iconSolid: QuestionMarkCircleIconSolid,
   },
   {
-    name: 'Planos',
+    id: 'planos',
     href: '/planos',
     icon: CreditCardIcon,
     iconSolid: CreditCardIconSolid,
   },
   {
-    name: 'Quem Somos',
+    id: 'quemSomos',
     href: '/quem-somos',
     icon: UserGroupIcon,
     iconSolid: UserGroupIconSolid,
@@ -111,6 +118,7 @@ const menuItems: MenuItem[] = [
 
 export default function Sidebar() {
   const { isExpanded, setIsExpanded } = useSidebar();
+  const { t } = useLanguage();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
@@ -164,7 +172,7 @@ export default function Sidebar() {
         <button
           type="button"
           className="fixed inset-0 z-40 bg-black/50 md:hidden"
-          aria-label="Fechar menu"
+          aria-label={t.sidebar.closeMenu}
           onClick={() => setIsExpanded(false)}
         />
       )}
@@ -191,7 +199,7 @@ export default function Sidebar() {
         <button
           onClick={toggleSidebar}
           className="p-2 rounded-lg hover:bg-dark-card transition-colors flex-shrink-0"
-          aria-label={isExpanded ? 'Recolher menu' : 'Expandir menu'}
+          aria-label={isExpanded ? t.sidebar.collapseMenu : t.sidebar.expandMenu}
           aria-expanded={isExpanded}
         >
           <svg
@@ -217,7 +225,7 @@ export default function Sidebar() {
             const Icon = isActive ? item.iconSolid : item.icon;
 
             return (
-              <li key={item.name}>
+              <li key={item.id}>
                 <NavLink
                   href={item.href}
                   prefetch
@@ -229,7 +237,7 @@ export default function Sidebar() {
                       isExpanded ? 'opacity-100' : 'sr-only'
                     }`}
                   >
-                    {item.name}
+                    {t.sidebar[item.id]}
                   </span>
                 </NavLink>
               </li>

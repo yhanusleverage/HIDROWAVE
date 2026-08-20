@@ -22,6 +22,9 @@ export const PENDING_COMMAND_STATUSES = new Set<string>(PENDING_COMMAND_STATUS_L
 /** Margem após duration_seconds antes de tratar `sent` órfão como não-bloqueante na UI. */
 export const SENT_ORPHAN_BUFFER_MS = 30_000;
 
+/** pending/processing sem progresso após isto deixam de bloquear o mapa/locks na UI. */
+export const PENDING_STALE_MS = 10 * 60_000;
+
 export type RelayCommandPendingSlice = {
   status?: string | null;
   created_at?: string | null;
@@ -32,11 +35,19 @@ export type RelayCommandPendingSlice = {
 /**
  * `sent` sem ACK completed na BD bloqueia a UI; após duration+buffer assume órfão
  * (ESP processou mas PATCH completed falhou).
+ * `pending`/`processing` antigos (> PENDING_STALE_MS) também deixam de bloquear.
  */
 export function isRelayCommandOperationallyPending(cmd: RelayCommandPendingSlice): boolean {
   const status = (cmd.status || '').toLowerCase();
   if (!PENDING_COMMAND_STATUSES.has(status)) return false;
-  if (status === 'pending' || status === 'processing') return true;
+
+  if (status === 'pending' || status === 'processing') {
+    const anchor = cmd.sent_at || cmd.created_at;
+    if (!anchor) return true;
+    const ageMs = Date.now() - new Date(anchor).getTime();
+    if (!Number.isFinite(ageMs) || ageMs < 0) return true;
+    return ageMs < PENDING_STALE_MS;
+  }
 
   if (status === 'sent') {
     const durationSec = Number(cmd.duration_seconds);

@@ -1,6 +1,9 @@
 /** Ventana deslizante para gráficos del dashboard (orden: más reciente primero). */
 export const CHART_HISTORY_LIMIT = 24;
 
+/** Máximo de leituras raw no gráfico hidropónico (fallback REST · 24h). */
+export const HYDRO_CHART_RAW_LIMIT = 200;
+
 /** Resync REST lento solo para corregir drift si Realtime pierde eventos. */
 export const CHART_HISTORY_FALLBACK_MS = 5 * 60 * 1000;
 

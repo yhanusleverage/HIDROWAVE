@@ -12,7 +12,9 @@ import {
   QUEM_SOMOS_ELEMENTS,
   QUEM_SOMOS_HERO,
   QUEM_SOMOS_JOURNEY,
+  QUEM_SOMOS_MANIFESTO,
   QUEM_SOMOS_MISSION,
+  QUEM_SOMOS_PRODUCT_LINE,
   QUEM_SOMOS_PROMISES,
   QUEM_SOMOS_SOCIAL_PROOF,
   type QuemSomosIconId,
@@ -77,11 +79,11 @@ function ElementCard({
         onClick={() => setTechOpen((v) => !v)}
         className={`flex items-center gap-1 text-xs ${HW_TEXT.neutral} hover:opacity-80 mb-3`}
       >
-        Detalhe técnico
+        Como funciona
         {techOpen ? <ChevronUpIcon className="w-3.5 h-3.5" /> : <ChevronDownIcon className="w-3.5 h-3.5" />}
       </button>
       {techOpen && (
-        <p className="text-xs font-mono text-dark-textSecondary/80 mb-3 border border-dark-border rounded px-2 py-1.5 bg-dark-bg/40">
+        <p className="text-xs text-dark-textSecondary/80 mb-3 border border-dark-border rounded px-2 py-1.5 bg-dark-bg/40 leading-relaxed">
           {item.technicalDetail}
         </p>
       )}
@@ -143,6 +145,64 @@ export default function QuemSomosContent() {
               </div>
             </div>
           </InstrumentCard>
+        </section>
+
+        <section id="filosofia" aria-labelledby="manifesto-heading">
+          <InstrumentCard accent="ok" tinted className="relative overflow-hidden">
+            <div
+              className="absolute inset-0 opacity-20 pointer-events-none"
+              aria-hidden
+              style={{
+                background:
+                  'radial-gradient(ellipse 70% 50% at 0% 50%, rgba(34, 211, 238, 0.2), transparent)',
+              }}
+            />
+            <div className="relative">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-aqua-400/90 mb-4">
+                {QUEM_SOMOS_MANIFESTO.eyebrow}
+              </p>
+              <blockquote className="border-l-4 border-aqua-500/70 pl-5 sm:pl-6">
+                <h2
+                  id="manifesto-heading"
+                  className="text-2xl sm:text-3xl font-bold text-dark-text leading-snug mb-2"
+                >
+                  {QUEM_SOMOS_MANIFESTO.lead}
+                </h2>
+                <p className="text-lg text-aqua-400/95 font-medium mb-6">
+                  {QUEM_SOMOS_MANIFESTO.subtitle}
+                </p>
+                <div className="space-y-4 text-dark-textSecondary leading-relaxed">
+                  {QUEM_SOMOS_MANIFESTO.paragraphs.map((paragraph) => (
+                    <p key={paragraph.slice(0, 48)} className="text-sm sm:text-base">
+                      {paragraph}
+                    </p>
+                  ))}
+                </div>
+              </blockquote>
+            </div>
+          </InstrumentCard>
+        </section>
+
+        <section id="linha-produto" aria-labelledby="product-line-heading">
+          <div className="text-center mb-8">
+            <h2 id="product-line-heading" className="text-2xl font-bold text-dark-text mb-2">
+              {QUEM_SOMOS_PRODUCT_LINE.title}
+            </h2>
+            <p className="text-sm text-dark-textSecondary max-w-xl mx-auto">
+              {QUEM_SOMOS_PRODUCT_LINE.subtitle}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {QUEM_SOMOS_PRODUCT_LINE.modules.map((mod) => (
+              <InstrumentCard key={mod.name} accent={mod.accent} tinted className="flex flex-col">
+                <p className="text-xs font-semibold uppercase tracking-wide text-dark-textSecondary/70 mb-1">
+                  {mod.role}
+                </p>
+                <h3 className={`text-lg font-bold mb-2 ${HW_TEXT[mod.accent]}`}>{mod.name}</h3>
+                <p className="text-sm text-dark-textSecondary leading-relaxed">{mod.body}</p>
+              </InstrumentCard>
+            ))}
+          </div>
         </section>
 
         <section>
@@ -296,7 +356,7 @@ export default function QuemSomosContent() {
 
         <footer className="text-center pb-6">
           <p className="text-xs text-dark-textSecondary/60">
-            HydroWave — eletrônica, hidráulica, química, nutrição e ambiente em harmonia.
+            HydroWave — nada desperdiçado, tudo com propósito.
           </p>
         </footer>
       </div>
