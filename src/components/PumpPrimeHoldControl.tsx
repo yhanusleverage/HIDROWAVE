@@ -74,12 +74,12 @@ export function PumpPrimeHoldControl({
           action: 'off',
         });
         if (!silent) {
-          hwToast.info('Cebado parado', 'CEBAR');
+          hwToast.info('Cebado parado', 'CALIBRAGEM');
         }
       } catch (e) {
         hwToast.error(
           e instanceof Error ? e.message : 'Falha ao parar bomba',
-          'CEBAR'
+          'CALIBRAGEM'
         );
       }
     },
@@ -89,11 +89,11 @@ export function PumpPrimeHoldControl({
   const startPrime = useCallback(async () => {
     if (holdingRef.current) return;
     if (!isOnline) {
-      hwToast.error('Core offline — cebar precisa de MQTT', 'CEBAR');
+      hwToast.error('Core offline — cebar precisa de MQTT', 'CALIBRAGEM');
       return;
     }
     if (autoBlocked) {
-      hwToast.error('Desative o Auto para cebar', 'CEBAR');
+      hwToast.error('Desative o Auto para cebar', 'CALIBRAGEM');
       return;
     }
     const seq = ++seqRef.current;
@@ -122,7 +122,7 @@ export function PumpPrimeHoldControl({
       }
       hwToast.error(
         e instanceof Error ? e.message : 'Falha ao cebar',
-        'CEBAR'
+        'CALIBRAGEM'
       );
     }
   }, [autoBlocked, deviceId, isOnline, relayNumber]);

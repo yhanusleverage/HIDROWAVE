@@ -25,7 +25,11 @@ import { useEcOperationState } from '@/hooks/useEcOperationState';
 import { useHydroEcReading } from '@/hooks/useHydroEcReading';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { getMasterLocalRelayNames, saveMasterLocalRelayName } from '@/lib/nutrition-plan';
-import { formatFlowRate, mergeNutrientFlowRates } from '@/lib/pump-calibration';
+import {
+  formatFlowRate,
+  mergeNutrientFlowRates,
+  type NutrientFlowRow,
+} from '@/lib/pump-calibration';
 import { useRelayAllocation } from '@/hooks/useRelayAllocation';
 import { DoserRelaySelect } from '@/components/DoserRelaySelect';
 import { DoserRelayMapPanel } from '@/components/DoserRelayMapPanel';
@@ -619,7 +623,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       ec_setpoint: number;
       tolerance: number;
       auto_enabled: boolean;
-        nutrients: Array<{ name: string; relay: number; mlPerLiter: number }>;
+        nutrients: NutrientFlowRow[];
         intervalo_auto_ec?: number;
         tempo_recirculacao?: number;
         [key: string]: unknown;
@@ -781,7 +785,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       ec_setpoint: number;
       tolerance?: number;
       auto_enabled: boolean;
-      nutrients: Array<{ name: string; relay: number; mlPerLiter: number }>;
+      nutrients: NutrientFlowRow[];
       intervalo_auto_ec?: number;
       tempo_recirculacao?: number;
       _debug?: unknown;
