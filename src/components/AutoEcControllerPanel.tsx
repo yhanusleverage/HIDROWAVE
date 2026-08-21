@@ -1168,6 +1168,8 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                   setIsLoadingNutrients({ ...isLoadingNutrients, [nut.relayNumber]: true });
                                   
                                   try {
+                                    const doseMl =
+                                      nut.mlPerLiter > 0 ? calculateQuantity(nut.mlPerLiter) : 0;
                                     const response = await fetch('/api/esp-now/command', {
                                       method: 'POST',
                                       headers: { 'Content-Type': 'application/json' },
@@ -1177,9 +1179,12 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                         relay_number: nut.relayNumber,
                                         action: 'on',
                                         duration_seconds: Math.ceil(timeNeeded),
+                                        mode: 'timed_on',
                                         triggered_by: 'manual',
+                                        created_by: 'manual',
                                             command_type: 'manual',
                                         rule_name: nut.mlPerLiter > 0 ? `Dosagem: ${nut.name}` : `Ativação: ${nut.name}`,
+                                        ...(doseMl > 0 ? { dosage_ml: doseMl } : {}),
                                       }),
                                     });
                                     
@@ -1881,47 +1886,6 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                             >
                               <XMarkIcon className="w-4 h-4 inline mr-1" />
                               Limpar Valores
-                            </button>
-                            <button
-                              onClick={async () => {
-                                if (confirm('🚨 ATENÇÃO: Isso irá parar TODOS os processos e resetar o sistema. Continuar?')) {
-                                  try {
-                                    // ✅ CRÍTICO: Actualizar auto_enabled = false en Supabase
-                                  setAutoEnabled(false);
-                                    
-                                    // Actualizar en Supabase para que ESP32 pare inmediatamente
-                                    const { error } = await supabase
-                                      .from('ec_config_view')
-                                      .update({ 
-                                        auto_enabled: false,
-                                        updated_at: new Date().toISOString()
-                                      })
-                                      .eq('device_id', deviceId);
-                                    
-                                    if (error) {
-                                      console.error('❌ [EC Controller] Erro ao desativar Auto EC no Supabase:', error);
-                                      toast.error(`Erro ao desativar: ${error.message}`);
-                                    } else {
-                                      // ✅ SOLUCIÓN DATA RACE: Marcar que acabamos de guardar para prevenir recarga
-                                      justSavedRef.current = true;
-                                      if (savingTimeoutRef.current) {
-                                        clearTimeout(savingTimeoutRef.current);
-                                      }
-                                      savingTimeoutRef.current = setTimeout(() => {
-                                        justSavedRef.current = false;
-                                      }, 2000);
-                                      console.log('✅ [EC Controller] Auto EC desativado no Supabase (Reset Emergencial)');
-                                      hwToast.warning('Reset emergencial executado — Auto EC desativado', 'AUTO EC');
-                                    }
-                                  } catch (err) {
-                                    console.error('❌ [EC Controller] Erro crítico no Reset Emergencial:', err);
-                                    toast.error('Erro ao executar reset emergencial');
-                                  }
-                                }
-                              }}
-                              className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg transition-all font-bold"
-                            >
-                              🚨 RESET EMERGENCIAL
                             </button>
                           </div>
                         </div>

@@ -190,29 +190,20 @@ export function PumpPrimeHoldControl({
       <p className="text-xs text-dark-textSecondary">
         Mantenha o botão: bomba ON. Solte: para por completo. MQTT (quase tempo real).
       </p>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={disabled}
-          title={title}
-          onContextMenu={(e) => e.preventDefault()}
-          onPointerDown={onPointerDown}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          className={`flex-1 py-4 rounded-lg border font-semibold select-none touch-none disabled:opacity-40 disabled:cursor-not-allowed ${
-            holding ? 'ring-2 ring-offset-0 ring-white/20 ' : ''
-          } ${accentBtn}`}
-        >
-          {holding ? 'Solte para parar' : 'Manter para cebar'}
-        </button>
-        <button
-          type="button"
-          onClick={() => void stopPrime()}
-          className="px-3 py-4 rounded-lg border border-red-500/40 text-red-300 text-sm hover:bg-red-500/10"
-        >
-          Parar
-        </button>
-      </div>
+      <button
+        type="button"
+        disabled={disabled}
+        title={title}
+        onContextMenu={(e) => e.preventDefault()}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        className={`w-full py-4 rounded-lg border font-semibold select-none touch-none disabled:opacity-40 disabled:cursor-not-allowed ${
+          holding ? 'ring-2 ring-offset-0 ring-white/20 ' : ''
+        } ${accentBtn}`}
+      >
+        {holding ? 'Solte para parar' : 'Manter para cebar'}
+      </button>
       {autoBlocked ? (
         <p className="text-xs text-amber-400">Auto ligado — desative em Automação para cebar.</p>
       ) : null}

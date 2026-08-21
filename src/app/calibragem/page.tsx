@@ -14,6 +14,7 @@ import { getMasterLocalRelayNames } from '@/lib/nutrition-plan';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import { PhCalibrationSection } from '@/components/PhCalibrationSection';
 import { EcPumpCalibrationSection } from '@/components/EcPumpCalibrationSection';
+import { PumpQuantitySection } from '@/components/PumpQuantitySection';
 import { useEcConfig } from '@/hooks/useEcConfig';
 import { usePhConfig } from '@/hooks/usePhConfig';
 
@@ -50,7 +51,7 @@ export default function CalibragemPage() {
   const { masters: devices } = useDevicesWithRealtime(userProfile?.email);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [relayOptions, setRelayOptions] = useState<Array<{ number: number; name: string }>>([]);
-  const [activeTab, setActiveTab] = useState<'vazao' | 'ganhos'>('vazao');
+  const [activeTab, setActiveTab] = useState<'vazao' | 'ganhos' | 'quantidade'>('vazao');
   const [procedureOpen, setProcedureOpen] = useState(false);
 
   const selectedDevice = devices.find((d) => d.device_id === selectedDeviceId);
@@ -95,7 +96,7 @@ export default function CalibragemPage() {
                 Calibragem
               </h1>
               <p className="text-dark-textSecondary mt-1 text-sm">
-                Vazão das bombas (ml/s) e mapa de ganhos do controlador
+                Vazão, mapa de ganhos e quantidade (ml) acumulada por bomba
               </p>
             </div>
             {devices.length > 0 && (
@@ -139,11 +140,31 @@ export default function CalibragemPage() {
           >
             Mapa de ganhos
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('quantidade')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              activeTab === 'quantidade'
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/40 border-b-transparent -mb-px'
+                : 'text-dark-textSecondary hover:text-emerald-400/80'
+            }`}
+          >
+            Quantidade
+          </button>
         </div>
 
         {activeTab === 'ganhos' ? (
           selectedDeviceId ? (
             <PhCalibrationSection
+              deviceId={selectedDeviceId}
+              relayOptions={relayOptions}
+            />
+          ) : (
+            <p className="text-dark-textSecondary text-sm">Selecione um dispositivo.</p>
+          )
+        ) : activeTab === 'quantidade' ? (
+          selectedDeviceId ? (
+            <PumpQuantitySection
               deviceId={selectedDeviceId}
               relayOptions={relayOptions}
             />
@@ -231,8 +252,8 @@ export default function CalibragemPage() {
                   ← Voltar para Automação
                 </NavLink>
                 {' · '}
-                Cada bomba guarda a vazão em Calibragem → Vazão. Ganhos químicos (ml/unid pH, K)
-                ficam em Mapa de ganhos.
+                Cada bomba guarda a vazão em Calibragem → Vazão. Quantidade (ml) em
+                Quantidade. Ganhos químicos (ml/unid pH, K) ficam em Mapa de ganhos.
               </p>
             </section>
           </>

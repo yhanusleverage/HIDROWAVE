@@ -25,6 +25,7 @@ export async function POST(request: Request) {
       mode: rawMode,
       rule_id,
       created_by: rawCreatedBy,
+      dosage_ml: rawDosageMl,
     } = body;
 
     if (!master_device_id) {
@@ -76,7 +77,21 @@ export async function POST(request: Request) {
     }
 
     const targetId = slave_mac_address || slave_name || null;
-    const createdBy = rawCreatedBy ?? resolved.created_by;
+    const dosageMl =
+      typeof rawDosageMl === 'number' && Number.isFinite(rawDosageMl) && rawDosageMl > 0
+        ? Math.round(rawDosageMl * 1000) / 1000
+        : null;
+    // HTTPS poll no Master: created_by "calibragem_test#5.0" carrega ml sem coluna nova
+    let createdBy = rawCreatedBy ?? resolved.created_by;
+    if (
+      dosageMl != null &&
+      typeof createdBy === 'string' &&
+      createdBy.length > 0 &&
+      !createdBy.includes('#') &&
+      createdBy !== 'calibragem_prime'
+    ) {
+      createdBy = `${createdBy}#${dosageMl}`;
+    }
 
     const command = await createRelayCommandProd({
       device_id: master_device_id,
@@ -99,6 +114,17 @@ export async function POST(request: Request) {
       );
     }
 
+    const triggeredByRaw =
+      typeof body.triggered_by === 'string' && body.triggered_by.length > 0
+        ? body.triggered_by
+        : typeof rawCreatedBy === 'string' && rawCreatedBy.length > 0
+          ? rawCreatedBy
+          : resolved.created_by;
+    const triggeredBy =
+      typeof triggeredByRaw === 'string' && triggeredByRaw.includes('#')
+        ? triggeredByRaw.split('#')[0]
+        : triggeredByRaw;
+
     await notifyDeviceRelayCommand({
       device_id: master_device_id,
       id: command.id as number,
@@ -110,8 +136,9 @@ export async function POST(request: Request) {
       target_device_id: targetId,
       command_type: body.command_type ?? 'manual',
       priority: typeof body.priority === 'number' ? body.priority : undefined,
-      triggered_by: body.triggered_by ?? createdBy,
+      triggered_by: triggeredBy,
       rule_id: rule_id ?? null,
+      dosage_ml: dosageMl,
     });
 
     return NextResponse.json({

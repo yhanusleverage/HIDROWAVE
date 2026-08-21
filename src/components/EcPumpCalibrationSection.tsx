@@ -164,6 +164,7 @@ function PumpAccordionRow({
   const [testVolumeMl, setTestVolumeMl] = useState(5);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [timingTest, setTimingTest] = useState(false);
 
   useEffect(() => {
     setFlowRate(stored ?? (globalFlowRate > 0 ? globalFlowRate : 1));
@@ -205,6 +206,50 @@ function PumpAccordionRow({
     }
   };
 
+  /** Timer puro: Tempo (s) → bomba ON. Sem vazão / sem ml. */
+  const runTimedCalibration = async () => {
+    const sec = Math.floor(Number(measuredDurationSec));
+    if (!Number.isFinite(sec) || sec < 1) {
+      toast.error('Informe um tempo válido (s)');
+      return;
+    }
+    if (!isOnline) {
+      toast.error('Core offline');
+      return;
+    }
+    if (autoBlocked) {
+      toast.error('Desative o Auto para testar');
+      return;
+    }
+    setTimingTest(true);
+    try {
+      const res = await fetch('/api/esp-now/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          master_device_id: deviceId,
+          relay_number: pump.relay,
+          action: 'on',
+          duration_seconds: sec,
+          mode: 'timed_on',
+          created_by: 'calibragem_test',
+          triggered_by: 'calibragem_test',
+          command_type: 'manual',
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(typeof err.error === 'string' ? err.error : 'Falha ao enviar teste');
+      }
+      toast.success(`Bomba ON por ${sec}s — meça o volume e preencha Volume (ml)`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro no teste por tempo');
+    } finally {
+      setTimingTest(false);
+    }
+  };
+
+  /** Verificação pós-calibração: ml alvo + vazão → duração. */
   const runTest = async () => {
     if (flowRate <= 0) return;
     const duration = calculateDoseDurationSeconds(testVolumeMl, flowRate);
@@ -223,6 +268,11 @@ function PumpAccordionRow({
           relay_number: pump.relay,
           action: 'on',
           duration_seconds: relaySeconds,
+          mode: 'timed_on',
+          created_by: 'calibragem_test',
+          triggered_by: 'calibragem_test',
+          command_type: 'manual',
+          dosage_ml: testVolumeMl,
         }),
       });
       if (!res.ok) {
@@ -314,6 +364,28 @@ function PumpAccordionRow({
               </div>
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => void runTimedCalibration()}
+            disabled={
+              timingTest ||
+              !isOnline ||
+              autoBlocked ||
+              !Number.isFinite(measuredDurationSec) ||
+              measuredDurationSec < 1
+            }
+            className={`w-full py-2.5 rounded-lg text-sm font-medium disabled:opacity-40 flex items-center justify-center gap-2 border ${
+              isPh
+                ? 'border-violet-500/50 bg-violet-500/15 text-violet-200 hover:bg-violet-500/25'
+                : 'border-cyan-500/50 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25'
+            }`}
+          >
+            <PlayIcon className="w-4 h-4" />
+            {timingTest
+              ? 'Enviando…'
+              : `Teste por tempo (${Math.max(0, Math.floor(measuredDurationSec)) || '—'}s)`}
+          </button>
 
           <div className="flex items-center justify-between gap-3 bg-dark-surface rounded-lg p-3">
             <div>

@@ -51,6 +51,8 @@ export type MqttRelayCommandMessageV1 = {
   slave_mac_address?: string;
   rule_id?: string;
   rule_name?: string;
+  /** ml a contar em pump_quantity (omitir em cebar / ON sem dose) */
+  dosage_ml?: number;
 };
 
 /** Input para notify/publish após INSERT relay_commands */
@@ -69,6 +71,7 @@ export type MqttRelayCommandNotifyInput = {
   rule_id?: string | null;
   rule_name?: string | null;
   source?: MqttRelayCommandMessageV1['source'];
+  dosage_ml?: number | null;
 };
 
 const MAX_JSON_BYTES = 480;
@@ -190,6 +193,10 @@ export function buildMqttRelayCommandMessageV1(
   }
   if (input.rule_id) msg.rule_id = input.rule_id;
   if (input.rule_name) msg.rule_name = input.rule_name;
+  const dosageMl = Number(input.dosage_ml);
+  if (Number.isFinite(dosageMl) && dosageMl > 0) {
+    msg.dosage_ml = Math.round(dosageMl * 1000) / 1000;
+  }
 
   const json = JSON.stringify(msg);
   if (json.length > MAX_JSON_BYTES) {

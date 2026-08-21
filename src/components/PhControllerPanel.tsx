@@ -1357,24 +1357,6 @@ export default function PhControllerPanel({
             >
               🔍 Debug Vista Previa
             </button>
-            <button
-              disabled={disabled}
-              onClick={async () => {
-                setAutoEnabled(false);
-                await supabase.from('ph_config_view').update({ auto_enabled: false }).eq('device_id', deviceId);
-                await supabase.from('relay_master').update({
-                  ph_operation_state: 'idle',
-                  ph_operation_remaining_sec: 0,
-                  ph_next_check_in_sec: 0,
-                }).eq('device_id', deviceId);
-                hwToast.warning('Reset emergencial pH executado', 'AUTO PH');
-              }}
-              className={`px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg transition-all ${
-                disabled ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
-              🚨 RESET EMERGENCIAL
-            </button>
           </div>
         </div>
       )}

@@ -1,14 +1,17 @@
 import type { ChartData, ChartOptions } from 'chart.js';
 import { formatSensorValue } from '@/lib/format-sensor-value';
-import { HYDRO_CHART_COLORS } from '@/lib/hydro-chart';
 import type { EcControllerMetricRow, PhControllerMetricRow } from '@/lib/controller-metrics';
 
 export const CONTROLLER_METRICS_COLORS = {
   error: { border: '#fbbf24', fill: 'rgba(251, 191, 36, 0.12)' },
-  ut: { border: '#22c55e', fill: 'rgba(34, 197, 94, 0.12)' },
-  setpoint: { border: 'rgba(52, 211, 153, 0.55)', fill: 'transparent' },
-  phError: { border: '#a855f7', fill: 'rgba(168, 85, 247, 0.12)' },
-  phUt: { border: '#3b82f6', fill: 'rgba(59, 130, 246, 0.12)' },
+  // EC medida = verde forte; u(t) = mesmo verde secundário (~55% alpha — padrão Chart.js overlay)
+  ecMeasured: { border: '#34d399', fill: 'rgba(52, 211, 153, 0.2)' },
+  ut: { border: 'rgba(52, 211, 153, 0.55)', fill: 'rgba(52, 211, 153, 0.1)' },
+  setpoint: { border: 'rgba(255, 255, 255, 0.45)', fill: 'transparent' },
+  // pH medido = violeta forte; u(t) = mesmo violeta secundário (~55% alpha)
+  phMeasured: { border: '#8b5cf6', fill: 'rgba(139, 92, 246, 0.2)' },
+  phError: { border: '#fbbf24', fill: 'rgba(251, 191, 36, 0.12)' },
+  phUt: { border: 'rgba(139, 92, 246, 0.55)', fill: 'rgba(139, 92, 246, 0.1)' },
 } as const;
 
 const CHART_TICK_COLOR = '#bae6fd';
@@ -111,7 +114,6 @@ export function summarizePhMetrics(rows: PhControllerMetricRow[]): PhMetricsSumm
 
 export function buildEcMetricsChartData(rows: EcControllerMetricRow[]): ChartData<'line'> {
   const labels = rows.map((r) => formatTimeLabel(r.created_at));
-  const ecColor = HYDRO_CHART_COLORS.ec;
 
   return {
     labels,
@@ -120,12 +122,13 @@ export function buildEcMetricsChartData(rows: EcControllerMetricRow[]): ChartDat
         label: 'EC medida',
         data: rows.map((r) => r.ec_actual),
         yAxisID: 'yEc',
-        borderColor: ecColor.border,
-        backgroundColor: ecColor.fill,
+        borderColor: CONTROLLER_METRICS_COLORS.ecMeasured.border,
+        backgroundColor: CONTROLLER_METRICS_COLORS.ecMeasured.fill,
         tension: 0.25,
         pointRadius: 2,
         pointHoverRadius: 5,
-        borderWidth: 2,
+        borderWidth: 2.5,
+        order: 0,
       },
       {
         label: 'Setpoint',
@@ -137,6 +140,7 @@ export function buildEcMetricsChartData(rows: EcControllerMetricRow[]): ChartDat
         tension: 0,
         pointRadius: 0,
         borderWidth: 1.5,
+        order: 1,
       },
       {
         label: 'Erro (µS/cm)',
@@ -148,6 +152,7 @@ export function buildEcMetricsChartData(rows: EcControllerMetricRow[]): ChartDat
         pointRadius: 2,
         pointHoverRadius: 5,
         borderWidth: 2,
+        order: 1,
       },
       {
         label: 'u(t) ml',
@@ -156,9 +161,10 @@ export function buildEcMetricsChartData(rows: EcControllerMetricRow[]): ChartDat
         borderColor: CONTROLLER_METRICS_COLORS.ut.border,
         backgroundColor: CONTROLLER_METRICS_COLORS.ut.fill,
         tension: 0.2,
-        pointRadius: 2,
-        pointHoverRadius: 5,
-        borderWidth: 2,
+        pointRadius: 1,
+        pointHoverRadius: 3,
+        borderWidth: 1.5,
+        order: 2,
       },
     ],
   };
@@ -166,7 +172,6 @@ export function buildEcMetricsChartData(rows: EcControllerMetricRow[]): ChartDat
 
 export function buildPhMetricsChartData(rows: PhControllerMetricRow[]): ChartData<'line'> {
   const labels = rows.map((r) => formatTimeLabel(r.created_at));
-  const phColor = HYDRO_CHART_COLORS.ph;
 
   return {
     labels,
@@ -175,23 +180,25 @@ export function buildPhMetricsChartData(rows: PhControllerMetricRow[]): ChartDat
         label: 'pH medido',
         data: rows.map((r) => r.ph_before),
         yAxisID: 'yPh',
-        borderColor: phColor.border,
-        backgroundColor: phColor.fill,
+        borderColor: CONTROLLER_METRICS_COLORS.phMeasured.border,
+        backgroundColor: CONTROLLER_METRICS_COLORS.phMeasured.fill,
         tension: 0.25,
         pointRadius: 2,
         pointHoverRadius: 5,
-        borderWidth: 2,
+        borderWidth: 2.5,
+        order: 0,
       },
       {
         label: 'Setpoint',
         data: rows.map((r) => r.ph_setpoint),
         yAxisID: 'yPh',
-        borderColor: 'rgba(167, 139, 250, 0.5)',
-        backgroundColor: 'transparent',
+        borderColor: CONTROLLER_METRICS_COLORS.setpoint.border,
+        backgroundColor: CONTROLLER_METRICS_COLORS.setpoint.fill,
         borderDash: [6, 4],
         tension: 0,
         pointRadius: 0,
         borderWidth: 1.5,
+        order: 1,
       },
       {
         label: 'error_h',
@@ -203,6 +210,7 @@ export function buildPhMetricsChartData(rows: PhControllerMetricRow[]): ChartDat
         pointRadius: 2,
         pointHoverRadius: 5,
         borderWidth: 2,
+        order: 1,
       },
       {
         label: 'u(t) ml',
@@ -211,9 +219,10 @@ export function buildPhMetricsChartData(rows: PhControllerMetricRow[]): ChartDat
         borderColor: CONTROLLER_METRICS_COLORS.phUt.border,
         backgroundColor: CONTROLLER_METRICS_COLORS.phUt.fill,
         tension: 0.2,
-        pointRadius: 2,
-        pointHoverRadius: 5,
-        borderWidth: 2,
+        pointRadius: 1,
+        pointHoverRadius: 3,
+        borderWidth: 1.5,
+        order: 2,
       },
     ],
   };
