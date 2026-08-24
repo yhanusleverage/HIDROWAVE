@@ -19,6 +19,8 @@ import { formatSensorValue } from '@/lib/format-sensor-value';
 import { ESPNowSlave } from '@/lib/esp-now-slaves';
 import { supabase } from '@/lib/supabase';
 import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
+import { subscribeAutoEnabled } from '@/lib/realtime/auto-controller';
+import type { RealtimeChannelStatus } from '@/lib/realtime/channel';
 import { RELAY_REST_FALLBACK_MS } from '@/lib/realtime/relay-apply';
 import { useLastDosage } from '@/hooks/useLastDosage';
 import { useEcOperationState } from '@/hooks/useEcOperationState';
@@ -79,6 +81,10 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   const [tempoRecirculacaoHours, setTempoRecirculacaoHours] = useState<number>(0);
   const [tempoRecirculacaoMinutes, setTempoRecirculacaoMinutes] = useState<number>(2);
   const [autoEnabled, setAutoEnabled] = useState<boolean>(false);
+  const [autoTogglePending, setAutoTogglePending] = useState(false);
+  const [autoRtStatus, setAutoRtStatus] = useState<RealtimeChannelStatus | 'connecting'>(
+    'connecting'
+  );
   const [aggressiveness, setAggressiveness] = useState<number>(0.5);
   const [consumo24h, setConsumo24h] = useState<boolean>(false);
   /** HMI: ml por pulso / Gap pulsos (s) */
@@ -946,6 +952,97 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId, loadDoserRelayStates]);
+
+  useEffect(() => {
+    if (!deviceId || deviceId === 'default_device') return;
+    setAutoRtStatus('connecting');
+    return subscribeAutoEnabled(
+      deviceId,
+      'ec_config_view',
+      (enabled) => {
+        if (justSavedRef.current || autoTogglePending) return;
+        setAutoEnabled(enabled);
+      },
+      (status) => setAutoRtStatus(status)
+    );
+  }, [deviceId, autoTogglePending]);
+
+  const toggleAutoEc = async () => {
+    const newValue = !autoEnabled;
+    const previous = autoEnabled;
+
+    if (newValue && !canActivateAutoEc) {
+      toast.error(
+        'Configure pelo menos um nutriente com ml/L > 0 (total_ml > 0) antes de ativar o Auto EC'
+      );
+      return;
+    }
+
+    setAutoEnabled(newValue);
+    setAutoTogglePending(true);
+    justSavedRef.current = true;
+    if (savingTimeoutRef.current) clearTimeout(savingTimeoutRef.current);
+
+    try {
+      if (newValue) {
+        const saved = await saveECControllerConfig(true, true);
+        if (!saved) {
+          setAutoEnabled(previous);
+          toast.error('Salve os parâmetros antes de ativar Auto EC');
+          return;
+        }
+        const { error: rpcError } = await supabase.rpc('activate_auto_ec', {
+          p_device_id: deviceId,
+        });
+        if (rpcError) {
+          setAutoEnabled(previous);
+          toast.error(`Erro ao ativar via RPC: ${rpcError.message}`);
+          return;
+        }
+      }
+
+      const { error } = await supabase
+        .from('ec_config_view')
+        .update({
+          auto_enabled: newValue,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('device_id', deviceId);
+
+      if (error) {
+        setAutoEnabled(previous);
+        toast.error(`Erro: ${error.message}`);
+        return;
+      }
+
+      if (!newValue) {
+        const { error: idleError } = await supabase
+          .from('relay_master')
+          .update({
+            ec_operation_state: 'idle',
+            ec_operation_remaining_sec: 0,
+            ec_next_check_in_sec: 0,
+          })
+          .eq('device_id', deviceId);
+        if (idleError) {
+          console.warn('⚠️ [EC Controller] Falha ao limpar ec_operation:', idleError.message);
+        }
+      }
+
+      savingTimeoutRef.current = setTimeout(() => {
+        justSavedRef.current = false;
+      }, 2000);
+
+      if (newValue) hwToast.success('Auto EC ativado', 'AUTO EC');
+      else hwToast.info('Auto EC desativado', 'AUTO EC');
+    } catch (err) {
+      setAutoEnabled(previous);
+      toast.error(`Erro: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+    } finally {
+      setAutoTogglePending(false);
+    }
+  };
+
   if (!deviceId || deviceId === 'default_device') {
     return (
       <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6 mb-6 text-dark-textSecondary text-sm">
@@ -1753,94 +1850,22 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                               💾 Salvar Parâmetros
                             </button>
                             <button
-                              onClick={async () => {
-                                const newValue = !autoEnabled;
-                                console.log('🔄 [EC Controller] Estado atual:', autoEnabled, '→ Novo valor:', newValue);
-                                
-                                try {
-                                  if (newValue) {
-                                    if (!canActivateAutoEc) {
-                                      toast.error(
-                                        'Configure pelo menos um nutriente com ml/L > 0 (total_ml > 0) antes de ativar o Auto EC'
-                                      );
-                                      return;
-                                    }
-                                    const saved = await saveECControllerConfig(true, true);
-                                    if (!saved) {
-                                      toast.error('Salve os parâmetros antes de ativar Auto EC');
-                                      return;
-                                    }
-                                    const { error: rpcError } = await supabase.rpc('activate_auto_ec', {
-                                      p_device_id: deviceId,
-                                    });
-                                    if (rpcError) {
-                                      console.error('❌ [EC Controller] RPC activate_auto_ec:', rpcError);
-                                      toast.error(`Erro ao ativar via RPC: ${rpcError.message}`);
-                                      return;
-                                    }
-                                  }
-          
-                                  const { error } = await supabase
-                                    .from('ec_config_view')
-                                    .update({ 
-                                      auto_enabled: newValue,
-                                      updated_at: new Date().toISOString()
-                                    })
-                                    .eq('device_id', deviceId);
-                                  
-                                  if (error) {
-                                    console.error('❌ [EC Controller] Erro ao alterar Auto EC:', error);
-                                    toast.error(`Erro: ${error.message}`);
-                                    return;
-                                  }
-          
-                                  if (!newValue) {
-                                    const { error: idleError } = await supabase
-                                      .from('relay_master')
-                                      .update({
-                                        ec_operation_state: 'idle',
-                                        ec_operation_remaining_sec: 0,
-                                        ec_next_check_in_sec: 0,
-                                      })
-                                      .eq('device_id', deviceId);
-          
-                                    if (idleError) {
-                                      console.warn(
-                                        '⚠️ [EC Controller] Falha ao limpar ec_operation:',
-                                        idleError.message
-                                      );
-                                    }
-                                  }
-                                  
-                                  setAutoEnabled(newValue);
-                                  
-                                  justSavedRef.current = true;
-                                  if (savingTimeoutRef.current) {
-                                    clearTimeout(savingTimeoutRef.current);
-                                  }
-                                  savingTimeoutRef.current = setTimeout(() => {
-                                    justSavedRef.current = false;
-                                  }, 2000);
-                                  
-                                  if (newValue) {
-                                    hwToast.success('Auto EC ativado', 'AUTO EC');
-                                  } else {
-                                    hwToast.info('Auto EC desativado', 'AUTO EC');
-                                  }
-                                  console.log(`✅ [EC Controller] Auto EC ${newValue ? 'ativado' : 'desativado'} no Supabase`);
-                                  
-                                } catch (err) {
-                                  console.error('❌ [EC Controller] Erro:', err);
-                                  toast.error(`Erro: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
-                                }
-                              }}
-                              disabled={ecControllerLocked || (!autoEnabled && !canActivateAutoEc)}
+                              onClick={() => void toggleAutoEc()}
+                              disabled={
+                                ecControllerLocked ||
+                                autoTogglePending ||
+                                (!autoEnabled && !canActivateAutoEc)
+                              }
                               className={`px-4 py-2 rounded-lg transition-all shadow-lg ${
                                 autoEnabled
                                   ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'
                                   : 'bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white'
                               } ${
-                                ecControllerLocked || (!autoEnabled && !canActivateAutoEc) ? 'opacity-50 cursor-not-allowed' : ''
+                                ecControllerLocked ||
+                                autoTogglePending ||
+                                (!autoEnabled && !canActivateAutoEc)
+                                  ? 'opacity-50 cursor-not-allowed'
+                                  : ''
                               }`}
                               title={
                                 ecControllerLocked
@@ -1852,7 +1877,14 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                       : 'Ativar Auto EC'
                               }
                             >
-                              {autoEnabled ? '⏹️ Desativar Auto EC' : '🤖 Ativar Auto EC'}
+                              {autoTogglePending
+                                ? '…'
+                                : autoEnabled
+                                  ? '⏹️ Desativar Auto EC'
+                                  : '🤖 Ativar Auto EC'}
+                              {autoRtStatus === 'SUBSCRIBED' && !autoTogglePending ? (
+                                <span className="ml-1.5 text-[10px] opacity-80">ao vivo</span>
+                              ) : null}
                             </button>
                             <button
                               onClick={() => {

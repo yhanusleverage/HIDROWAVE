@@ -45,7 +45,7 @@ check('MQTT_HOST definido', Boolean(host));
 check(
   'MQTT_HOST não é 127.0.0.1 (Railway/dev remoto)',
   Boolean(host && host !== '127.0.0.1'),
-  'use IP Lightsail ex. 15.222.65.160'
+  'use IP Lightsail ex. 15.175.109.90'
 );
 check('MQTT_PUBLISH_USER ou MQTT_USER', Boolean(user));
 check('MQTT_PUBLISH_PASS ou MQTT_PASS', Boolean(pass));

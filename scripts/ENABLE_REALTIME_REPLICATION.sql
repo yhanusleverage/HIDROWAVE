@@ -18,7 +18,9 @@ DECLARE
     'ph_dosages',
     'ec_controller_metrics',
     'ph_controller_metrics',
-    'pump_quantity'
+    'pump_quantity',
+    'ec_config_view',
+    'ph_config_view'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP

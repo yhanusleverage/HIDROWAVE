@@ -38,6 +38,8 @@ import {
 } from '@/lib/ph-control-display';
 import { subscribePhDosageInserts } from '@/lib/realtime/ph-dosages';
 import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
+import { subscribeAutoEnabled } from '@/lib/realtime/auto-controller';
+import type { RealtimeChannelStatus } from '@/lib/realtime/channel';
 import { DoserRelaySelect } from '@/components/DoserRelaySelect';
 import {
   buildRegistryFromConfigs,
@@ -159,6 +161,12 @@ export default function PhControllerPanel({
   const [intervaloAutoPh, setIntervaloAutoPh] = useState(300);
   const [tempoRecirculacao, setTempoRecirculacao] = useState(60);
   const [autoEnabled, setAutoEnabled] = useState(false);
+  const [autoTogglePending, setAutoTogglePending] = useState(false);
+  const [autoRtStatus, setAutoRtStatus] = useState<RealtimeChannelStatus | 'connecting'>(
+    'connecting'
+  );
+  const justToggledRef = useRef(false);
+  const justToggledTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lastDosageMl, setLastDosageMl] = useState<number | null>(null);
   const [lastDosageAt, setLastDosageAt] = useState<string | null>(null);
   const [savedVolume, setSavedVolume] = useState(100);
@@ -337,6 +345,26 @@ export default function PhControllerPanel({
     return subscribeRelayStateUpdates(deviceId.trim(), applyDoserStates, () => {});
   }, [deviceId]);
 
+  useEffect(() => {
+    if (!deviceId?.trim()) return;
+    setAutoRtStatus('connecting');
+    return subscribeAutoEnabled(
+      deviceId.trim(),
+      'ph_config_view',
+      (enabled) => {
+        if (justToggledRef.current || autoTogglePending) return;
+        setAutoEnabled(enabled);
+      },
+      (status) => setAutoRtStatus(status)
+    );
+  }, [deviceId, autoTogglePending]);
+
+  useEffect(() => {
+    return () => {
+      if (justToggledTimeoutRef.current) clearTimeout(justToggledTimeoutRef.current);
+    };
+  }, []);
+
   const fetchLastDosage = useCallback(async () => {
     if (!deviceId) return;
     try {
@@ -481,35 +509,57 @@ export default function PhControllerPanel({
 
   const toggleAutoPh = async () => {
     if (!deviceId) return;
-    if (!autoEnabled) {
-      const saved = await saveConfig(true);
-      if (!saved) return;
-      const { error } = await supabase.rpc('activate_auto_ph', { p_device_id: deviceId });
-      if (error) {
-        hwToast.error(`Erro ao ativar Auto pH: ${error.message}`, 'AUTO PH');
-        return;
+    const previous = autoEnabled;
+    const newValue = !autoEnabled;
+
+    setAutoEnabled(newValue);
+    setAutoTogglePending(true);
+    justToggledRef.current = true;
+    if (justToggledTimeoutRef.current) clearTimeout(justToggledTimeoutRef.current);
+
+    try {
+      if (newValue) {
+        const saved = await saveConfig(true);
+        if (!saved) {
+          setAutoEnabled(previous);
+          return;
+        }
+        const { error } = await supabase.rpc('activate_auto_ph', { p_device_id: deviceId });
+        if (error) {
+          setAutoEnabled(previous);
+          hwToast.error(`Erro ao ativar Auto pH: ${error.message}`, 'AUTO PH');
+          return;
+        }
+        hwToast.success('Auto pH ativado', 'AUTO PH');
+      } else {
+        const { error } = await supabase
+          .from('ph_config_view')
+          .update({ auto_enabled: false, updated_at: new Date().toISOString() })
+          .eq('device_id', deviceId);
+        if (error) {
+          setAutoEnabled(previous);
+          hwToast.error(`Erro ao desativar: ${error.message}`, 'AUTO PH');
+          return;
+        }
+        await supabase
+          .from('relay_master')
+          .update({
+            ph_operation_state: 'idle',
+            ph_operation_remaining_sec: 0,
+            ph_next_check_in_sec: 0,
+          })
+          .eq('device_id', deviceId);
+        hwToast.info('Auto pH desativado', 'AUTO PH');
       }
-      setAutoEnabled(true);
-      hwToast.success('Auto pH ativado', 'AUTO PH');
-    } else {
-      const { error } = await supabase
-        .from('ph_config_view')
-        .update({ auto_enabled: false, updated_at: new Date().toISOString() })
-        .eq('device_id', deviceId);
-      if (error) {
-        hwToast.error(`Erro ao desativar: ${error.message}`, 'AUTO PH');
-        return;
-      }
-      await supabase
-        .from('relay_master')
-        .update({
-          ph_operation_state: 'idle',
-          ph_operation_remaining_sec: 0,
-          ph_next_check_in_sec: 0,
-        })
-        .eq('device_id', deviceId);
-      setAutoEnabled(false);
-      hwToast.info('Auto pH desativado', 'AUTO PH');
+
+      justToggledTimeoutRef.current = setTimeout(() => {
+        justToggledRef.current = false;
+      }, 2000);
+    } catch (err) {
+      setAutoEnabled(previous);
+      hwToast.error(err instanceof Error ? err.message : 'Erro ao alterar Auto pH', 'AUTO PH');
+    } finally {
+      setAutoTogglePending(false);
     }
   };
 
@@ -1337,15 +1387,22 @@ export default function PhControllerPanel({
               💾 Salvar Parâmetros
             </button>
             <button
-              disabled={disabled}
-              onClick={toggleAutoPh}
+              disabled={disabled || autoTogglePending}
+              onClick={() => void toggleAutoPh()}
               className={`px-4 py-2 rounded-lg text-white transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${
                 autoEnabled
                   ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600'
                   : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 hover:shadow-green-500/50'
               }`}
             >
-              {autoEnabled ? '⏹️ Desativar Auto pH' : '🤖 Ativar Auto pH'}
+              {autoTogglePending
+                ? '…'
+                : autoEnabled
+                  ? '⏹️ Desativar Auto pH'
+                  : '🤖 Ativar Auto pH'}
+              {autoRtStatus === 'SUBSCRIBED' && !autoTogglePending ? (
+                <span className="ml-1.5 text-[10px] opacity-80">ao vivo</span>
+              ) : null}
             </button>
             <button
               disabled={disabled}
