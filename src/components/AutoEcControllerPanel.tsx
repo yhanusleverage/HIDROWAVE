@@ -35,7 +35,7 @@ import {
 import { useRelayAllocation } from '@/hooks/useRelayAllocation';
 import { DoserRelaySelect } from '@/components/DoserRelaySelect';
 import { DoserRelayMapPanel } from '@/components/DoserRelayMapPanel';
-import { getSelectableRelays, serializeRegistryForDebug, validateEcNutrientsAssignment } from '@/lib/relay-allocation';
+import { getSelectableRelays, getRelayBusyClaim, serializeRegistryForDebug, validateEcNutrientsAssignment } from '@/lib/relay-allocation';
 import {
   composeRelayControlDisabled,
   getManualPendingRelaySet,
@@ -47,6 +47,7 @@ import { parseConfigApiError, sanitizeEcNumericFields } from '@/lib/controller-c
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { MetricRow } from '@/components/ui/MetricRow';
 import ControllerMetricsPanel from '@/components/ControllerMetricsPanel';
+import { EcGrowerSummaryCard } from '@/components/GrowerSummaryCards';
 import { showLockUnlockToast } from '@/lib/automacao/admin-lock';
 
 const NutrientDosageDetail = dynamic(
@@ -62,6 +63,11 @@ const EcMalhaFechadaConfig = dynamic(
 /** Mínimo ml/L por nutriente na tabela nutricional (Auto EC). Para excluir um nutriente, remova a linha. */
 const MIN_NUTRIENT_ML_PER_LITER = 0.1;
 
+function nutrientFlowRateMlPerSec(n: { flowRate?: number }): number {
+  const q = Number(n.flowRate);
+  return Number.isFinite(q) && q > 0 ? q : 0;
+}
+
 export interface AutoEcControllerPanelProps {
   deviceId: string;
   espnowSlaves: ESPNowSlave[];
@@ -71,7 +77,6 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   const [ecControllerLocked, setEcControllerLocked] = useState<boolean>(false);
   const [expandedEcInfo, setExpandedEcInfo] = useState(false);
   const [showECConfigPreview, setShowECConfigPreview] = useState<boolean>(false);
-  const [pumpFlowRate, setPumpFlowRate] = useState<number>(1.0);
   const [totalVolume, setTotalVolume] = useState<number>(10);
   const [baseDose, setBaseDose] = useState<number>(1525.0);
   const [ecSetpoint, setEcSetpoint] = useState<number>(1500.0);
@@ -132,6 +137,8 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     flowRate?: number;
   }>>([]);
   const [isLoadingNutrients, setIsLoadingNutrients] = useState<Record<number, boolean>>({});
+  const [doseEndsAt, setDoseEndsAt] = useState<Record<number, number>>({});
+  const [, setDoseClock] = useState(0);
   const [isNutrientModalOpen, setIsNutrientModalOpen] = useState<boolean>(false);
   const [editingNutrientIndex, setEditingNutrientIndex] = useState<number | null>(null);
   const [modalRelayNumber, setModalRelayNumber] = useState(0);
@@ -242,6 +249,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   const {
     totalMl: lastDosageMl,
     sequenceId: lastDosageSequenceId,
+    completedAt: lastDosageCompletedAt,
   } = useLastDosage(deviceId, ecDeviceActive);
 
   const {
@@ -409,8 +417,6 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
         setNutrientsState([]);
       }
       
-      // Carregar pumpFlowRate e totalVolume
-      if (config.flow_rate !== undefined && !isNaN(config.flow_rate)) setPumpFlowRate(config.flow_rate);
       if (config.volume !== undefined && !isNaN(config.volume)) setTotalVolume(config.volume);
       
       // ✅ Carregar parâmetros do EC Controller
@@ -483,21 +489,20 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   // Similar ao Hydro-Controller-main: calcula como u(t) será distribuído entre nutrientes
   // Fórmulas:
   // - k = baseDose / totalMlPerLiter
-  // - u(t) = (V / (k × q)) × e
+  // - u(t) = (V / k) × e
   // - proporção = mlPerLiter / totalMlPerLiter
   // - utNutriente = totalUt × proporção
-  // - tempoDosagem = utNutriente / flowRate
+  // - tempoDosagem = utNutriente / flowRate_i (Calibragem)
   const calculateDistribution = useCallback(() => {
     const activeNutrients = nutrientsState.filter(
       (n) => n.mlPerLiter >= MIN_NUTRIENT_ML_PER_LITER
     );
     const totalMlPerLiter = activeNutrients.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
     
-    if (totalMlPerLiter <= 0 || baseDose <= 0 || pumpFlowRate <= 0 || totalVolume <= 0) {
+    if (totalMlPerLiter <= 0 || baseDose <= 0 || totalVolume <= 0) {
       console.warn('⚠️ [EC Controller] Dados insuficientes para calcular distribution:', {
         totalMlPerLiter,
         baseDose,
-        pumpFlowRate,
         totalVolume
       });
       return null;
@@ -506,9 +511,9 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     // Calcular k = baseDose / totalMlPerLiter
     const k = baseDose / totalMlPerLiter;
     
-    // u(t) = (V / (k × q)) × e — e = SP − EC (só déficit, alinhado ao firmware)
+    // u(t) = (V / k) × e × A — e = SP − EC (só déficit, alinhado ao firmware)
     const error = Math.max(0, ecError);
-    const totalUt = (totalVolume / (k * pumpFlowRate)) * error;
+    const totalUt = (totalVolume / k) * error * aggressiveness;
     
     // Se u(t) é muito pequeno ou zero, retornar null
     if (totalUt <= 0.001) {
@@ -539,10 +544,8 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
         // Calcular u(t) para este nutriente
         const utNutriente = totalUt * proporcao;
         
-        // Calcular tempo de dosagem (segundos) — vazão desta bomba, senão global
-        const q =
-          nut.flowRate && nut.flowRate > 0 ? nut.flowRate : pumpFlowRate;
-        const tempoDosagem = utNutriente / q;
+        const q = nutrientFlowRateMlPerSec(nut);
+        const tempoDosagem = q > 0 ? utNutriente / q : 0;
         
         // Agregar à distribuição (formato compatível com Hydro-Controller)
         // Hydro-Controller executeWebDosage() espera APENAS: name, relay, dosage, duration
@@ -566,7 +569,12 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       intervalo: intervaloAutoEC || 5,
       distribution: distribution
     };
-  }, [nutrientsState, baseDose, pumpFlowRate, totalVolume, ecError, intervaloAutoEC]);
+  }, [nutrientsState, baseDose, totalVolume, ecError, intervaloAutoEC, aggressiveness]);
+
+  const estimatedDoseMl = useMemo(
+    () => calculateDistribution()?.totalUt ?? null,
+    [calculateDistribution]
+  );
   
   // ✅ NOVA ARQUITETURA: Salvar configuração do EC Controller em ec_config_view
   // Similar ao padrão relay_slaves/relay_commands_slave
@@ -616,13 +624,22 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
         /* merge best-effort */
       }
       const nutrientsMerged = mergeNutrientFlowRates(existingNutrients, nutrientsJson);
+      const missingFlow = nutrientsMerged.filter(
+        (n) =>
+          (Number(n.mlPerLiter) || 0) >= MIN_NUTRIENT_ML_PER_LITER &&
+          !(Number(n.flowRate) > 0)
+      );
+      if (missingFlow.length > 0) {
+        toast.error(
+          `Calibre a vazão em Calibragem: ${missingFlow.map((n) => n.name || 'bomba').join(', ')}`
+        );
+      }
       
       const totalMl = activeNutrients.reduce((sum, nut) => sum + nut.mlPerLiter, 0);
       
       interface ECConfigPayload {
         device_id: string;
         base_dose: number;
-        flow_rate: number;
         volume: number;
         total_ml: number;
         kp: number;
@@ -641,7 +658,6 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       const payload: ECConfigPayload = {
         device_id: deviceId,
         base_dose: baseDose,
-        flow_rate: pumpFlowRate,
         volume: totalVolume,
         total_ml: totalMl,
         kp: 1.0, // ✅ Ganho proporcional (default: 1.0)
@@ -753,7 +769,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       toast.error(`Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`);
       return false;
     }
-  }, [deviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, availableRelays, relayAllocation]);
+  }, [deviceId, nutrientsState, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, availableRelays, relayAllocation]);
   
   // ✅ Cleanup: Limpiar timeout al desmontar componente
   useEffect(() => {
@@ -784,7 +800,6 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     interface ECConfigJSON {
       device_id: string;
       base_dose: number;
-      flow_rate: number;
       volume: number;
       total_ml: number;
       kp: number;
@@ -802,7 +817,6 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     const ecConfigJson: ECConfigJSON = {
       device_id: deviceId,
       base_dose: baseDose,
-      flow_rate: pumpFlowRate,
       volume: totalVolume,
       total_ml: totalMl,
       kp: 1.0, // ✅ Ganho proporcional (default: 1.0)
@@ -839,13 +853,12 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     // Informações calculadas adicionais para debug
     ecConfigJson._debug = {
       total_volume_liters: totalVolume,
-      pump_flow_rate_ml_per_sec: pumpFlowRate,
       base_dose_us_per_cm: baseDose,
       total_ml_per_liter: totalMl,
       nutrients_count: nutrientsJson.length,
       k_factor: kFactor > 0 ? kFactor.toFixed(3) : '—',
       equation: kFactor > 0
-        ? `u(t) = (${totalVolume} / ${kFactor.toFixed(3)} × ${pumpFlowRate}) × e`
+        ? `u(t) = (${totalVolume} / ${kFactor.toFixed(3)}) × e`
         : 'Configure nutrientes com ml/L > 0 para calcular k',
       tolerance_us_cm: ecTolerance,
       relay_allocation: serializeRegistryForDebug(
@@ -864,7 +877,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     };
     
     return ecConfigJson;
-  }, [deviceId, nutrientsState, pumpFlowRate, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, availableRelays, relayAllocation]);
+  }, [deviceId, nutrientsState, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, availableRelays, relayAllocation]);
   
   // ✅ NOVO: Salvar mapeamento nutriente → relé
   const handleRelayChange = useCallback(async (nutrientIndex: number, newRelayNumber: number) => {
@@ -908,6 +921,34 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   }, [nutrientsState, totalMlPerLiter]);
 
   useEffect(() => {
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      setDoseClock((t) => t + 1);
+      setDoseEndsAt((prev) => {
+        const keys = Object.keys(prev);
+        if (keys.length === 0) return prev;
+        const next = { ...prev };
+        let changed = false;
+        keys.forEach((k) => {
+          const relay = Number(k);
+          if (next[relay] <= now) {
+            delete next[relay];
+            changed = true;
+            setIsLoadingNutrients((loading) => {
+              if (!loading[relay]) return loading;
+              const copy = { ...loading };
+              delete copy[relay];
+              return copy;
+            });
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
     if (deviceId && deviceId !== 'default_device') {
       loadLocalRelayNames();
       loadECControllerConfig();
@@ -918,9 +959,17 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
 
   useEffect(() => {
     const onFlowRateUpdated = (e: Event) => {
-      const detail = (e as CustomEvent<{ deviceId: string; flowRate: number }>).detail;
-      if (detail?.deviceId === deviceId && detail.flowRate > 0) {
-        setPumpFlowRate(detail.flowRate);
+      const detail = (
+        e as CustomEvent<{ deviceId: string; flowRate: number; relay?: number }>
+      ).detail;
+      if (detail?.deviceId !== deviceId || !(detail.flowRate > 0)) return;
+      const relay = detail.relay;
+      if (typeof relay === 'number') {
+        setNutrientsState((prev) =>
+          prev.map((n) =>
+            n.relayNumber === relay ? { ...n, flowRate: detail.flowRate } : n
+          )
+        );
       }
     };
     window.addEventListener('flowRateUpdated', onFlowRateUpdated);
@@ -1156,10 +1205,12 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                           <div className="bg-dark-surface/60 border border-aqua-500/25 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <div>
-                              <p className="text-sm font-medium text-dark-textSecondary">Vazão calibrada (bomba peristáltica)</p>
-                              <p className="text-xl font-semibold text-aqua-400 mt-1">{formatFlowRate(pumpFlowRate)}</p>
+                              <p className="text-sm font-medium text-dark-textSecondary">
+                                Vazão por bomba
+                              </p>
                               <p className="text-xs text-dark-textSecondary mt-1">
-                                Usada para calcular tempo de dosagem na tabela abaixo
+                                Cada nutriente usa <span className="font-mono text-aqua-400">flowRate</span> da
+                                Calibragem. Sem calibrar, essa bomba não dosa.
                               </p>
                             </div>
                             <NavLink
@@ -1205,6 +1256,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                 <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Relé</th>
                                 <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">ml por Litro</th>
                                 <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Quantidade (ml)</th>
+                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Vazão (ml/s)</th>
                                 <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Tempo (seg)</th>
                                 <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Ação</th>
                               </tr>
@@ -1216,7 +1268,9 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                 };
           
                                 const calculateTime = (mlPerLiter: number): number => {
-                                  return calculateQuantity(mlPerLiter) / pumpFlowRate;
+                                  const q = nutrientFlowRateMlPerSec(nutrient);
+                                  if (q <= 0) return 0;
+                                  return calculateQuantity(mlPerLiter) / q;
                                 };
           
                                 const relayNamingLock = getEcRelayNamingLock(nutrient.relayNumber);
@@ -1225,11 +1279,24 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                   ecControllerLocked,
                                   relayNamingLock
                                 );
+                                const ownDose =
+                                  Boolean(isLoadingNutrients[nutrient.relayNumber]) ||
+                                  (doseEndsAt[nutrient.relayNumber] || 0) > Date.now();
+                                const busyClaim = ownDose
+                                  ? undefined
+                                  : getRelayBusyClaim(
+                                      relayAllocation.registry,
+                                      nutrient.relayNumber
+                                    );
+                                const hardwareOn =
+                                  !ownDose && doserRelayStates[nutrient.relayNumber] === true;
                                 const manualDoseLock = resolveEcManualDoseButtonLock({
                                   autoEnabled,
                                   relayNumber: nutrient.relayNumber,
                                   manualPendingRelays,
                                   ecManualDosingRelay: Boolean(isLoadingNutrients[nutrient.relayNumber]),
+                                  relayHardwareOn: hardwareOn,
+                                  busyLabel: busyClaim?.label ?? null,
                                 });
                                 const manualDoseControl = composeRelayControlDisabled(
                                   ecControllerLocked,
@@ -1244,11 +1311,22 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                 };
           
                                     const handleDoseNutrient = async (nut: { name: string; relayNumber: number; mlPerLiter: number }, idx: number) => {
+                                  const ownDose =
+                                    Boolean(isLoadingNutrients[nut.relayNumber]) ||
+                                    (doseEndsAt[nut.relayNumber] || 0) > Date.now();
                                   const doseLock = resolveEcManualDoseButtonLock({
                                     autoEnabled,
                                     relayNumber: nut.relayNumber,
                                     manualPendingRelays,
                                     ecManualDosingRelay: Boolean(isLoadingNutrients[nut.relayNumber]),
+                                    relayHardwareOn:
+                                      !ownDose && doserRelayStates[nut.relayNumber] === true,
+                                    busyLabel: ownDose
+                                      ? null
+                                      : getRelayBusyClaim(
+                                          relayAllocation.registry,
+                                          nut.relayNumber
+                                        )?.label ?? null,
                                   });
                                   if (doseLock.locked) {
                                     toast.error(doseLock.tooltip);
@@ -1259,7 +1337,9 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                   if (nut.mlPerLiter > 0) {
                                     timeNeeded = calculateTime(nut.mlPerLiter);
                                     if (timeNeeded <= 0) {
-                                      toast.error('O tempo de dosagem deve ser maior que zero');
+                                      toast.error(
+                                        'Calibre a vazão desta bomba em Calibragem (flowRate)'
+                                      );
                                       return;
                                     }
                                   } else {
@@ -1267,6 +1347,10 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                   }
           
                                   setIsLoadingNutrients({ ...isLoadingNutrients, [nut.relayNumber]: true });
+                                  setDoseEndsAt((prev) => ({
+                                    ...prev,
+                                    [nut.relayNumber]: Date.now() + Math.ceil(timeNeeded) * 1000,
+                                  }));
                                   
                                   try {
                                     const doseMl =
@@ -1298,14 +1382,30 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                       void relayAllocation.refresh();
                                     } else {
                                       const error = await response.json();
+                                      setDoseEndsAt((prev) => {
+                                        const next = { ...prev };
+                                        delete next[nut.relayNumber];
+                                        return next;
+                                      });
+                                      setIsLoadingNutrients((prev) => {
+                                        const next = { ...prev };
+                                        delete next[nut.relayNumber];
+                                        return next;
+                                      });
                                       toast.error(`Erro ao acionar ${nut.name}: ${error.error || 'Erro desconhecido'}`);
                                     }
                                   } catch (error) {
+                                    setDoseEndsAt((prev) => {
+                                      const next = { ...prev };
+                                      delete next[nut.relayNumber];
+                                      return next;
+                                    });
+                                    setIsLoadingNutrients((prev) => {
+                                      const next = { ...prev };
+                                      delete next[nut.relayNumber];
+                                      return next;
+                                    });
                                     toast.error(`Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`);
-                                  } finally {
-                                    setTimeout(() => {
-                                      setIsLoadingNutrients({ ...isLoadingNutrients, [nut.relayNumber]: false });
-                                    }, 1000);
                                   }
                                 };
           
@@ -1345,18 +1445,40 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                       />
                                     </td>
                                     <td className="py-2 px-4 text-dark-text">{calculateQuantity(nutrient.mlPerLiter).toFixed(1)}</td>
+                                    <td className="py-2 px-4 text-dark-text">
+                                      {nutrientFlowRateMlPerSec(nutrient) > 0
+                                        ? formatFlowRate(nutrientFlowRateMlPerSec(nutrient))
+                                        : '—'}
+                                    </td>
                                     <td className="py-2 px-4 text-dark-text">{calculateTime(nutrient.mlPerLiter).toFixed(1)}</td>
                                     <td className="py-2 px-4">
                                           <div className="flex items-center space-x-2">
                                       <button
                                         onClick={() => handleDoseNutrient(nutrient, index)}
                                         disabled={manualDoseControl.disabled}
-                                        className={`px-3 py-1.5 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded transition-all shadow-lg hover:shadow-aqua-500/50 ${
+                                        className={`px-3 py-1.5 rounded transition-all shadow-lg ${
+                                          manualDoseLock.reason === 'relay_busy' ||
+                                          manualDoseLock.reason === 'manual_pending'
+                                            ? 'bg-amber-600/80 text-white cursor-not-allowed'
+                                            : 'bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white hover:shadow-aqua-500/50'
+                                        } ${
                                           manualDoseControl.disabled ? 'opacity-50 cursor-not-allowed' : ''
                                         }`}
                                         title={manualDoseControl.title || 'Dosificar'}
                                       >
-                                        {isLoadingNutrients[nutrient.relayNumber] ? 'Dosificando...' : 'Dosificar'}
+                                        {(() => {
+                                          const left = Math.max(
+                                            0,
+                                            Math.ceil(
+                                              ((doseEndsAt[nutrient.relayNumber] || 0) - Date.now()) /
+                                                1000
+                                            )
+                                          );
+                                          if (left > 0) return `ON ${left}s`;
+                                          if (isLoadingNutrients[nutrient.relayNumber]) return 'Dosificando...';
+                                          if (manualDoseControl.disabled) return 'Bloqueado';
+                                          return 'Dosificar';
+                                        })()}
                                       </button>
                                             <button
                                               onClick={() => {
@@ -1741,30 +1863,20 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                               />
                             </InstrumentCard>
                             
-                            <InstrumentCard accent="ec" title="🧮 Equação de Controle Proporcional" tinted>
-                              <div className="space-y-2.5 text-base">
-                                <div className="font-mono text-emerald-400 mb-2 text-lg">u(t) = (V / k × q) × e</div>
-                                <MetricRow label="V (Volume):" value={`${totalVolume} L`} />
-                                <MetricRow
-                                  label="k (EC base / ml por L):"
-                                  value={
-                                    totalMlPerLiter > 0
-                                      ? (baseDose / totalMlPerLiter).toFixed(3)
-                                      : '—'
-                                  }
-                                />
-                                <MetricRow label="q (Taxa de vazão):" value={`${pumpFlowRate.toFixed(3)} ml/s`} />
-                                <MetricRow
-                                  label="e (SP − EC):"
-                                  value={
-                                    ecAtual !== null
-                                      ? `${formatSensorValue(Math.max(0, ecError), 1)} µS/cm`
-                                      : '--'
-                                  }
-                                  variant={ecWithinDeadBand === false ? 'alarm' : 'default'}
-                                />
-                              </div>
-                            </InstrumentCard>
+                            <EcGrowerSummaryCard
+                              deviceId={deviceId}
+                              consumo24h={consumo24h}
+                              ecNow={ecAtual}
+                              setpoint={ecSetpoint}
+                              tolerance={ecTolerance}
+                              estimatedDoseMl={estimatedDoseMl}
+                              lastDoseMl={lastDosageMl}
+                              lastDoseAt={lastDosageCompletedAt}
+                              autoEnabled={autoEnabled}
+                              showNextCheck={showEcNextCheck}
+                              nextCheckInSec={ecNextCheckInSec}
+                              formatCountdown={formatRecircCountdown}
+                            />
                           </div>
           
                           {deviceId ? (
@@ -1827,8 +1939,8 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                 <span>
                                   <span className="block text-sm text-dark-text">Consumo EC 24 h</span>
                                   <span className="block text-xs text-dark-textSecondary">
-                                    Camada sobre o Auto EC. Não muda o intervalo. Default OFF.
-                                    Só tem efeito com Auto EC ligado (o Core lê isto no mesmo GET de auto_enabled).
+                                    Liga o diário de 24 h no resumo (seta de EC e ml dosados). Também é a
+                                    camada do firmware. Default OFF. Não muda o intervalo.
                                   </span>
                                 </span>
                               </label>
@@ -2128,7 +2240,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                 <div className="mt-3 space-y-1 text-xs text-dark-textSecondary">
                   <p><strong className="text-purple-300">device_id:</strong> ID do dispositivo Master</p>
                   <p><strong className="text-purple-300">base_dose:</strong> EC base em µS/cm</p>
-                  <p><strong className="text-purple-300">flow_rate:</strong> Taxa de vazão da bomba (ml/s)</p>
+                  <p><strong className="text-purple-300">nutrients[].flowRate:</strong> Vazão de cada bomba (ml/s), da Calibragem</p>
                   <p><strong className="text-purple-300">volume:</strong> Volume total do reservatório (L)</p>
                   <p><strong className="text-purple-300">total_ml:</strong> Soma de ml/L de todos os nutrientes</p>
                   <p><strong className="text-purple-300">ec_setpoint:</strong> Setpoint desejado de EC (µS/cm)</p>

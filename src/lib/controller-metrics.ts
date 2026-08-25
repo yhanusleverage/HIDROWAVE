@@ -12,6 +12,7 @@ export type EcControllerMetricRow = {
   ec_setpoint: number;
   ec_actual: number;
   ec_error: number;
+  k_value?: number;
   dosage_ml: number;
   dosage_time_seconds?: number;
   adjustment_needed?: boolean;
@@ -43,7 +44,7 @@ export async function fetchEcControllerMetrics(
     const { data, error } = await supabase
       .from('ec_controller_metrics')
       .select(
-        'id, device_id, ec_setpoint, ec_actual, ec_error, dosage_ml, dosage_time_seconds, adjustment_needed, adjustment_applied, created_at'
+        'id, device_id, ec_setpoint, ec_actual, ec_error, k_value, dosage_ml, dosage_time_seconds, adjustment_needed, adjustment_applied, created_at'
       )
       .eq('device_id', deviceId)
       .gte('created_at', sinceIso(hours))

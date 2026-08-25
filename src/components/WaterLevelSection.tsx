@@ -4,6 +4,7 @@ import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { useLevelSensors } from '@/hooks/useLevelSensors';
 import { LevelTankSchematic } from '@/components/water-level/LevelTankSchematic';
 import { WaterLevelOperationalSummary } from '@/components/water-level/WaterLevelOperationalSummary';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export type WaterLevelSectionProps = {
   deviceId: string;
@@ -16,6 +17,7 @@ export function WaterLevelSection({
   enabled = true,
   className = '',
 }: WaterLevelSectionProps) {
+  const { t } = useLanguage();
   const levels = useLevelSensors(deviceId, enabled);
   const probes = [levels.level1, levels.level2, levels.level3, levels.level4];
 
@@ -30,9 +32,9 @@ export function WaterLevelSection({
       ariaLive="polite"
       title={
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <span>Nível de água</span>
+          <span>{t.automacao.procedures.waterLevel}</span>
           <span className="text-xs font-normal text-dark-textSecondary">
-            4 sondas · telemetria device_status
+            {t.automacao.procedures.waterLevelSub}
           </span>
         </div>
       }

@@ -3,88 +3,80 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { GrowCyclePlan } from '@/lib/grow-cycle-timeline/types';
 import {
-  getWeekHoverMetricsSimulated,
+  emptyWeekHoverStats,
+  getWeekHoverRecipe,
   type WeekHoverMetrics,
 } from '@/lib/grow-cycle-timeline/simulation-engine';
 import {
-  fetchEcControllerMetrics,
-  fetchPhControllerMetrics,
-} from '@/lib/controller-metrics';
-import { ecErrorAbs } from '@/lib/ec-control-display';
-import { useHydroEcReading } from '@/hooks/useHydroEcReading';
+  fetchWeekHoverStats,
+  weekTimeWindow,
+} from '@/lib/grow-cycle-timeline/week-hover-summary';
+import type { GrowCycleWeeklyStatsRow } from '@/lib/grow-cycle-plans/types';
 
 export function useGrowCycleWeekHoverMetrics(
   plan: GrowCyclePlan,
   hoveredWeek: number | null,
-  deviceId: string | null | undefined
+  deviceId: string | null | undefined,
+  options?: {
+    startedAt?: string | null;
+    currentWeekIndex?: number;
+    weeklyStats?: GrowCycleWeeklyStatsRow[];
+  }
 ): WeekHoverMetrics | null {
   const activeDeviceId = deviceId?.trim() || '';
-  const liveEnabled = Boolean(activeDeviceId && activeDeviceId !== 'default_device');
-  const { ec: ecLive, ph: phLive } = useHydroEcReading(
-    activeDeviceId,
-    liveEnabled && hoveredWeek != null
-  );
+  const currentWeekIndex = options?.currentWeekIndex ?? 0;
+  const startedAt = options?.startedAt?.trim() || '';
+  const weeklyStat = options?.weeklyStats?.find((s) => s.week_index === hoveredWeek) ?? null;
 
-  const [lastEcDosageMl, setLastEcDosageMl] = useState<number | null>(null);
-  const [lastPhDosageMl, setLastPhDosageMl] = useState<number | null>(null);
+  const [fetched, setFetched] = useState<ReturnType<typeof emptyWeekHoverStats> | null>(null);
 
   useEffect(() => {
-    if (!liveEnabled || hoveredWeek == null) {
-      setLastEcDosageMl(null);
-      setLastPhDosageMl(null);
+    if (hoveredWeek == null) {
+      setFetched(null);
+      return;
+    }
+    const recipe = getWeekHoverRecipe(plan, hoveredWeek, currentWeekIndex);
+    if (!recipe || recipe.weekKind === 'future' || !startedAt || !activeDeviceId) {
+      setFetched(null);
       return;
     }
 
     let cancelled = false;
-
-    void (async () => {
-      const [ecRows, phRows] = await Promise.all([
-        fetchEcControllerMetrics(activeDeviceId, 24),
-        fetchPhControllerMetrics(activeDeviceId, 24),
-      ]);
-
-      if (cancelled) return;
-
-      const lastEc = ecRows.length > 0 ? ecRows[ecRows.length - 1] : null;
-      const lastPh = phRows.length > 0 ? phRows[phRows.length - 1] : null;
-
-      setLastEcDosageMl(lastEc?.dosage_ml ?? null);
-      setLastPhDosageMl(lastPh?.dose_real_ml ?? null);
-    })();
+    const { startIso, endIso } = weekTimeWindow(startedAt, hoveredWeek);
+    void fetchWeekHoverStats({ deviceId: activeDeviceId, startIso, endIso }).then((stats) => {
+      if (!cancelled) setFetched(stats);
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [activeDeviceId, liveEnabled, hoveredWeek]);
+  }, [plan, hoveredWeek, currentWeekIndex, startedAt, activeDeviceId]);
 
   return useMemo(() => {
     if (hoveredWeek == null) return null;
+    const recipe = getWeekHoverRecipe(plan, hoveredWeek, currentWeekIndex);
+    if (!recipe) return null;
+    if (recipe.weekKind === 'future') return recipe;
 
-    const simulated = getWeekHoverMetricsSimulated(plan, hoveredWeek);
-    if (!simulated) return null;
+    const fromFetch = fetched ?? emptyWeekHoverStats();
+    const ecAvg =
+      fromFetch.ecAvg ??
+      (weeklyStat?.ec_avg != null ? Number(weeklyStat.ec_avg) : null);
+    const phAvg =
+      fromFetch.phAvg ??
+      (weeklyStat?.ph_avg != null ? Number(weeklyStat.ph_avg) : null);
 
-    if (!liveEnabled) return simulated;
-
-    const ecActual = ecLive ?? simulated.ecActual;
-    const phActual = phLive ?? simulated.phActual;
+    const hasWeekData =
+      fromFetch.hasWeekData ||
+      ecAvg != null ||
+      phAvg != null;
 
     return {
-      ...simulated,
-      ecActual,
-      phActual,
-      ecError: ecErrorAbs(simulated.ecSetpoint, ecActual),
-      phError: Math.abs(phActual - simulated.phSetpoint),
-      lastDosageEcMl: lastEcDosageMl ?? simulated.lastDosageEcMl,
-      lastDosagePhMl: lastPhDosageMl ?? simulated.lastDosagePhMl,
-      source: 'live' as const,
+      ...recipe,
+      ...fromFetch,
+      ecAvg,
+      phAvg,
+      hasWeekData,
     };
-  }, [
-    plan,
-    hoveredWeek,
-    liveEnabled,
-    ecLive,
-    phLive,
-    lastEcDosageMl,
-    lastPhDosageMl,
-  ]);
+  }, [plan, hoveredWeek, currentWeekIndex, fetched, weeklyStat]);
 }

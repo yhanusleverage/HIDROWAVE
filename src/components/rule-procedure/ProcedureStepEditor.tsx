@@ -1,22 +1,15 @@
 'use client';
 
 import type { HydraulicRoleId, ProcedureStep } from '@/lib/rule-procedure/types';
-import { STEP_TYPE_LABELS } from '@/lib/rule-procedure/types';
 import { HwBadge } from '@/components/ui/HwBadge';
 import ConditionFields from '@/components/instruction-editors/ConditionFields';
 import { CONDITION_SENSORS } from '@/lib/instruction-labels';
 import { getHydraulicRoleDefinition } from '@/lib/hydraulic-relay-roles';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { hydraulicRoleCopy } from '@/lib/translations/app/procedure-roles';
 
-const VALVE_ROLE_OPTIONS: { id: HydraulicRoleId; label: string }[] = [
-  { id: 'fill_valve', label: 'Válvula de enchimento' },
-  { id: 'drain_valve', label: 'Válvula de dreno' },
-  { id: 'recharge_pump', label: 'Bomba de recarga' },
-];
-
-const RELAY_ROLE_OPTIONS: { id: HydraulicRoleId; label: string }[] = [
-  { id: 'circulation_pump', label: 'Bomba de circulação' },
-  { id: 'recharge_pump', label: 'Bomba de recarga' },
-];
+const VALVE_ROLE_IDS: HydraulicRoleId[] = ['fill_valve', 'drain_valve', 'recharge_pump'];
+const RELAY_ROLE_IDS: HydraulicRoleId[] = ['circulation_pump', 'recharge_pump'];
 
 interface ProcedureStepEditorProps {
   step: ProcedureStep;
@@ -31,6 +24,19 @@ export function ProcedureStepEditor({
   onChange,
   useHydraulicRoles = false,
 }: ProcedureStepEditorProps) {
+  const { t } = useLanguage();
+  const p = t.automacao.procedures;
+  const stepTypeLabel =
+    step.type === 'sensor_valve'
+      ? p.stepSensorValve
+      : step.type === 'set_relay'
+        ? p.stepSetRelay
+        : step.type === 'wait'
+          ? p.stepWait
+          : step.type === 'hold_chemical'
+            ? p.stepHoldChemical
+            : p.stepInvokeRule;
+
   const update = (patch: Partial<ProcedureStep>) => {
     onChange({ ...step, ...patch } as ProcedureStep);
   };
@@ -55,14 +61,14 @@ export function ProcedureStepEditor({
     <article className="bg-dark-card border border-dark-border rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] uppercase tracking-wide text-dark-textSecondary">
-          Passo {index + 1}
+          {p.step.replace('{n}', String(index + 1))}
         </p>
-        <HwBadge accent="brand">{STEP_TYPE_LABELS[step.type]}</HwBadge>
+        <HwBadge accent="brand">{stepTypeLabel}</HwBadge>
       </div>
 
       {'label' in step && (
         <label className="block text-xs">
-          <span className="text-dark-textSecondary">Label</span>
+          <span className="text-dark-textSecondary">{p.stepLabel}</span>
           <input
             type="text"
             value={step.label ?? ''}
@@ -76,22 +82,22 @@ export function ProcedureStepEditor({
         <>
           {useHydraulicRoles && (
             <label className="block text-xs">
-              <span className="text-dark-textSecondary">Função hidráulica</span>
+              <span className="text-dark-textSecondary">{p.hydraulicFunction}</span>
               <select
                 value={step.roleId ?? 'fill_valve'}
                 onChange={(e) => setRoleId(e.target.value as HydraulicRoleId)}
                 className="mt-1 w-full p-2 bg-dark-surface border border-dark-border rounded-lg"
               >
-                {VALVE_ROLE_OPTIONS.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
+                {VALVE_ROLE_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {hydraulicRoleCopy(p, id).label}
                   </option>
                 ))}
               </select>
             </label>
           )}
           <ConditionFields
-            label="Condição (nível de água)"
+            label={p.waterCondition}
             condition={{
               sensor: step.sensor.sensor,
               operator: step.sensor.operator,
@@ -109,7 +115,7 @@ export function ProcedureStepEditor({
             sensors={CONDITION_SENSORS.filter((s) => s.value === 'water_level')}
           />
           <label className="block text-xs">
-            <span className="text-dark-textSecondary">Timeout (min)</span>
+            <span className="text-dark-textSecondary">{p.timeoutMin}</span>
             <input
               type="number"
               min={1}
@@ -124,7 +130,7 @@ export function ProcedureStepEditor({
             <>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <label className="block">
-                  <span className="text-dark-textSecondary">Target</span>
+                  <span className="text-dark-textSecondary">{p.target}</span>
                   <select
                     value={step.actuator.target}
                     onChange={(e) =>
@@ -142,7 +148,7 @@ export function ProcedureStepEditor({
                   </select>
                 </label>
                 <label className="block">
-                  <span className="text-dark-textSecondary">Relé</span>
+                  <span className="text-dark-textSecondary">{p.relay}</span>
                   <input
                     type="number"
                     min={0}
@@ -162,7 +168,7 @@ export function ProcedureStepEditor({
               </div>
               {step.actuator.target === 'slave' && (
                 <label className="block text-xs">
-                  <span className="text-dark-textSecondary">MAC Atlas</span>
+                  <span className="text-dark-textSecondary">{p.atlasMac}</span>
                   <input
                     type="text"
                     value={step.actuator.slaveMac ?? ''}
@@ -184,15 +190,15 @@ export function ProcedureStepEditor({
         <>
           {useHydraulicRoles && (
             <label className="block text-xs">
-              <span className="text-dark-textSecondary">Função hidráulica</span>
+              <span className="text-dark-textSecondary">{p.hydraulicFunction}</span>
               <select
                 value={step.roleId ?? 'circulation_pump'}
                 onChange={(e) => setRoleId(e.target.value as HydraulicRoleId)}
                 className="mt-1 w-full p-2 bg-dark-surface border border-dark-border rounded-lg"
               >
-                {RELAY_ROLE_OPTIONS.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
+                {RELAY_ROLE_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {hydraulicRoleCopy(p, id).label}
                   </option>
                 ))}
               </select>
@@ -200,7 +206,7 @@ export function ProcedureStepEditor({
           )}
           <div className={`grid gap-2 text-xs ${useHydraulicRoles ? 'grid-cols-1' : 'grid-cols-3'}`}>
             <label className="block">
-              <span className="text-dark-textSecondary">Estado</span>
+              <span className="text-dark-textSecondary">{p.state}</span>
               <select
                 value={step.state}
                 onChange={(e) =>
@@ -215,7 +221,7 @@ export function ProcedureStepEditor({
             {!useHydraulicRoles && (
               <>
                 <label className="block">
-                  <span className="text-dark-textSecondary">Target</span>
+                  <span className="text-dark-textSecondary">{p.target}</span>
                   <select
                     value={step.actuator.target}
                     onChange={(e) =>
@@ -233,7 +239,7 @@ export function ProcedureStepEditor({
                   </select>
                 </label>
                 <label className="block">
-                  <span className="text-dark-textSecondary">Relé</span>
+                  <span className="text-dark-textSecondary">{p.relay}</span>
                   <input
                     type="number"
                     min={0}
@@ -255,7 +261,7 @@ export function ProcedureStepEditor({
           </div>
           {!useHydraulicRoles && step.actuator.target === 'slave' && (
             <label className="block text-xs">
-              <span className="text-dark-textSecondary">MAC Atlas</span>
+              <span className="text-dark-textSecondary">{p.atlasMac}</span>
               <input
                 type="text"
                 value={step.actuator.slaveMac ?? ''}
@@ -273,7 +279,7 @@ export function ProcedureStepEditor({
 
       {step.type === 'wait' && (
         <label className="block text-xs">
-          <span className="text-dark-textSecondary">Duração (segundos)</span>
+          <span className="text-dark-textSecondary">{p.durationSec}</span>
           <input
             type="number"
             min={1}

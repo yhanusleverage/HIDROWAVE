@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { CheckIcon } from '@heroicons/react/24/outline';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import type { ESPNowSlave } from '@/lib/esp-now-slaves';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface EspNowSlaveNamesPanelProps {
   deviceId: string;
@@ -17,6 +18,8 @@ export function EspNowSlaveNamesPanel({
   slaves,
   onSlavesRefresh,
 }: EspNowSlaveNamesPanelProps) {
+  const { t } = useLanguage();
+  const p = t.automacao.procedures;
   const [draftNames, setDraftNames] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -35,11 +38,11 @@ export function EspNowSlaveNamesPanel({
     const key = slave.device_id ?? slave.macAddress;
     const name = (draftNames[key] ?? '').trim();
     if (!slave.device_id) {
-      toast.error('Atlas ainda sem registo completo — aguarde sync do firmware');
+      toast.error(p.noAtlas);
       return;
     }
     if (!name) {
-      toast.error('Digite um nome para o Atlas');
+      toast.error(p.atlasName);
       return;
     }
     if (name === slave.name) return;
@@ -56,13 +59,13 @@ export function EspNowSlaveNamesPanel({
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? 'Erro ao guardar nome');
+        toast.error(data.error ?? p.saveNetworkError);
         return;
       }
-      toast.success(`Atlas renomeado: ${name}`);
+      toast.success(`${p.saveName}: ${name}`);
       await onSlavesRefresh?.();
     } catch {
-      toast.error('Erro de rede ao guardar nome');
+      toast.error(p.saveNetworkError);
     } finally {
       setSavingId(null);
     }
@@ -71,21 +74,20 @@ export function EspNowSlaveNamesPanel({
   return (
     <div className="bg-dark-card border border-dark-border rounded-xl p-4 sm:p-6 space-y-4">
       <SectionHeader
-        title="Identificar HydroWave Atlas"
-        subtitle="Um Core pode ter vários Atlas — dê nomes amigáveis antes da tipagem"
+        title={p.atlasTitle}
+        subtitle={p.atlasSubtitle}
         accent="wait"
       />
 
       {disabled && (
         <p className="text-sm text-dark-textSecondary">
-          Selecione um Core na barra superior para identificar os Atlas.
+          {p.selectCoreAtlas}
         </p>
       )}
 
       {!disabled && slaves.length === 0 && (
         <p className="text-sm text-dark-textSecondary">
-          Nenhum Atlas registado. Os Atlas aparecem aqui quando o Core os descobre via
-          ESP-NOW.
+          {p.noAtlas}
         </p>
       )}
 
@@ -104,7 +106,7 @@ export function EspNowSlaveNamesPanel({
               >
                 <div className="flex-1 min-w-0 space-y-1.5">
                   <label className="block text-xs text-dark-textSecondary">
-                    Nome do Atlas
+                    {p.atlasName}
                     <span
                       className={`ml-2 inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
                         slave.status === 'online'
@@ -112,7 +114,7 @@ export function EspNowSlaveNamesPanel({
                           : 'bg-dark-border/50 text-dark-textSecondary'
                       }`}
                     >
-                      {slave.status === 'online' ? 'Online' : 'Offline'}
+                      {slave.status === 'online' ? p.online : p.offline}
                     </span>
                   </label>
                   <input
@@ -122,12 +124,11 @@ export function EspNowSlaveNamesPanel({
                     onChange={(e) =>
                       setDraftNames((prev) => ({ ...prev, [key]: e.target.value }))
                     }
-                    placeholder="Ex.: Caixa hidráulica A, RelayBox sala 2…"
+                    placeholder={p.atlasNamePlaceholder}
                     className="w-full p-2.5 bg-dark-surface border border-violet-500/25 rounded-lg text-sm text-dark-text focus:ring-2 focus:ring-violet-500/40 disabled:opacity-50"
                   />
                   <p className="text-[11px] text-dark-textSecondary">
-                    {slave.relays.length} relé{slave.relays.length === 1 ? '' : 's'} disponíve
-                    {slave.relays.length === 1 ? 'l' : 'is'}
+                    {p.relaysAvailable.replace('{n}', String(slave.relays.length))}
                   </p>
                 </div>
                 <button
@@ -137,7 +138,7 @@ export function EspNowSlaveNamesPanel({
                   className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600/80 hover:bg-violet-600 disabled:opacity-40 text-white text-sm font-medium shrink-0"
                 >
                   <CheckIcon className="w-4 h-4" />
-                  {isSaving ? 'Guardando…' : 'Guardar nome'}
+                  {isSaving ? p.saving : p.saveName}
                 </button>
               </div>
             );

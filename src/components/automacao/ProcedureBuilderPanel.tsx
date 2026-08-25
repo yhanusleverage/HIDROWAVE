@@ -14,6 +14,7 @@ import { validateProcedure } from '@/lib/rule-procedure/validate-procedure';
 import { compileProcedureToPayload } from '@/lib/rule-procedure/compile-procedure';
 import type { HydraulicRolesMap } from '@/lib/hydraulic-relay-roles';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface DeviceOption {
   device_id: string;
@@ -36,6 +37,8 @@ export function ProcedureBuilderPanel({
   onDeviceIdChange,
 }: ProcedureBuilderPanelProps) {
   const { userProfile } = useAuth();
+  const { t } = useLanguage();
+  const p = t.automacao.procedures;
   const [procedure, setProcedure] = useState<RuleProcedure>(() => cloneInitialFillDemo());
   const [saving, setSaving] = useState(false);
 
@@ -61,11 +64,11 @@ export function ProcedureBuilderPanel({
 
   const handleSave = async () => {
     if (!deviceId || deviceId === 'default_device') {
-      toast.error('Selecione um HydroWave Core');
+      toast.error(p.selectCoreSave);
       return;
     }
     if (!validation.valid) {
-      toast.error(validation.errors[0] ?? 'Procedimento inválido');
+      toast.error(validation.errors[0] ?? p.invalidProcedure);
       return;
     }
     setSaving(true);
@@ -81,12 +84,12 @@ export function ProcedureBuilderPanel({
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? 'Erro ao guardar');
+        toast.error(data.error ?? p.saveNetworkError);
         return;
       }
-      toast.success(data.created ? 'Regra criada' : 'Regra atualizada');
+      toast.success(data.created ? p.saveOkCreate : p.saveOkUpdate);
     } catch {
-      toast.error('Erro de rede ao guardar');
+      toast.error(p.saveNetworkError);
     } finally {
       setSaving(false);
     }
@@ -95,15 +98,15 @@ export function ProcedureBuilderPanel({
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="Rule Builder — procedimento"
-        subtitle={`${procedure.name} · camada ${procedure.layer}`}
+        title={p.builderTitle}
+        subtitle={`${procedure.name} · ${procedure.layer}`}
         accent="brand"
       />
 
       <div className="bg-dark-card border border-dark-border rounded-xl p-4 space-y-4">
         <div className="grid sm:grid-cols-2 gap-4">
           <label className="block text-xs">
-            <span className="text-dark-textSecondary">ID regra</span>
+            <span className="text-dark-textSecondary">{p.ruleId}</span>
             <input
               type="text"
               value={procedure.id}
@@ -112,7 +115,7 @@ export function ProcedureBuilderPanel({
             />
           </label>
           <label className="block text-xs">
-            <span className="text-dark-textSecondary">Nome</span>
+            <span className="text-dark-textSecondary">{p.name}</span>
             <input
               type="text"
               value={procedure.name}
@@ -124,11 +127,11 @@ export function ProcedureBuilderPanel({
 
         {!embedded && devices.length > 0 && (
           <HwSelect
-            label="HydroWave Core (obrigatório para guardar)"
+            label={p.coreSelectLabel}
             value={deviceId}
             onChange={(e) => onDeviceIdChange?.(e.target.value)}
           >
-            <option value="">— Selecionar —</option>
+            <option value="">{p.selectPlaceholder}</option>
             {devices.map((d) => (
               <option key={d.device_id} value={d.device_id}>
                 {d.device_id}
@@ -144,7 +147,7 @@ export function ProcedureBuilderPanel({
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-dark-surface border border-dark-border text-sm hover:bg-dark-surface/80"
           >
             <ArrowPathIcon className="w-4 h-4" />
-            Recarregar Initial Fill
+            {p.reloadDemo}
           </button>
           <button
             type="button"
@@ -153,7 +156,7 @@ export function ProcedureBuilderPanel({
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-aqua-600 hover:bg-aqua-500 disabled:opacity-50 text-white text-sm font-medium"
           >
             <CloudArrowUpIcon className="w-4 h-4" />
-            {saving ? 'Guardando…' : 'Guardar em decision_rules'}
+            {saving ? p.savingRules : p.saveRules}
           </button>
         </div>
       </div>
@@ -169,15 +172,15 @@ export function ProcedureBuilderPanel({
       )}
 
       <div className="bg-dark-card border border-dark-border rounded-xl p-4 space-y-3">
-        <SectionHeader title="Triggers" subtitle="Janela circadiana" accent="wait" />
+        <SectionHeader title={p.triggers} subtitle={p.triggersSub} accent="wait" />
         <ProcedureTriggersEditor
           triggers={procedure.triggers}
-          onChange={(triggers) => setProcedure((p) => ({ ...p, triggers }))}
+          onChange={(triggers) => setProcedure((prev) => ({ ...prev, triggers }))}
         />
       </div>
 
       <div className="space-y-3">
-        <SectionHeader title="Steps" subtitle="Ordem procedural editável (por função hidráulica)" accent="brand" />
+        <SectionHeader title={p.steps} subtitle={p.stepsSub} accent="brand" />
         <div className="grid md:grid-cols-2 gap-3">
           {procedure.steps.map((step, index) => (
             <ProcedureStepEditor

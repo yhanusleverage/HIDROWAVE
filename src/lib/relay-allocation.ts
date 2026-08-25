@@ -65,7 +65,7 @@ export interface EcNutrientRelaySlice {
   relayNumber?: number;
   mlPerLiter?: number;
   active?: boolean;
-  /** Vazão desta bomba (ml/s). Ausente = usa flow_rate global. */
+  /** Vazão desta bomba (ml/s), calibrada em Calibragem. */
   flowRate?: number;
 }
 
@@ -472,6 +472,22 @@ export function getSelectableRelays(
   }
 
   return options.sort((a, b) => a.number - b.number);
+}
+
+const HARDWARE_BUSY_OWNERS: RelayOwnerKind[] = [
+  'runtime_active',
+  'calibragem',
+  'manual',
+];
+
+/** Relé com timer/ON/calibragem/comando manual — não dosificar por cima. */
+export function getRelayBusyClaim(
+  registry: RelayAllocationRegistry,
+  relayNumber: number
+): RelaySlotClaim | undefined {
+  return registry.claims.find(
+    (c) => c.relayNumber === relayNumber && HARDWARE_BUSY_OWNERS.includes(c.owner)
+  );
 }
 
 export function getDoserRelaySlots(registry: RelayAllocationRegistry): Array<{

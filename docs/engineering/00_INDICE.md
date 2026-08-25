@@ -14,6 +14,7 @@
 | 04 | [Backlog por jobs](04_BACKLOG_JOBS_USUARIO.md) | `escopo-jobs` | Prioridad + freeze |
 | 05 | [Definition of Done](05_DEFINITION_OF_DONE.md) | `dod-capas` | Por capa |
 | 06 | [Top 5 cambios estructurales](06_CAMBIOS_ESTRUCTURALES_TOP5.md) | entregable | Priorizado |
+| — | [Ecuaciones Auto EC / pH](EQUACOES_AUTO_EC_PH.md) | lazo | Canónico 25/08/2026 |
 | — | [HMI ↔ Web paridad F0](../handoffs/HMI_WEB_PARITY_F0.md) | `hmi-web-parity` | Congelado 12/08/2026 |
 
 Plantilla de medición: [`p-baseline-log.csv`](p-baseline-log.csv)

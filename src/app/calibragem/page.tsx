@@ -25,9 +25,9 @@ const STEPS = [
       'Instale a mangueira silicone correta no cabeçote da bomba. O líquido de calibragem (água ou nutriente diluído) deve estar na altura da bomba ou ligeiramente abaixo — evite sifão involuntário.',
   },
   {
-    title: 'Cebar / purgar (manter o botão)',
+    title: 'Teste por ml',
     body:
-      'Na card da bomba, mantenha Cebar até o líquido sair na ponta. Solte para parar por completo. Bolhas de ar invalidam a calibragem. Auto EC/pH deve estar desligado.',
+      'Use Teste (ml) na card: o ESP liga a bomba pelo tempo ml/vazão. Auto EC/pH deve estar desligado. Sem botão de manter/cebar.',
   },
   {
     title: 'Colete uma amostra cronometrada',
@@ -158,6 +158,8 @@ export default function CalibragemPage() {
             <PhCalibrationSection
               deviceId={selectedDeviceId}
               relayOptions={relayOptions}
+              isOnline={isOnline}
+              autoBlocked={autoBlocked}
             />
           ) : (
             <p className="text-dark-textSecondary text-sm">Selecione um dispositivo.</p>
@@ -179,7 +181,7 @@ export default function CalibragemPage() {
                 <div className="text-sm text-dark-textSecondary space-y-2">
                   <p>
                     <strong className="text-dark-text">Só bombas atribuídas.</strong> Toque para
-                    abrir: cebar, medir vazão (ml/s) e salvar. EC e pH na mesma lista.
+                    abrir: teste por tempo (medir vazão) e teste por ml. Sem cebar.
                   </p>
                 </div>
               </div>

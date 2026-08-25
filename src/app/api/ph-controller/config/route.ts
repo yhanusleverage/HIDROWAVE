@@ -29,9 +29,6 @@ const DEFAULT_PH_CONFIG = {
   gain_alpha: 0.2,
   k_acid: null,
   k_base: null,
-  max_dose_ml_per_cycle: 50,
-  max_pulse_seconds: 120,
-  max_consecutive_corrections: 5,
   reset_k_gains: false,
 };
 

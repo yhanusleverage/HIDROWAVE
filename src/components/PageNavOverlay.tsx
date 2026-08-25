@@ -1,16 +1,15 @@
 'use client';
 
-import BrandLoading from '@/components/BrandLoading';
+import TranslatedBrandLoading from '@/components/TranslatedBrandLoading';
 
 /** Overlay full-screen com σ pulsante durante transição entre páginas. */
 export default function PageNavOverlay() {
   return (
-    <BrandLoading
+    <TranslatedBrandLoading
       layout="hero"
-      variant="gradient"
       size={120}
       showWordmark
-      message="Carregando..."
+      messageKey="loading"
     />
   );
 }

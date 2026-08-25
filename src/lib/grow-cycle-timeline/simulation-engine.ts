@@ -7,26 +7,31 @@ import type {
 } from './types';
 import { getWeekTankVolumeL } from './tank-volume';
 
+export type WeekKind = 'future' | 'current' | 'past';
+
+export type WeekNutrientMl = { name: string; ml: number };
+
+/** Resumo do hover da barra semanal — receta + consumo daquela semana (não o laço live). */
 export type WeekHoverMetrics = {
   weekIndex: number;
   phase: GrowPhase;
+  weekKind: WeekKind;
   ecSetpoint: number;
   phSetpoint: number;
   tankVolumeL: number;
-  ecActual: number;
-  phActual: number;
-  ecError: number;
-  phError: number;
   autoStatus: 'on' | 'paused_p1' | 'off';
-  lastDosageEcMl: number | null;
-  lastDosagePhMl: number | null;
-  source: 'simulated' | 'live';
+  ecDelta: number | null;
+  phDelta: number | null;
+  ecAvg: number | null;
+  phAvg: number | null;
+  ecMlTotal: number;
+  phMlUp: number;
+  phMlDown: number;
+  ecAdjustments: number;
+  phAdjustments: number;
+  byNutrient: WeekNutrientMl[];
+  hasWeekData: boolean;
 };
-
-const SIM_EC_ERROR_OFFSET = [35, 55, 40, 65, 50, 70, 45, 60, 38, 52, 48, 58, 30];
-const SIM_PH_ERROR_OFFSET = [0.04, 0.06, 0.05, 0.08, 0.03, 0.07, 0.05, 0.06, 0.04, 0.05, 0.03, 0.06, 0.02];
-const SIM_EC_DOSAGE_THRESHOLD = 50;
-const SIM_PH_DOSAGE_THRESHOLD = 0.1;
 
 function resolveAutoStatus(
   plan: GrowCyclePlan,
@@ -38,45 +43,67 @@ function resolveAutoStatus(
   return 'on';
 }
 
-export function getWeekHoverMetricsSimulated(
+export function resolveWeekKind(weekIndex: number, currentWeekIndex: number): WeekKind {
+  if (weekIndex > currentWeekIndex) return 'future';
+  if (weekIndex < currentWeekIndex) return 'past';
+  return 'current';
+}
+
+export function emptyWeekHoverStats(): Pick<
+  WeekHoverMetrics,
+  | 'ecDelta'
+  | 'phDelta'
+  | 'ecAvg'
+  | 'phAvg'
+  | 'ecMlTotal'
+  | 'phMlUp'
+  | 'phMlDown'
+  | 'ecAdjustments'
+  | 'phAdjustments'
+  | 'byNutrient'
+  | 'hasWeekData'
+> {
+  return {
+    ecDelta: null,
+    phDelta: null,
+    ecAvg: null,
+    phAvg: null,
+    ecMlTotal: 0,
+    phMlUp: 0,
+    phMlDown: 0,
+    ecAdjustments: 0,
+    phAdjustments: 0,
+    byNutrient: [],
+    hasWeekData: false,
+  };
+}
+
+export function getWeekHoverRecipe(
   plan: GrowCyclePlan,
-  weekIndex: number
+  weekIndex: number,
+  currentWeekIndex: number
 ): WeekHoverMetrics | null {
   const profile = getWeekProfile(plan, weekIndex);
   if (!profile) return null;
 
-  const autoStatus = resolveAutoStatus(plan, weekIndex);
-  const ecOffset = SIM_EC_ERROR_OFFSET[weekIndex % SIM_EC_ERROR_OFFSET.length] ?? 45;
-  const phOffset = SIM_PH_ERROR_OFFSET[weekIndex % SIM_PH_ERROR_OFFSET.length] ?? 0.05;
-
-  const ecActual = Math.max(0, profile.ecSetpointUsCm - ecOffset);
-  const phActual = Math.max(0, profile.phSetpoint - phOffset);
-  const ecError = Math.abs(profile.ecSetpointUsCm - ecActual);
-  const phError = Math.abs(profile.phSetpoint - phActual);
-
-  const dosingActive = autoStatus === 'on';
-
   return {
     weekIndex,
     phase: profile.phase,
+    weekKind: resolveWeekKind(weekIndex, currentWeekIndex),
     ecSetpoint: profile.ecSetpointUsCm,
     phSetpoint: profile.phSetpoint,
     tankVolumeL: getWeekTankVolumeL(plan, weekIndex),
-    ecActual,
-    phActual,
-    ecError,
-    phError,
-    autoStatus,
-    lastDosageEcMl:
-      dosingActive && ecError > SIM_EC_DOSAGE_THRESHOLD
-        ? Math.round((ecError / 100) * 1.8 * 10) / 10
-        : null,
-    lastDosagePhMl:
-      dosingActive && phError > SIM_PH_DOSAGE_THRESHOLD
-        ? Math.round(phError * 12 * 10) / 10
-        : null,
-    source: 'simulated',
+    autoStatus: resolveAutoStatus(plan, weekIndex),
+    ...emptyWeekHoverStats(),
   };
+}
+
+/** @deprecated Use getWeekHoverRecipe */
+export function getWeekHoverMetricsSimulated(
+  plan: GrowCyclePlan,
+  weekIndex: number
+): WeekHoverMetrics | null {
+  return getWeekHoverRecipe(plan, weekIndex, weekIndex);
 }
 
 export function getWeekProfile(

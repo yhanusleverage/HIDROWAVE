@@ -16,7 +16,7 @@ import {
   toBcp47,
   type AppLocale,
 } from '@/lib/locale';
-import { loadSettings } from '@/lib/settings';
+import { loadSettings, persistLanguage, readStoredLocale } from '@/lib/settings';
 import { getAppTranslations, type AppTranslations } from '@/lib/translations/app';
 
 interface LanguageContextValue {
@@ -37,6 +37,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, [userProfile?.email]);
 
   useEffect(() => {
+    setLocale(readStoredLocale());
     void refreshLocale();
   }, [refreshLocale]);
 
@@ -44,7 +45,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     const onSettingsUpdated = (event: Event) => {
       const detail = (event as CustomEvent<{ language?: string }>).detail;
       if (detail?.language) {
-        setLocale(normalizeLocale(detail.language));
+        const next = normalizeLocale(detail.language);
+        persistLanguage(next);
+        setLocale(next);
       } else {
         void refreshLocale();
       }

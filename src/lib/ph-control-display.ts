@@ -201,18 +201,8 @@ export function isExtremePhErrorH(errorHAbs: number | null): boolean {
   return errorHAbs != null && errorHAbs > PH_EXTREME_ERROR_H_THRESHOLD;
 }
 
-/** Espelha AdaptivePHController::planDose — teto max_dose_ml_per_cycle no firmware. */
-export function capFirmwarePreviewDose(
-  uncappedMl: number | null,
-  maxDoseMlPerCycle: number
-): number | null {
-  if (uncappedMl == null || uncappedMl <= 0) return null;
-  const cap = maxDoseMlPerCycle > 0 ? maxDoseMlPerCycle : 50;
-  return Math.min(uncappedMl, cap);
-}
-
 export function formatExtremePhErrorHWarning(errorHAbs: number): string {
-  return `ErroH = ${errorHAbs.toExponential(1)} é atípico (erro pH muito grande ou leitura inválida, ex. pH≈0). A fórmula H⁺ amplifica o valor; o ESP32 limita a dose real a max_dose_ml_per_cycle.`;
+  return `ErroH = ${errorHAbs.toExponential(1)} é atípico (erro pH muito grande ou leitura inválida, ex. pH≈0). A fórmula H⁺ amplifica o valor. O ciclo só dispara se |pH−SP| > ph_tolerance.`;
 }
 
 /** @deprecated Use previewPhDoseFirmwareMl — alias legado. */

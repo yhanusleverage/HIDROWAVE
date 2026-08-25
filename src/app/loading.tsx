@@ -1,5 +1,7 @@
-import BrandLoading from '@/components/BrandLoading';
+'use client';
+
+import TranslatedBrandLoading from '@/components/TranslatedBrandLoading';
 
 export default function Loading() {
-  return <BrandLoading layout="hero" showWordmark message="Carregando..." />;
+  return <TranslatedBrandLoading layout="hero" showWordmark messageKey="loading" />;
 }

@@ -12,6 +12,13 @@ import {
 } from '@/lib/ph-calibration';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { HW_TEXT, HW_BG_SUBTLE } from '@/lib/design-tokens';
+import { fetchEcControllerMetrics } from '@/lib/controller-metrics';
+import {
+  calculateDoseDurationSeconds,
+  doseDurationSecondsForRelay,
+  formatDoseDurationSeconds,
+} from '@/lib/pump-calibration';
+import { PlayIcon } from '@heroicons/react/24/outline';
 
 interface RelayOption {
   number: number;
@@ -21,6 +28,8 @@ interface RelayOption {
 interface PhCalibrationSectionProps {
   deviceId: string;
   relayOptions: RelayOption[];
+  isOnline?: boolean;
+  autoBlocked?: boolean;
 }
 
 type PumpSide = 'base' | 'acid';
@@ -35,6 +44,9 @@ function PumpCalibrationCard({
   mlPerPhUnitStored,
   onSave,
   saving,
+  deviceId,
+  isOnline,
+  autoBlocked,
 }: {
   side: PumpSide;
   title: string;
@@ -45,10 +57,14 @@ function PumpCalibrationCard({
   mlPerPhUnitStored: number | null;
   onSave: (mlPerPhUnit: number, flow: number) => Promise<void>;
   saving: boolean;
+  deviceId: string;
+  isOnline: boolean;
+  autoBlocked: boolean;
 }) {
   const [phBefore, setPhBefore] = useState(6.0);
   const [phAfter, setPhAfter] = useState(side === 'base' ? 6.2 : 5.8);
   const [mlDosed, setMlDosed] = useState(1.0);
+  const [testing, setTesting] = useState(false);
 
   const chemical = useMemo(() => {
     const raw = mlPerPhUnitFromDose(mlDosed, phBefore, phAfter);
@@ -62,6 +78,60 @@ function PumpCalibrationCard({
       return;
     }
     await onSave(chemical.mlPerPhUnit, flowRate > 0 ? flowRate : 1);
+  };
+
+  const runMlTest = async () => {
+    if (mlDosed <= 0) {
+      toast.error('Informe ml dosados');
+      return;
+    }
+    if (!(flowRate > 0)) {
+      toast.error('Calibre a vazão desta bomba na aba Vazão');
+      return;
+    }
+    if (!isOnline) {
+      toast.error('Core offline');
+      return;
+    }
+    if (autoBlocked) {
+      toast.error('Desative o Auto para testar');
+      return;
+    }
+    const duration = calculateDoseDurationSeconds(mlDosed, flowRate);
+    if (duration == null || duration <= 0) {
+      toast.error('Vazão ou ml inválidos');
+      return;
+    }
+    const relaySeconds = doseDurationSecondsForRelay(duration);
+    setTesting(true);
+    try {
+      const res = await fetch('/api/esp-now/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          master_device_id: deviceId,
+          relay_number: relayNumber,
+          action: 'on',
+          duration_seconds: relaySeconds,
+          mode: 'timed_on',
+          created_by: 'calibragem_test',
+          triggered_by: 'calibragem_test',
+          command_type: 'manual',
+          dosage_ml: mlDosed,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(typeof err.error === 'string' ? err.error : 'Falha ao enviar teste');
+      }
+      toast.success(
+        `Teste ${mlDosed} ml · ${formatDoseDurationSeconds(duration)} s — anote pH depois e salve o ganho`
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro no teste');
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (
@@ -136,6 +206,20 @@ function PumpCalibrationCard({
         )}
       </div>
 
+      <p className="text-xs text-dark-textSecondary">
+        Anote pH antes, dispare o teste, espere misturar, leia pH depois e salve.
+        Vazão: {flowRate > 0 ? `${flowRate.toFixed(3)} ml/s` : 'não calibrada (aba Vazão)'}.
+      </p>
+      <button
+        type="button"
+        onClick={() => void runMlTest()}
+        disabled={testing || !isOnline || autoBlocked || mlDosed <= 0 || !(flowRate > 0)}
+        className="w-full py-2.5 rounded-lg text-sm font-medium border border-violet-500/50 bg-violet-500/15 text-violet-200 hover:bg-violet-500/25 disabled:opacity-40 flex items-center justify-center gap-2"
+      >
+        <PlayIcon className="w-4 h-4" />
+        {testing ? 'Enviando…' : `Teste ${mlDosed} ml`}
+      </button>
+
       <button
         type="button"
         onClick={handleSave}
@@ -151,6 +235,8 @@ function PumpCalibrationCard({
 export function PhCalibrationSection({
   deviceId,
   relayOptions,
+  isOnline = false,
+  autoBlocked = false,
 }: PhCalibrationSectionProps) {
   const [loading, setLoading] = useState(true);
   const [savingSide, setSavingSide] = useState<PumpSide | null>(null);
@@ -165,19 +251,31 @@ export function PhCalibrationSection({
   const [mlPerPhUnitAcid, setMlPerPhUnitAcid] = useState<number | null>(2.0);
   const [kBase, setKBase] = useState<number | null>(null);
   const [kAcid, setKAcid] = useState<number | null>(null);
-  const [ecFlowRate, setEcFlowRate] = useState<number | null>(null);
+  const [ecFlowRate, setEcFlowRate] = useState<string | null>(null);
+  const [ecBaseDose, setEcBaseDose] = useState<number | null>(null);
+  const [ecTotalMl, setEcTotalMl] = useState<number | null>(null);
+  const [ecKp, setEcKp] = useState<number | null>(null);
+  const [ecAggressiveness, setEcAggressiveness] = useState<number | null>(null);
+  const [ecKLive, setEcKLive] = useState<number | null>(null);
   const [phConfigRaw, setPhConfigRaw] = useState<Record<string, unknown>>({});
   const [ecVolumeLiters, setEcVolumeLiters] = useState<number | null>(null);
 
   const volumeDirty = volumeLiters !== savedVolumeLiters;
 
+  const ecKRecipe =
+    ecBaseDose != null && ecTotalMl != null && ecTotalMl > 0
+      ? ecBaseDose / ecTotalMl
+      : null;
+  const ecKInUse = ecKLive;
+
   const loadAll = useCallback(async () => {
     if (!deviceId) return;
     setLoading(true);
     try {
-      const [phRes, ecRes] = await Promise.all([
+      const [phRes, ecRes, ecMetrics] = await Promise.all([
         fetch(`/api/ph-controller/config?device_id=${encodeURIComponent(deviceId)}`),
         fetch(`/api/ec-controller/config?device_id=${encodeURIComponent(deviceId)}`),
+        fetchEcControllerMetrics(deviceId, 24),
       ]);
       let ecVol: number | null = null;
       let vol = 100;
@@ -187,13 +285,43 @@ export function PhCalibrationSection({
           ecVol = Number(ec.volume);
           vol = ecVol;
         }
-        if (Number(ec.flow_rate) > 0) {
-          setEcFlowRate(Number(ec.flow_rate));
+        if (Array.isArray(ec.nutrients)) {
+          const parts = (ec.nutrients as Array<{ name?: string; flowRate?: number; flow_rate?: number }>)
+            .map((n) => {
+              const q = Number(n.flowRate ?? n.flow_rate);
+              if (!(q > 0)) return null;
+              const label = n.name?.trim() || 'bomba';
+              return `${label} ${q.toFixed(3)}`;
+            })
+            .filter((s): s is string => Boolean(s));
+          setEcFlowRate(parts.length > 0 ? parts.join(' · ') : null);
         } else {
           setEcFlowRate(null);
         }
+        const base = Number(ec.base_dose);
+        const total = Number(ec.total_ml);
+        setEcBaseDose(Number.isFinite(base) && base > 0 ? base : null);
+        setEcTotalMl(Number.isFinite(total) && total > 0 ? total : null);
+        const kp = Number(ec.kp);
+        setEcKp(Number.isFinite(kp) && kp > 0 ? kp : null);
+        const a = Number(ec.aggressiveness);
+        setEcAggressiveness(Number.isFinite(a) && a > 0 ? a : null);
+        const kCfg = Number(ec.k_value);
+        const lastMetricK = [...ecMetrics].reverse().find((r) => Number(r.k_value) > 0)?.k_value;
+        const live =
+          Number.isFinite(kCfg) && kCfg > 0
+            ? kCfg
+            : lastMetricK != null && Number(lastMetricK) > 0
+              ? Number(lastMetricK)
+              : null;
+        setEcKLive(live);
       } else {
         setEcFlowRate(null);
+        setEcBaseDose(null);
+        setEcTotalMl(null);
+        setEcKp(null);
+        setEcAggressiveness(null);
+        setEcKLive(null);
       }
       setEcVolumeLiters(ecVol);
       if (phRes.ok) {
@@ -335,9 +463,9 @@ export function PhCalibrationSection({
                 <td className="py-2 pr-3 text-cyan-400 font-medium">Auto EC</td>
                 <td className="py-2 pr-3">Vazão bombas</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">
-                  {ecFlowRate != null ? `${ecFlowRate.toFixed(3)} ml/s` : '—'}
+                  {ecFlowRate != null ? `${ecFlowRate} ml/s` : '—'}
                 </td>
-                <td className="py-2 text-dark-textSecondary">ec_config.flow_rate</td>
+                <td className="py-2 text-dark-textSecondary">ec_config.nutrients[].flowRate</td>
               </tr>
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-cyan-400 font-medium">Auto EC</td>
@@ -346,6 +474,41 @@ export function PhCalibrationSection({
                   {ecVolumeLiters != null ? `${ecVolumeLiters} L` : '—'}
                 </td>
                 <td className="py-2 text-dark-textSecondary">ec_config.volume</td>
+              </tr>
+              <tr className="border-b border-dark-border/60">
+                <td className="py-2 pr-3 text-cyan-400 font-medium">Auto EC</td>
+                <td className="py-2 pr-3">k receita (fixo)</td>
+                <td className="py-2 pr-3 font-mono tabular-nums">
+                  {ecKRecipe != null ? (
+                    <>
+                      {ecKRecipe.toFixed(4)}
+                      <span className="text-dark-textSecondary">
+                        {' '}
+                        &quot;{ecBaseDose}/{ecTotalMl}&quot;
+                      </span>
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </td>
+                <td className="py-2 text-dark-textSecondary">base_dose / total_ml</td>
+              </tr>
+              <tr className="border-b border-dark-border/60">
+                <td className="py-2 pr-3 text-cyan-400 font-medium">Auto EC</td>
+                <td className="py-2 pr-3">k atual (malha)</td>
+                <td className="py-2 pr-3 font-mono tabular-nums">
+                  {ecKInUse != null ? `${ecKInUse.toFixed(4)} adaptativo` : '—'}
+                </td>
+                <td className="py-2 text-dark-textSecondary">ec_config.k_value (firmware)</td>
+              </tr>
+              <tr className="border-b border-dark-border/60">
+                <td className="py-2 pr-3 text-cyan-400 font-medium">Auto EC</td>
+                <td className="py-2 pr-3">A · Kp</td>
+                <td className="py-2 pr-3 font-mono tabular-nums">
+                  {ecAggressiveness != null ? ecAggressiveness.toFixed(2) : '—'} ·{' '}
+                  {ecKp != null ? ecKp.toFixed(2) : '—'}
+                </td>
+                <td className="py-2 text-dark-textSecondary">aggressiveness · kp</td>
               </tr>
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-violet-400 font-medium">Auto pH</td>
@@ -470,6 +633,9 @@ export function PhCalibrationSection({
           mlPerPhUnitStored={mlPerPhUnitBase}
           onSave={(ml, flow) => savePump('base', ml, flow)}
           saving={savingSide === 'base'}
+          deviceId={deviceId}
+          isOnline={isOnline}
+          autoBlocked={autoBlocked}
         />
         <PumpCalibrationCard
           side="acid"
@@ -481,6 +647,9 @@ export function PhCalibrationSection({
           mlPerPhUnitStored={mlPerPhUnitAcid}
           onSave={(ml, flow) => savePump('acid', ml, flow)}
           saving={savingSide === 'acid'}
+          deviceId={deviceId}
+          isOnline={isOnline}
+          autoBlocked={autoBlocked}
         />
       </div>
     </div>

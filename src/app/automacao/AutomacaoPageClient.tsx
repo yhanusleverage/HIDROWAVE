@@ -25,6 +25,8 @@ import { formatInstructionPreview } from '@/lib/instruction-labels';
 import { getDecisionRules, createDecisionRule, updateDecisionRule, deleteDecisionRule, DecisionRule } from '@/lib/automation';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { toBcp47 } from '@/lib/locale';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
 import {
@@ -53,6 +55,11 @@ import { showLockUnlockToast, validateAdminPassword } from '@/lib/automacao/admi
 const SectionSkeleton = ({ className = 'h-32' }: { className?: string }) => (
   <div className={`animate-pulse rounded-lg bg-dark-surface border border-dark-border ${className}`} />
 );
+
+function atlasRelayLabel(id: number, name?: string | null): string {
+  const trimmed = name?.trim();
+  return trimmed || `Relé ${id}`;
+}
 
 const CreateRuleModal = dynamic(() => import('@/components/CreateRuleModal'), {
   ssr: false,
@@ -183,6 +190,7 @@ const validateTimeFormat = (timeStr: string): boolean => {
 
 export default function AutomacaoPageClient() {
   const { userProfile } = useAuth();
+  const { t, locale } = useLanguage();
   const [activeTab, setActiveTab] = useAutomacaoTab();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<AutomationRule | null>(null); // ✅ Regra sendo editada
@@ -227,9 +235,15 @@ export default function AutomacaoPageClient() {
   const [relayTimers, setRelayTimers] = useState<Map<string, number>>(new Map());
   const [timerModes, setTimerModes] = useState<Map<string, 'timed_on' | 'timed_off'>>(new Map());
   const [showTimerInput, setShowTimerInput] = useState<string | null>(null);
+  const [timerSecondsLeft, setTimerSecondsLeft] = useState<Map<string, number>>(new Map());
+  const [armedTimers, setArmedTimers] = useState<Map<string, number>>(new Map());
   
   // ✅ NOVO: Estados para ciclos programados (relayKey -> { onDuration: number, offDuration: number, enabled: boolean })
-  const [relayCycles, setRelayCycles] = useState<Map<string, { onDuration: number; offDuration: number; enabled: boolean }>>(new Map());
+  const [relayCycles, setRelayCycles] = useState<
+    Map<string, { onDuration: number; offDuration: number; enabled: boolean; phase: 'on' | 'off' }>
+  >(new Map());
+  const relayCyclesRef = useRef(relayCycles);
+  relayCyclesRef.current = relayCycles;
   const [showCycleInput, setShowCycleInput] = useState<string | null>(null); // relayKey que está mostrando input de ciclo
   
   // ✅ NOVO: Mapeamento Command ID → Relay Key (padrão indústria)
@@ -252,6 +266,103 @@ export default function AutomacaoPageClient() {
   });
 
   const { ph: phAtual, phRaw } = useHydroEcReading(selectedDeviceId, ecDeviceActive);
+
+  const startLocalTimer = useCallback((relayKey: string, seconds: number) => {
+    setTimerSecondsLeft((prev) => {
+      const next = new Map(prev);
+      if (seconds <= 0) {
+        next.delete(relayKey);
+      } else {
+        next.set(relayKey, seconds);
+      }
+      return next;
+    });
+  }, []);
+
+  const applyDeadlinesFromSlaves = useCallback((slaves: ESPNowSlave[]) => {
+    setTimerSecondsLeft((prev) => {
+      const next = new Map(prev);
+      let changed = false;
+      slaves.forEach((slave) => {
+        slave.relays.forEach((relay) => {
+          const key = `${slave.macAddress}-${relay.id}`;
+          const rem = relay.has_timer ? (relay.remaining_time || 0) : 0;
+          if (rem > 0) {
+            const localRem = next.get(key) ?? 0;
+            if (!next.has(key) || Math.abs(localRem - rem) > 2) {
+              next.set(key, rem);
+              changed = true;
+            }
+          } else {
+            const pending = [...commandToRelayMap.current.values()].some((p) => p.relayKey === key);
+            const cycling = relayCyclesRef.current.get(key)?.enabled;
+            if (!pending && !cycling && next.has(key)) {
+              next.delete(key);
+              changed = true;
+            }
+          }
+        });
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const cycleFlips: Array<{ key: string; on: boolean; phase: 'on' | 'off'; seconds: number }> = [];
+      const expired: string[] = [];
+      setTimerSecondsLeft((prev) => {
+        if (prev.size === 0) return prev;
+        const next = new Map<string, number>();
+        prev.forEach((seconds, key) => {
+          const left = seconds - 1;
+          if (left > 0) {
+            next.set(key, left);
+            return;
+          }
+          const cycle = relayCyclesRef.current.get(key);
+          if (cycle?.enabled) {
+            const phase: 'on' | 'off' = cycle.phase === 'off' ? 'on' : 'off';
+            const secs = phase === 'on' ? cycle.onDuration : cycle.offDuration;
+            next.set(key, secs);
+            cycleFlips.push({ key, on: phase === 'on', phase, seconds: secs });
+          } else {
+            expired.push(key);
+          }
+        });
+        return next;
+      });
+      if (cycleFlips.length > 0) {
+        setRelayCycles((prev) => {
+          const copy = new Map(prev);
+          cycleFlips.forEach(({ key, phase }) => {
+            const c = copy.get(key);
+            if (c) copy.set(key, { ...c, phase });
+          });
+          return copy;
+        });
+        setRelayStates((states) => {
+          const copy = new Map(states);
+          cycleFlips.forEach(({ key, on }) => copy.set(key, on));
+          return copy;
+        });
+      }
+      if (expired.length > 0) {
+        setRelayStates((states) => {
+          let dirty = false;
+          const copy = new Map(states);
+          expired.forEach((key) => {
+            if (copy.get(key)) {
+              copy.set(key, false);
+              dirty = true;
+            }
+          });
+          return dirty ? copy : states;
+        });
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (availableMasters.length > 0 && selectedDeviceId === 'default_device') {
@@ -404,6 +515,7 @@ export default function AutomacaoPageClient() {
       });
       
       // ✅ Atualizar estado dos slaves com timer info DEPOIS de processar estados (evita loop)
+      applyDeadlinesFromSlaves(updatedSlaves);
       setEspnowSlaves(updatedSlaves);
     } catch (error) {
       console.error('Erro ao atualizar estados dos relés:', error);
@@ -522,7 +634,17 @@ export default function AutomacaoPageClient() {
             loadESPNOWSlaves();
             return prev;
           }
-          setRelayStates((r) => mergeRelayStatesMap(r, updated));
+          setRelayStates((r) => {
+            const merged = mergeRelayStatesMap(r, updated);
+            if (commandToRelayMap.current.size === 0) return merged;
+            const next = new Map(merged);
+            commandToRelayMap.current.forEach(({ relayKey }) => {
+              const optimistic = r.get(relayKey);
+              if (optimistic !== undefined) next.set(relayKey, optimistic);
+            });
+            return next;
+          });
+          applyDeadlinesFromSlaves(updated);
           return updated;
         });
       }
@@ -609,13 +731,14 @@ export default function AutomacaoPageClient() {
         relays: s.relays.length
       })));
       setEspnowSlaves(slaves);
+      applyDeadlinesFromSlaves(slaves);
       
       // ✅ NOVO: Inicializar nombres temporales de relés
       const newTempRelayNames = new Map<string, string>();
       slaves.forEach(slave => {
         slave.relays.forEach(relay => {
           const relayKey = `${slave.macAddress}-${relay.id}`;
-          newTempRelayNames.set(relayKey, relay.name || `Relé ${relay.id + 1}`);
+          newTempRelayNames.set(relayKey, atlasRelayLabel(relay.id, relay.name));
         });
       });
       setTempRelayNames(newTempRelayNames);
@@ -1155,9 +1278,9 @@ export default function AutomacaoPageClient() {
             <div className="flex-1 min-w-0">
               <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent flex items-center gap-2">
                 <ClipboardIcon className="w-8 h-8 text-aqua-400 shrink-0" aria-hidden />
-                Automação
+                {t.pages.automacaoTitle}
               </h1>
-              <p className="text-base sm:text-lg text-dark-textSecondary mt-1">Configure regras automáticas para seu sistema</p>
+              <p className="text-base sm:text-lg text-dark-textSecondary mt-1">{t.pages.automacaoSubtitle}</p>
             </div>
             {/* Seletor de Master */}
             {availableMasters.length > 0 && (
@@ -1180,7 +1303,7 @@ export default function AutomacaoPageClient() {
             {/* Regra Vigente */}
             <div className="bg-dark-surface/50 border border-aqua-500/20 rounded-lg p-4">
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-sm text-aqua-400 font-semibold">📌 Regra Vigente</span>
+                <span className="text-sm text-aqua-400 font-semibold">📌 {t.pages.automacaoActiveRule}</span>
                 {currentActiveRule && (
                   <span className="px-2 py-0.5 bg-aqua-500/20 text-aqua-400 text-sm rounded-full">
                     P{currentActiveRule.priority || 50}
@@ -1192,18 +1315,22 @@ export default function AutomacaoPageClient() {
                   {currentActiveRule.rule_name || currentActiveRule.name}
                 </p>
               ) : (
-                <p className="text-sm text-dark-textSecondary italic">Nenhuma regra ativa</p>
+                <p className="text-sm text-dark-textSecondary italic">{t.common.noActiveRule}</p>
               )}
             </div>
             
             {/* Status do Motor de Decisão */}
             <div className="bg-dark-surface/50 border border-dark-border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-sm text-dark-textSecondary font-semibold">🔧 Motor de Decisão</span>
+                <span className="text-sm text-dark-textSecondary font-semibold">🔧 {t.pages.automacaoDecisionEngine}</span>
                 <span className={`w-2.5 h-2.5 rounded-full ${decisionEngineActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></span>
               </div>
               <p className={`text-base font-medium ${decisionEngineActive ? 'text-green-400' : 'text-dark-textSecondary'}`}>
-                {decisionEngineActive ? 'Ativo' : selectedMaster?.is_online ? 'Inativo' : 'Offline'}
+                {decisionEngineActive
+                  ? t.common.active
+                  : selectedMaster?.is_online
+                    ? t.common.inactive
+                    : t.common.offline}
               </p>
             </div>
             
@@ -1211,17 +1338,19 @@ export default function AutomacaoPageClient() {
             <div className="bg-dark-surface/50 border border-dark-border rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-dark-textSecondary mb-1.5">📊 Estatísticas</p>
+                  <p className="text-sm text-dark-textSecondary mb-1.5">📊 {t.pages.automacaoStats}</p>
                   <p className="text-base font-medium text-dark-text">
-                    <span className="text-aqua-400">{activeRules}</span> ativas / <span className="text-dark-textSecondary">{inactiveRules}</span> inativas
+                    {t.pages.automacaoActiveCount
+                      .replace('{active}', String(activeRules))
+                      .replace('{inactive}', String(inactiveRules))}
                   </p>
                 </div>
                 {selectedMaster?.is_online && (
                   <div className="flex flex-col items-end">
-                    <span className="text-sm text-green-400">🟢 Online</span>
+                    <span className="text-sm text-green-400">🟢 {t.common.online}</span>
                     {selectedMaster.last_seen && (
                       <span className="text-sm text-dark-textSecondary">
-                        {new Date(selectedMaster.last_seen).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(selectedMaster.last_seen).toLocaleTimeString(toBcp47(locale), { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     )}
                   </div>
@@ -1279,8 +1408,8 @@ export default function AutomacaoPageClient() {
         {/* ⚡ TESTE RELAYS MANUALMENTE (ESP-NOW - CARGA) - EXISTENTE */}
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
           <div className="p-4 border-b border-dark-border">
-            <h2 className="text-base sm:text-lg font-semibold text-dark-text break-words">⚡ Teste Relays Manualmente (HydroWave Atlas)</h2>
-            <p className="text-xs sm:text-sm text-dark-textSecondary mt-1 break-words">Controle manual dos relays para testes</p>
+            <h2 className="text-base sm:text-lg font-semibold text-dark-text break-words">⚡ Acionamento manual rápido</h2>
+            <p className="text-xs sm:text-sm text-dark-textSecondary mt-1 break-words">Comando agora</p>
           </div>
           
           {/* Gerenciador de Nomes dos Relés ESP-NOW Slaves - Colapsável */}
@@ -1320,7 +1449,7 @@ export default function AutomacaoPageClient() {
               <div className="p-4 border-t border-dark-border">
                 {loadingSlaves ? (
                   <div className="text-center py-8">
-                    <BrandLoading message="Carregando HydroWave Atlas..." size={40} />
+                    <BrandLoading message={t.common.loadingAtlas} size={40} />
                   </div>
                 ) : espnowSlaves.length === 0 ? (
                   <div className="text-center py-8 bg-dark-card border border-dark-border rounded-lg">
@@ -1425,15 +1554,16 @@ export default function AutomacaoPageClient() {
                                     const relayKey = `${slave.macAddress}-${relay.id}`;
                                     const realState = relay.state !== undefined ? relay.state : false;
                                     const isLoading = loadingRelays.get(relayKey) || false;
-                                    const isRelayOn = isLoading
-                                      ? (relayStates.get(relayKey) ?? realState)
+                                    const isRelayOn = relayStates.has(relayKey)
+                                      ? Boolean(relayStates.get(relayKey))
                                       : realState;
+                                    const relayLabel = atlasRelayLabel(relay.id, relay.name);
                                     const isLocked = lockedSlaves.get(slave.macAddress) ?? false;
                                     const isSlaveOffline = slave.status === 'offline';
                                     const controlsDisabled = isLocked || isSlaveOffline;
                                     // ✅ Verificar se tem timer ativo
-                                    const hasTimer = relay.has_timer || false;
-                                    const remainingTime = relay.remaining_time || 0;
+                                    const remainingTime = timerSecondsLeft.get(relayKey) || 0;
+                                    const timerArmed = armedTimers.has(relayKey);
                                     
                                     return (
                                       <div
@@ -1444,14 +1574,14 @@ export default function AutomacaoPageClient() {
                                       >
                                         <div className="flex items-center justify-between mb-2">
                                           <div className="flex-1 min-w-0">
-                                            <h6 className="text-xs font-medium text-dark-text truncate" title={relay.name || `Relé ${relay.id + 1}`}>
-                                              {relay.name || `Relé ${relay.id + 1}`}
+                                            <h6 className="text-xs font-medium text-dark-text truncate" title={relayLabel}>
+                                              {relayLabel}
                                             </h6>
                                             <p className="text-xs text-dark-textSecondary mt-0.5">
-                                              {realState ? '🟢 ON' : '⚫ OFF'}
+                                              {isRelayOn ? '🟢 ON' : '⚫ OFF'}
                                             </p>
                                             {/* ✅ Mostrar timer se estiver ativo */}
-                                            {hasTimer && remainingTime > 0 && (
+                                            {remainingTime > 0 && (
                                               <p className="text-xs text-yellow-400 mt-1 flex items-center gap-1">
                                                 <ClockIcon className="w-3 h-3" />
                                                 {Math.floor(remainingTime / 60)}:{(remainingTime % 60).toString().padStart(2, '0')}
@@ -1482,11 +1612,9 @@ export default function AutomacaoPageClient() {
                                         <div className="relative">
                                           <div className="flex items-center gap-2">
                                             {/* Modo ativo (chip) */}
-                                            {(relayCycles.get(relayKey)?.enabled || (hasTimer && remainingTime > 0)) && (
+                                            {relayCycles.get(relayKey)?.enabled && (
                                               <p className="text-[10px] text-aqua-400/90 mb-1 truncate">
-                                                {relayCycles.get(relayKey)?.enabled
-                                                  ? `Ciclo ${relayCycles.get(relayKey)!.onDuration}s/${relayCycles.get(relayKey)!.offDuration}s`
-                                                  : `Timer ${remainingTime}s`}
+                                                {`Ciclo ${relayCycles.get(relayKey)!.phase === 'off' ? 'OFF' : 'ON'} ${relayCycles.get(relayKey)!.onDuration}s/${relayCycles.get(relayKey)!.offDuration}s`}
                                               </p>
                                             )}
 
@@ -1495,8 +1623,14 @@ export default function AutomacaoPageClient() {
                                               onClick={async () => {
                                                 const previousState = isRelayOn;
                                                 const nextOn = !isRelayOn;
+                                                const armedSecs = armedTimers.get(relayKey);
+                                                const durationSeconds =
+                                                  nextOn && armedSecs && armedSecs > 0 ? armedSecs : 0;
                                                 setLoadingRelays(prev => new Map(prev).set(relayKey, true));
                                                 setRelayStates(prev => new Map(prev).set(relayKey, nextOn));
+                                                if (nextOn && durationSeconds > 0) {
+                                                  startLocalTimer(relayKey, durationSeconds);
+                                                }
                                                 try {
                                                   const result = await sendSlaveRelayCommand({
                                                     master_device_id: selectedDeviceId!,
@@ -1505,7 +1639,7 @@ export default function AutomacaoPageClient() {
                                                     relay_number: relay.id,
                                                     mode: 'instant',
                                                     action: nextOn ? 'on' : 'off',
-                                                    duration_seconds: 0,
+                                                    duration_seconds: durationSeconds,
                                                   });
                                                   if (result.success) {
                                                     if (result.command_id) {
@@ -1515,6 +1649,12 @@ export default function AutomacaoPageClient() {
                                                       });
                                                     }
                                                     if (!nextOn) {
+                                                      startLocalTimer(relayKey, 0);
+                                                      setArmedTimers(prev => {
+                                                        const next = new Map(prev);
+                                                        next.delete(relayKey);
+                                                        return next;
+                                                      });
                                                       setRelayCycles(prev => {
                                                         const next = new Map(prev);
                                                         const c = next.get(relayKey);
@@ -1524,10 +1664,11 @@ export default function AutomacaoPageClient() {
                                                     }
                                                     toast.success(
                                                       nextOn
-                                                        ? `${relay.name || `Relé ${relay.id + 1}`} ligado`
-                                                        : `${relay.name || `Relé ${relay.id + 1}`} desligado`
+                                                        ? durationSeconds > 0
+                                                          ? `${relayLabel} ligado ${durationSeconds}s`
+                                                          : `${relayLabel} ligado`
+                                                        : `${relayLabel} desligado`
                                                     );
-                                                    setTimeout(() => updateRelayStatesOnly(), 2000);
                                                   } else {
                                                     setRelayStates(prev => new Map(prev).set(relayKey, previousState));
                                                     toast.error(`Erro: ${result.error}`);
@@ -1593,7 +1734,7 @@ export default function AutomacaoPageClient() {
                                               </div>
                                               
                                               {/* Indicador de timer activo */}
-                                              {relayTimers.get(relayKey) && !isRelayOn && (
+                                              {(timerArmed || remainingTime > 0) && (
                                                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center">
                                                   <ClockIcon className="w-2.5 h-2.5 text-white" />
                                                 </div>
@@ -1618,7 +1759,7 @@ export default function AutomacaoPageClient() {
                                                   p-2 rounded-lg transition-all duration-200
                                                   ${showTimerInput === relayKey || showCycleInput === relayKey
                                                     ? 'bg-aqua-500/20 text-aqua-400 border-2 border-aqua-500/40'
-                                                    : relayTimers.get(relayKey) || relayCycles.get(relayKey)?.enabled
+                                                    : timerArmed || remainingTime > 0 || relayCycles.get(relayKey)?.enabled
                                                       ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/30'
                                                       : 'bg-dark-surface hover:bg-dark-border text-dark-textSecondary hover:text-aqua-400 border border-dark-border'
                                                   }
@@ -1627,8 +1768,8 @@ export default function AutomacaoPageClient() {
                                                 title={
                                                   relayCycles.get(relayKey)?.enabled
                                                     ? `Ciclo: ON ${relayCycles.get(relayKey)!.onDuration}s / OFF ${relayCycles.get(relayKey)!.offDuration}s`
-                                                    : relayTimers.get(relayKey)
-                                                      ? `Timer: ${relayTimers.get(relayKey)}s`
+                                                    : timerArmed
+                                                      ? `Timer armado: ${armedTimers.get(relayKey)}s — pulsa ON`
                                                       : 'Configurar Timer/Ciclo'
                                                 }
                                               >
@@ -1709,45 +1850,17 @@ export default function AutomacaoPageClient() {
                                                     <span className="text-xs text-dark-textSecondary">s</span>
                                                   </div>
                                                   <p className="text-xs text-dark-textSecondary/80">
-                                                    {(timerModes.get(relayKey) ?? 'timed_on') === 'timed_on'
-                                                      ? 'Liga o relé e desliga automaticamente após X segundos'
-                                                      : 'Mantém ligado e desliga após X segundos (relé deve estar ON)'}
+                                                    Ativar só arma o relógio amarelo. O relé só liga ao pulsar ON.
                                                   </p>
                                                   <button
                                                     type="button"
-                                                    disabled={isLoading || controlsDisabled}
-                                                    onClick={async (e) => {
+                                                    disabled={controlsDisabled}
+                                                    onClick={(e) => {
                                                       e.stopPropagation();
                                                       const secs = relayTimers.get(relayKey) || 10;
-                                                      const mode = timerModes.get(relayKey) ?? 'timed_on';
-                                                      setLoadingRelays(prev => new Map(prev).set(relayKey, true));
-                                                      const result = await sendSlaveRelayCommand({
-                                                        master_device_id: selectedDeviceId!,
-                                                        slave_mac_address: slave.macAddress,
-                                                        slave_name: slave.name,
-                                                        relay_number: relay.id,
-                                                        mode,
-                                                        duration_seconds: secs,
-                                                      });
-                                                      setLoadingRelays(prev => {
-                                                        const next = new Map(prev);
-                                                        next.delete(relayKey);
-                                                        return next;
-                                                      });
-                                                      if (result.success) {
-                                                        if (mode === 'timed_on') {
-                                                          setRelayStates(prev => new Map(prev).set(relayKey, true));
-                                                        }
-                                                        toast.success(
-                                                          mode === 'timed_on'
-                                                            ? `Timer: ligar ${secs}s`
-                                                            : `Timer: desligar em ${secs}s`
-                                                        );
-                                                        setShowTimerInput(null);
-                                                        setTimeout(() => updateRelayStatesOnly(), 2000);
-                                                      } else {
-                                                        toast.error(result.error ?? 'Erro ao ativar timer');
-                                                      }
+                                                      setArmedTimers(prev => new Map(prev).set(relayKey, secs));
+                                                      setShowTimerInput(null);
+                                                      toast.success(`Timer armado ${secs}s — pulsa ON para ligar`);
                                                     }}
                                                     className="w-full py-2 px-3 text-xs font-medium rounded bg-aqua-500/20 text-aqua-400 border border-aqua-500/40 hover:bg-aqua-500/30 disabled:opacity-50"
                                                   >
@@ -1757,6 +1870,11 @@ export default function AutomacaoPageClient() {
                                                     type="button"
                                                     onClick={(e) => {
                                                       e.stopPropagation();
+                                                      setArmedTimers(prev => {
+                                                        const next = new Map(prev);
+                                                        next.delete(relayKey);
+                                                        return next;
+                                                      });
                                                       setRelayTimers(prev => {
                                                         const next = new Map(prev);
                                                         next.delete(relayKey);
@@ -1766,7 +1884,7 @@ export default function AutomacaoPageClient() {
                                                     }}
                                                     className="w-full py-1.5 text-xs text-dark-textSecondary hover:text-red-400"
                                                   >
-                                                    Fechar painel
+                                                    Desarmar / Fechar
                                                   </button>
                                                 </div>
                                               )}
@@ -1785,7 +1903,12 @@ export default function AutomacaoPageClient() {
                                                         const value = parseInt(e.target.value) || 10;
                                                         setRelayCycles(prev => {
                                                           const next = new Map(prev);
-                                                          const current = next.get(relayKey) || { onDuration: 10, offDuration: 10, enabled: false };
+                                                          const current = next.get(relayKey) || {
+                                                            onDuration: 10,
+                                                            offDuration: 10,
+                                                            enabled: false,
+                                                            phase: 'on' as const,
+                                                          };
                                                           next.set(relayKey, { ...current, onDuration: value });
                                                           return next;
                                                         });
@@ -1805,7 +1928,12 @@ export default function AutomacaoPageClient() {
                                                         const value = parseInt(e.target.value) || 10;
                                                         setRelayCycles(prev => {
                                                           const next = new Map(prev);
-                                                          const current = next.get(relayKey) || { onDuration: 10, offDuration: 10, enabled: false };
+                                                          const current = next.get(relayKey) || {
+                                                            onDuration: 10,
+                                                            offDuration: 10,
+                                                            enabled: false,
+                                                            phase: 'on' as const,
+                                                          };
                                                           next.set(relayKey, { ...current, offDuration: value });
                                                           return next;
                                                         });
@@ -1829,6 +1957,7 @@ export default function AutomacaoPageClient() {
                                                             relay_number: relay.id,
                                                             mode: 'cycle_stop',
                                                             action: 'off',
+                                                            duration_seconds: 0,
                                                           });
                                                           setLoadingRelays(prev => {
                                                             const next = new Map(prev);
@@ -1842,6 +1971,8 @@ export default function AutomacaoPageClient() {
                                                               if (c) next.set(relayKey, { ...c, enabled: false });
                                                               return next;
                                                             });
+                                                            startLocalTimer(relayKey, 0);
+                                                            setRelayStates(prev => new Map(prev).set(relayKey, false));
                                                             toast.success('Ciclo parado');
                                                           } else {
                                                             toast.error(result.error ?? 'Erro ao parar ciclo');
@@ -1861,14 +1992,18 @@ export default function AutomacaoPageClient() {
                                                             onDuration: 10,
                                                             offDuration: 10,
                                                             enabled: false,
+                                                            phase: 'on' as const,
                                                           };
                                                           setLoadingRelays(prev => new Map(prev).set(relayKey, true));
+                                                          startLocalTimer(relayKey, cycle.onDuration);
+                                                          setRelayStates(prev => new Map(prev).set(relayKey, true));
                                                           const result = await sendSlaveRelayCommand({
                                                             master_device_id: selectedDeviceId!,
                                                             slave_mac_address: slave.macAddress,
                                                             slave_name: slave.name,
                                                             relay_number: relay.id,
                                                             mode: 'cycle',
+                                                            action: 'on',
                                                             duration_seconds: cycle.onDuration,
                                                             cycle_off_seconds: cycle.offDuration,
                                                           });
@@ -1879,14 +2014,19 @@ export default function AutomacaoPageClient() {
                                                           });
                                                           if (result.success) {
                                                             setRelayCycles(prev =>
-                                                              new Map(prev).set(relayKey, { ...cycle, enabled: true })
+                                                              new Map(prev).set(relayKey, {
+                                                                ...cycle,
+                                                                enabled: true,
+                                                                phase: 'on',
+                                                              })
                                                             );
                                                             toast.success(
                                                               `Ciclo ON ${cycle.onDuration}s / OFF ${cycle.offDuration}s`
                                                             );
                                                             setShowCycleInput(null);
-                                                            setTimeout(() => updateRelayStatesOnly(), 2000);
                                                           } else {
+                                                            startLocalTimer(relayKey, 0);
+                                                            setRelayStates(prev => new Map(prev).set(relayKey, isRelayOn));
                                                             toast.error(result.error ?? 'Erro ao ativar ciclo');
                                                           }
                                                         }}
@@ -1912,7 +2052,9 @@ export default function AutomacaoPageClient() {
                                                       <XMarkIcon className="w-4 h-4" />
                                                     </button>
                                                   </div>
-                                                  <p className="text-xs text-dark-textSecondary/80">Ciclo: alterna ON/OFF automaticamente</p>
+                                                  <p className="text-xs text-dark-textSecondary/80">
+                                                    Ciclo no Atlas: ON → OFF → ON… até pulsar Parar.
+                                                  </p>
                                                 </div>
                                               )}
                                             </div>
@@ -1965,7 +2107,7 @@ export default function AutomacaoPageClient() {
                                     return (
                                       <div key={relay.id} className="flex items-center space-x-2">
                                         <label className="text-sm text-dark-textSecondary w-20 flex-shrink-0">
-                                          Relé {relay.id + 1}:
+                                          Relé {relay.id}:
                                         </label>
                                         <div className="flex-1 flex items-center space-x-2">
                                           <input
@@ -1989,7 +2131,7 @@ export default function AutomacaoPageClient() {
                                             }}
                                             disabled={isSaving}
                                             className="flex-1 p-2 bg-dark-bg border border-dark-border rounded-lg text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                                            placeholder={`Relé ${relay.id + 1}`}
+                                            placeholder={`Relé ${relay.id}`}
                                           />
                                           <button
                                             onClick={() => {
@@ -2118,7 +2260,7 @@ export default function AutomacaoPageClient() {
             {/* Lista de Regras Ativas */}
             {loading ? (
               <div className="text-center py-8">
-                <BrandLoading message="Carregando regras..." size={40} />
+                <BrandLoading message={t.common.loadingRules} size={40} />
               </div>
             ) : (
               <div className="space-y-3">
@@ -2146,7 +2288,7 @@ export default function AutomacaoPageClient() {
                 </div>
 
                 {loading ? (
-                  <div className="text-center py-8 text-dark-textSecondary">Carregando...</div>
+                  <div className="text-center py-8 text-dark-textSecondary">{t.common.loading}</div>
                 ) : rules.filter(r => r.rule_json?.script?.instructions).length === 0 ? (
                   <div className="text-center py-8 text-dark-textSecondary bg-dark-surface border border-dark-border rounded-lg">
                     Nenhum script sequencial ativo. Crie uma regra com instruções sequenciais.
@@ -2457,7 +2599,7 @@ export default function AutomacaoPageClient() {
           ...espnowSlaves.flatMap(slave => 
             slave.relays.map(relay => ({
               id: relay.id + 1000, // Offset para não conflitar com master (0-6 = PCF1)
-              name: `${slave.name} - ${relay.name || `Relé ${relay.id + 1}`}`,
+              name: `${slave.name} - ${atlasRelayLabel(relay.id, relay.name)}`,
               device: 'slave' as const,
               slaveMac: slave.macAddress
             }))

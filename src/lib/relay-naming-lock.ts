@@ -12,7 +12,8 @@ export type RelayNamingLockReason =
   | 'ec_auto_enabled'
   | 'ph_auto_dosing'
   | 'ph_auto_recirc'
-  | 'manual_dosing_ui';
+  | 'manual_dosing_ui'
+  | 'relay_busy';
 
 export type PendingCommandSlice = RelayCommandPendingSlice & {
   relay_number?: number | null;
@@ -26,6 +27,7 @@ const TOOLTIPS: Record<RelayNamingLockReason, string> = {
   ph_auto_dosing: 'Aguarde fim da dosagem pH',
   ph_auto_recirc: 'Aguarde fim da recirculação pH',
   manual_dosing_ui: 'Dosificação manual em curso',
+  relay_busy: 'Relé ocupado (calibragem ou dosagem em curso)',
 };
 
 function isDoserRelay(n: number): boolean {
@@ -123,9 +125,21 @@ export function resolveEcManualDoseButtonLock(input: {
   relayNumber: number;
   manualPendingRelays?: Set<number>;
   ecManualDosingRelay?: boolean;
+  relayHardwareOn?: boolean;
+  busyLabel?: string | null;
 }): RelayNamingLockResult {
   if (input.autoEnabled) {
     return { locked: true, reason: 'ec_auto_enabled', tooltip: TOOLTIPS.ec_auto_enabled };
+  }
+  if (input.busyLabel) {
+    return {
+      locked: true,
+      reason: 'relay_busy',
+      tooltip: `Relé ocupado: ${input.busyLabel}`,
+    };
+  }
+  if (input.relayHardwareOn) {
+    return { locked: true, reason: 'relay_busy', tooltip: TOOLTIPS.relay_busy };
   }
   if (input.manualPendingRelays?.has(input.relayNumber)) {
     return { locked: true, reason: 'manual_pending', tooltip: TOOLTIPS.manual_pending };

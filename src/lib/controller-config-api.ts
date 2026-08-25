@@ -4,7 +4,6 @@
 
 export const EC_WRITABLE_KEYS = [
   'base_dose',
-  'flow_rate',
   'volume',
   'total_ml',
   'kp',
@@ -50,9 +49,6 @@ export const PH_WRITABLE_KEYS = [
   'pulse_ml',
   'pulse_gap_sec',
   'gain_alpha',
-  'max_dose_ml_per_cycle',
-  'max_pulse_seconds',
-  'max_consecutive_corrections',
   'reset_k_gains',
   'updated_at',
   'created_by',
@@ -126,6 +122,7 @@ export function stripEcWritableConfig(
   const withoutMeta = omitKeys(config, [
     'id',
     'created_at',
+    'k_value',
     '_debug',
     'device_id',
   ]);
@@ -153,7 +150,7 @@ export function sanitizeEcNumericFields(
 ): Record<string, unknown> {
   const out = { ...config };
 
-  for (const key of ['base_dose', 'flow_rate', 'volume', 'total_ml', 'kp', 'ec_setpoint', 'tolerance', 'dilution_max_volume_l', 'flowmeter_pulses_per_liter', 'dilution_fill_flow_lps'] as const) {
+  for (const key of ['base_dose', 'volume', 'total_ml', 'kp', 'ec_setpoint', 'tolerance', 'dilution_max_volume_l', 'flowmeter_pulses_per_liter', 'dilution_fill_flow_lps'] as const) {
     const v = finiteFloat(out[key]);
     if (v !== undefined) out[key] = v;
   }
@@ -209,7 +206,6 @@ export function sanitizePhNumericFields(
     'ml_per_ph_unit',
     'ml_per_ph_unit_acid',
     'ml_per_ph_unit_base',
-    'max_dose_ml_per_cycle',
   ] as const) {
     const v = finiteFloat(out[key]);
     if (v !== undefined) out[key] = v;

@@ -27,7 +27,6 @@ import {
   resolveActiveK,
   previewPhDoseOperatorMl,
   previewPhDoseFirmwareMl,
-  capFirmwarePreviewDose,
   mlPerPhUnitFromK,
   resolveActiveSL,
   PH_OPERATOR_EQUATION_SYMBOL,
@@ -59,8 +58,8 @@ import { saveMasterLocalRelayName } from '@/lib/nutrition-plan';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { MetricRow } from '@/components/ui/MetricRow';
-import { HW_TEXT } from '@/lib/design-tokens';
 import ControllerMetricsPanel from '@/components/ControllerMetricsPanel';
+import { PhGrowerSummaryCard } from '@/components/GrowerSummaryCards';
 
 export interface RelayAllocationBridge {
   buildRegistry: (
@@ -144,7 +143,6 @@ export default function PhControllerPanel({
   relayAllocation,
 }: PhControllerPanelProps) {
   const [expanded, setExpanded] = useState(true);
-  const [equationHExpanded, setEquationHExpanded] = useState(false);
   const [showPhConfigPreview, setShowPhConfigPreview] = useState(false);
   const [locked, setLocked] = useState(() => process.env.NODE_ENV !== 'development');
   const justSavedRef = useRef(false);
@@ -178,7 +176,6 @@ export default function PhControllerPanel({
   const [consumo24h, setConsumo24h] = useState(false);
   const [pulseMl, setPulseMl] = useState(2.0);
   const [pulseGapSec, setPulseGapSec] = useState(2.0);
-  const [maxDoseMlPerCycle, setMaxDoseMlPerCycle] = useState(50);
   const [kAcid, setKAcid] = useState<number | null>(null);
   const [kBase, setKBase] = useState<number | null>(null);
   const [stalePhFromDosage, setStalePhFromDosage] = useState<number | null>(null);
@@ -256,11 +253,6 @@ export default function PhControllerPanel({
         if (Number.isFinite(parsedEcVol) && parsedEcVol > 0) {
           ecVol = parsedEcVol;
         }
-        const ecFlow = Number(ecData.flow_rate);
-        if (Number.isFinite(ecFlow) && ecFlow > 0) {
-          setFlowRatePhUp(ecFlow);
-          setFlowRatePhDown(ecFlow);
-        }
         if (Array.isArray(ecData.nutrients)) {
           setEcNutrientsForRelayCheck(ecData.nutrients as EcNutrientRelaySlice[]);
         }
@@ -305,8 +297,6 @@ export default function PhControllerPanel({
         const g = Number(data.pulse_gap_sec);
         setPulseGapSec(Number.isFinite(g) && g >= 0 ? Math.min(120, Math.max(0, g)) : 2.0);
       }
-      const maxDose = Number(data.max_dose_ml_per_cycle);
-      setMaxDoseMlPerCycle(Number.isFinite(maxDose) && maxDose > 0 ? maxDose : 50);
       setKAcid(data.k_acid != null ? Number(data.k_acid) : null);
       setKBase(data.k_base != null ? Number(data.k_base) : null);
     } catch (err) {
@@ -709,18 +699,7 @@ export default function PhControllerPanel({
     );
   }, [displayPh, phSetpoint, aggressiveness, activeKResult]);
 
-  const previewFirmwareMl = useMemo(
-    () => capFirmwarePreviewDose(previewFirmwareUncappedMl, maxDoseMlPerCycle),
-    [previewFirmwareUncappedMl, maxDoseMlPerCycle]
-  );
-
-  const firmwareDoseCapped = useMemo(
-    () =>
-      previewFirmwareUncappedMl != null &&
-      previewFirmwareMl != null &&
-      previewFirmwareUncappedMl > previewFirmwareMl + 0.01,
-    [previewFirmwareUncappedMl, previewFirmwareMl]
-  );
+  const previewFirmwareMl = previewFirmwareUncappedMl;
 
   const previewPulseSec = useMemo(() => {
     if (previewDoseMl == null || activeFlowRate <= 0) return null;
@@ -1038,8 +1017,8 @@ export default function PhControllerPanel({
               <span>
                 <span className="block text-sm text-dark-text">Consumo pH 24 h</span>
                 <span className="block text-xs text-dark-textSecondary">
-                  Camada sobre o Auto pH. Não muda o intervalo. Default OFF.
-                  O Core lê isto no mesmo GET de ph_config_view que auto_enabled.
+                  Liga o diário de 24 h no resumo (seta de pH e ml pH+/pH−). Também é a
+                  camada do firmware. Default OFF. Não muda o intervalo.
                 </span>
               </span>
             </label>
@@ -1085,6 +1064,41 @@ export default function PhControllerPanel({
 
           <SectionHeader title="Actuação" accent="ph" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <div className="sm:col-span-2 lg:col-span-3">
+              <label className="block text-sm text-dark-textSecondary mb-1">V (Volume, L)</label>
+              <div className="flex flex-wrap gap-2 items-center">
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={volume}
+                  disabled={disabled}
+                  onChange={(e) => setVolume(parseFloat(e.target.value) || 0)}
+                  className="w-24 p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  disabled={disabled || savingVolume || volume === savedVolume}
+                  onClick={() => void saveVolumeOnly()}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-violet-500/20 text-violet-300 border border-violet-500/30 hover:bg-violet-500/30 disabled:opacity-50"
+                >
+                  {savingVolume ? 'Salvando…' : 'Salvar volume'}
+                </button>
+                {ecVolumeLiters != null && ecVolumeLiters > 0 && ecVolumeLiters !== volume && (
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setVolume(ecVolumeLiters)}
+                    className="px-3 py-1.5 text-xs rounded-lg text-dark-textSecondary border border-dark-border hover:bg-dark-surface disabled:opacity-50"
+                  >
+                    Usar volume EC ({ecVolumeLiters} L)
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-dark-textSecondary mt-1">
+                Tanque salvo: {savedVolume} L. Precisa estar certo para a dose bater com o volume real.
+              </p>
+            </div>
             <div>
               <label className="block text-sm text-dark-textSecondary mb-1">Relé pH+</label>
               <span title={phUpRelayControl.title || undefined}>
@@ -1218,156 +1232,23 @@ export default function PhControllerPanel({
               />
             </InstrumentCard>
 
-            <InstrumentCard accent="brand" title="🧮 Equação de Controle Proporcional" tinted>
-              <div className="font-mono text-aqua-400 mb-2 text-lg break-words">
-                {PH_OPERATOR_EQUATION_SYMBOL}
-              </div>
-              <div className="font-mono text-aqua-400/80 text-sm mb-3">
-                {PH_PULSE_EQUATION_SYMBOL}
-              </div>
-              <p className="text-xs text-dark-textSecondary mb-3 leading-relaxed">
-                Modelo inverso adaptativo em domínio pH. O operador ajusta apenas A; K é aprendido no
-                detalhe H⁺ colapsável.
-              </p>
-              <div className="space-y-2.5 text-base">
-                <div className="space-y-2 pb-2 border-b border-dark-border">
-                  <label className="block text-sm text-dark-textSecondary">V (Volume, L)</label>
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <input
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      value={volume}
-                      disabled={disabled}
-                      onChange={(e) => setVolume(parseFloat(e.target.value) || 0)}
-                      className="w-24 p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text disabled:opacity-50"
-                    />
-                    <button
-                      type="button"
-                      disabled={disabled || savingVolume || volume === savedVolume}
-                      onClick={() => void saveVolumeOnly()}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-violet-500/20 text-violet-300 border border-violet-500/30 hover:bg-violet-500/30 disabled:opacity-50"
-                    >
-                      {savingVolume ? 'Salvando…' : 'Salvar volume'}
-                    </button>
-                    {ecVolumeLiters != null && ecVolumeLiters > 0 && ecVolumeLiters !== volume && (
-                      <button
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => setVolume(ecVolumeLiters)}
-                        className="px-3 py-1.5 text-xs rounded-lg text-dark-textSecondary border border-dark-border hover:bg-dark-surface disabled:opacity-50"
-                      >
-                        Usar volume EC ({ecVolumeLiters} L)
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-xs text-dark-textSecondary leading-relaxed">
-                    Fonte: ph_config.volume (salvo {savedVolume} L). Alterar V atualiza s_L; u(t) estável se K
-                    aprendido estiver correto.
-                  </p>
-                </div>
-                <MetricRow
-                  label="s_L (ml/L / unid pH):"
-                  value={activeSL != null && activeSL > 0 ? activeSL.toFixed(3) : '--'}
-                  hint={
-                    activeKResult != null
-                      ? activeKResult.source === 'learned'
-                        ? 'via k aprendido'
-                        : 'calibragem (seed)'
-                      : undefined
-                  }
-                />
-                <MetricRow label="q (Taxa de vazão):" value={`${activeFlowRate.toFixed(3)} ml/s`} />
-                <MetricRow
-                  label="e (|pH − SP|):"
-                  value={phError !== null ? formatSensorValue(phError, 2) : '--'}
-                  variant={phWithinTolerance === false ? 'alarm' : 'default'}
-                />
-                <MetricRow label="A (Agressividade):" value={aggressiveness.toFixed(2)} />
-                <MetricRow
-                  label="Próxima dose estimada (preview):"
-                  value={
-                    previewDoseMl != null ? `${previewDoseMl.toFixed(2)} ml` : '-- ml'
-                  }
-                  variant="preview"
-                  className="border-t border-dark-border pt-2"
-                  hint="Live u(t) = A × |e| × activeS — independente do histórico"
-                />
-                <MetricRow
-                  label="τ estimado (preview):"
-                  value={
-                    previewPulseSec != null ? `${previewPulseSec.toFixed(2)} s` : '-- s'
-                  }
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setEquationHExpanded((v) => !v)}
-                className={`mt-4 w-full flex items-center justify-between text-sm hover:opacity-90 border-t border-dark-border pt-3 ${HW_TEXT.ph}`}
-              >
-                <span>Domínio interno (H⁺)</span>
-                {equationHExpanded ? (
-                  <ChevronUpIcon className="w-4 h-4" />
-                ) : (
-                  <ChevronDownIcon className="w-4 h-4" />
-                )}
-              </button>
-
-              {equationHExpanded && (
-                <div className="mt-3 space-y-2.5 text-base border border-dark-border rounded-lg p-3 bg-dark-card/50">
-                  <div className="font-mono text-aqua-400 text-sm">{PH_FIRMWARE_EQUATION_SYMBOL}</div>
-                  <p className="text-xs text-dark-textSecondary leading-relaxed">
-                    Domínio firmware (AdaptivePHController). Pode divergir do preview pH em erros grandes.
-                    Valores acima do teto são limitados pelo ESP32 antes de dosar.
-                  </p>
-                  <div className="flex justify-between border-t border-dark-border pt-2">
-                    <span className="text-dark-textSecondary">ErroH (erro H⁺):</span>
-                    <span className="text-dark-text font-medium font-mono tabular-nums">
-                      {errorHAbs != null ? errorHAbs.toExponential(3) : '--'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-dark-textSecondary">K (ganho H⁺):</span>
-                    <span className="text-dark-text font-medium font-mono tabular-nums">
-                      {activeKResult != null ? activeKResult.k.toExponential(3) : '--'}
-                      {activeKResult?.source === 'learned' && (
-                        <span className="ml-2 text-xs text-violet-400/90 font-sans">(aprendido)</span>
-                      )}
-                      {activeKResult?.source === 'seed' && (
-                        <span className="ml-2 text-xs text-dark-textSecondary font-sans">(seed)</span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-dark-textSecondary">Dose firmware (teto):</span>
-                    <span className="text-dark-text font-medium tabular-nums">
-                      {previewFirmwareMl != null
-                        ? `${previewFirmwareMl.toFixed(2)} ml`
-                        : '-- ml'}
-                      <span className="ml-1 text-xs text-dark-textSecondary font-sans">
-                        (max {maxDoseMlPerCycle} ml/ciclo)
-                      </span>
-                    </span>
-                  </div>
-                  {firmwareDoseCapped && previewFirmwareUncappedMl != null && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-dark-textSecondary">Sem teto (só fórmula):</span>
-                      <span className="text-amber-400/90 font-mono tabular-nums">
-                        {previewFirmwareUncappedMl.toFixed(2)} ml
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="mt-4 pt-3 border-t border-dark-border space-y-2 text-xs text-dark-textSecondary">
-                <p className="leading-relaxed">{calibBaseLine}</p>
-                <p className="leading-relaxed">{calibAcidLine}</p>
-                <NavLink href="/calibragem" className={`${HW_TEXT.ph} hover:underline inline-block`}>
-                  Editar calibragem →
-                </NavLink>
-              </div>
-            </InstrumentCard>
+            <PhGrowerSummaryCard
+              deviceId={deviceId}
+              consumo24h={consumo24h}
+              phNow={displayPh}
+              setpoint={phSetpoint}
+              tolerance={phTolerance}
+              estimatedDoseMl={previewDoseMl}
+              lastDoseMl={lastDosageMl}
+              lastDoseAt={lastDosageAt}
+              directionLabel={phDirection}
+              autoEnabled={autoEnabled}
+              showNextCheck={showNextCheck}
+              nextCheckInSec={phOp.nextCheckInSec}
+              formatCountdown={formatCountdown}
+              calibBaseLine={calibBaseLine}
+              calibAcidLine={calibAcidLine}
+            />
           </div>
 
           {deviceId ? (

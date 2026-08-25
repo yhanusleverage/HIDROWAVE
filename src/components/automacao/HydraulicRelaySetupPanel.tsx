@@ -17,6 +17,8 @@ import {
   type HydraulicRolesMap,
 } from '@/lib/hydraulic-relay-roles';
 import type { SlaveRelayRef } from '@/lib/slave-relay-allocation';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { hydraulicRoleCopy } from '@/lib/translations/app/procedure-roles';
 
 interface HydraulicRelaySetupPanelProps {
   deviceId: string;
@@ -39,6 +41,8 @@ export function HydraulicRelaySetupPanel({
   espnowSlaves,
   onRolesChange,
 }: HydraulicRelaySetupPanelProps) {
+  const { t } = useLanguage();
+  const p = t.automacao.procedures;
   const [roles, setRoles] = useState<HydraulicRolesMap>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -56,18 +60,18 @@ export function HydraulicRelaySetupPanel({
       );
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? 'Erro ao carregar tipagem');
+        toast.error(data.error ?? p.loadTypeError);
         return;
       }
       const next = normalizeHydraulicRolesJson(data.roles);
       setRoles(next);
       onRolesChange?.(next);
     } catch {
-      toast.error('Erro de rede ao carregar tipagem');
+      toast.error(p.typeNetworkError);
     } finally {
       setLoading(false);
     }
-  }, [deviceId, onRolesChange]);
+  }, [deviceId, onRolesChange, p.loadTypeError, p.typeNetworkError]);
 
   useEffect(() => {
     void loadRoles();
@@ -103,7 +107,7 @@ export function HydraulicRelaySetupPanel({
 
   const handleSave = async () => {
     if (!deviceId || deviceId === 'default_device') {
-      toast.error('Selecione um HydroWave Core');
+      toast.error(p.selectCoreSave);
       return;
     }
     const errors = validateHydraulicRolesMap(roles);
@@ -120,15 +124,15 @@ export function HydraulicRelaySetupPanel({
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? 'Erro ao guardar tipagem');
+        toast.error(data.error ?? p.typeSaveError);
         return;
       }
       const next = normalizeHydraulicRolesJson(data.roles);
       setRoles(next);
       onRolesChange?.(next);
-      toast.success('Tipagem hidráulica guardada');
+      toast.success(p.typeSaved);
     } catch {
-      toast.error('Erro de rede ao guardar tipagem');
+      toast.error(p.typeNetworkError);
     } finally {
       setSaving(false);
     }
@@ -139,56 +143,58 @@ export function HydraulicRelaySetupPanel({
   return (
     <div className="bg-dark-card border border-dark-border rounded-xl p-4 sm:p-6 space-y-4">
       <SectionHeader
-        title="Tipagem de relés hidráulicos"
-        subtitle="Funções fixas P1 — configure uma vez por Core"
+        title={p.typeTitle}
+        subtitle={p.typeSubtitle}
         accent="brand"
       />
 
       <div className={`rounded-lg border px-3 py-2 text-xs ${HW_BANNER.wait}`}>
         <p className="flex items-center gap-1.5 font-medium">
           <LockClosedIcon className="w-3.5 h-3.5 shrink-0" />
-          Relés do Core 0–7 são dosadores Auto EC/pH — não use aqui
+          {p.coreRelaysHint}
         </p>
       </div>
       <div className={`rounded-lg border px-3 py-2 text-xs ${HW_BANNER.warn}`}>
         <p className="flex items-center gap-1.5 font-medium">
           <LockClosedIcon className="w-3.5 h-3.5 shrink-0" />
-          <code className="font-mono">tempo_recirculacao</code> (Auto EC/pH) não controla a bomba de
-          circulação — configure a bomba abaixo
+          {p.recircHint}
         </p>
       </div>
 
       {disabled && (
         <p className="text-sm text-dark-textSecondary">
-          Selecione um Core na barra superior para configurar a tipagem.
+          {p.selectCoreType}
         </p>
       )}
 
       <div className="space-y-4">
-        {HYDRAULIC_ROLE_DEFINITIONS.map((def) => (
+        {HYDRAULIC_ROLE_DEFINITIONS.map((def) => {
+          const copy = hydraulicRoleCopy(p, def.id);
+          return (
           <div
             key={def.id}
             className="rounded-lg border border-dark-border bg-dark-surface/40 p-4 space-y-3"
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <p className="text-sm font-medium text-dark-text">{def.label}</p>
-                <p className="text-xs text-dark-textSecondary mt-0.5">{def.description}</p>
+                <p className="text-sm font-medium text-dark-text">{copy.label}</p>
+                <p className="text-xs text-dark-textSecondary mt-0.5">{copy.description}</p>
               </div>
-              <HwBadge accent="wait">Função fixa</HwBadge>
+              <HwBadge accent="wait">{p.fixedRole}</HwBadge>
             </div>
-            <p className="text-[11px] text-dark-textSecondary/90">{def.fixedBehavior}</p>
+            <p className="text-[11px] text-dark-textSecondary/90">{copy.hint}</p>
             <SlaveRelaySelect
               slaves={espnowSlaves}
-              label={def.required ? `${def.label} *` : def.label}
+              label={def.required ? `${copy.label} *` : copy.label}
               value={bindingToRef(roles[def.id])}
               reserved={reservedForRole(def.id)}
               onChange={(ref) => updateRole(def.id, ref)}
               disabled={disabled}
-              emptyMessage="Nenhum relé Atlas disponível. Verifique HydroWave Atlas na aba Regras."
+              emptyMessage={p.emptyAtlasRelays}
             />
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {validationErrors.length > 0 && (
@@ -206,7 +212,7 @@ export function HydraulicRelaySetupPanel({
         className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-aqua-600 hover:bg-aqua-500 disabled:opacity-50 text-white text-sm font-medium"
       >
         <CloudArrowUpIcon className="w-4 h-4" />
-        {saving ? 'Guardando…' : 'Salvar tipagem'}
+        {saving ? p.saving : p.saveType}
       </button>
     </div>
   );

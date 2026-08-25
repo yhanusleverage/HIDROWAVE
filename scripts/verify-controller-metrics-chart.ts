@@ -47,6 +47,19 @@ if (phSummary.tickCount !== 12) {
   process.exit(1);
 }
 
+const phErrorDs = phChart.datasets.find((d) => d.label === 'Erro (pH)');
+if (!phErrorDs) {
+  console.error('FAIL: pH chart deve exibir Erro (pH), não error_h');
+  process.exit(1);
+}
+
+const lastPh = phRows[phRows.length - 1];
+const expectedPhError = lastPh.ph_before - lastPh.ph_setpoint;
+if (phSummary.lastError == null || Math.abs(phSummary.lastError - expectedPhError) > 1e-9) {
+  console.error('FAIL: lastError pH deve ser pH − SP');
+  process.exit(1);
+}
+
 const lastEcError = ecRows[ecRows.length - 1].ec_error;
 if (lastEcError > ecRows[0].ec_error) {
   console.error('FAIL: demo EC debería reducir error hacia el final');

@@ -110,8 +110,14 @@ export default function ConfiguracaoPage() {
     if (hasChanges) {
       if (confirm(t.config.discardConfirm)) {
         if (initialSettingsRef.current) {
-          setSettings({ ...initialSettingsRef.current });
+          const restored = { ...initialSettingsRef.current };
+          setSettings(restored);
           setHasChanges(false);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('settingsUpdated', { detail: { language: restored.language } })
+            );
+          }
           toast(t.config.discarded, { icon: 'ℹ️' });
         }
       }
@@ -239,7 +245,15 @@ export default function ConfiguracaoPage() {
               <select
                 id="language"
                 value={normalizeLocale(settings.language)}
-                onChange={(e) => handleChange('language', e.target.value)}
+                onChange={(e) => {
+                  const language = e.target.value;
+                  handleChange('language', language);
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(
+                      new CustomEvent('settingsUpdated', { detail: { language } })
+                    );
+                  }
+                }}
                 className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
               >
                 {LOCALE_OPTIONS.map((opt) => (

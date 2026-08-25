@@ -730,7 +730,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
 
         <div className="p-0">
           {/* TAB 1: STATUS */}
-          {activeTab === 'status' && (
+          {(
             <div role="tabpanel" id="device-panel-status" aria-labelledby="device-tab-status" className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-dark-surface border border-dark-border rounded-lg p-4">

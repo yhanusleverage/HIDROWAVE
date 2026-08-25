@@ -2,16 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export type AutomacaoTabId = 'timeline' | 'procedures' | 'rules' | 'ec' | 'ph';
 
-const TABS: { id: AutomacaoTabId; label: string; subtitle: string }[] = [
-  { id: 'procedures', label: 'Procedimentos', subtitle: 'P1 — tipagem e builder' },
-  { id: 'ec', label: 'Auto EC', subtitle: 'P2 — controle nutricional' },
-  { id: 'ph', label: 'Auto pH', subtitle: 'P3 — correção ácido/base' },
-  { id: 'rules', label: 'Regras e Motor', subtitle: 'P4 — decision_rules' },
-  { id: 'timeline', label: 'Ciclo de Cultivo', subtitle: 'Receita — semanas S0…Sn' },
-];
+const TAB_IDS: AutomacaoTabId[] = ['procedures', 'ec', 'ph', 'rules', 'timeline'];
 
 function parseTab(value: string | null): AutomacaoTabId {
   if (
@@ -32,13 +27,30 @@ interface AutomacaoTabsProps {
 }
 
 export function AutomacaoTabs({ activeTab, onTabChange }: AutomacaoTabsProps) {
+  const { t } = useLanguage();
+  const tabs = TAB_IDS.map((id) => {
+    if (id === 'procedures') {
+      return { id, label: t.automacao.tabs.procedures, subtitle: t.automacao.tabs.proceduresSub };
+    }
+    if (id === 'ec') {
+      return { id, label: t.automacao.tabs.ec, subtitle: t.automacao.tabs.ecSub };
+    }
+    if (id === 'ph') {
+      return { id, label: t.automacao.tabs.ph, subtitle: t.automacao.tabs.phSub };
+    }
+    if (id === 'rules') {
+      return { id, label: t.automacao.tabs.rules, subtitle: t.automacao.tabs.rulesSub };
+    }
+    return { id, label: t.automacao.tabs.timeline, subtitle: t.automacao.tabs.timelineSub };
+  });
+
   return (
     <div className="mb-6 border-b border-dark-border w-full">
       <nav
         className="grid grid-cols-5 w-full -mb-px"
-        aria-label="Secções de automação"
+        aria-label={t.automacao.tabs.procedures}
       >
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const selected = activeTab === tab.id;
           return (
             <button

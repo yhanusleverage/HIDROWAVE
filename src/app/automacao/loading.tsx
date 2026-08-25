@@ -1,5 +1,9 @@
-import BrandLoading from '@/components/BrandLoading';
+'use client';
 
-export default function AutomacaoLoading() {
-  return <BrandLoading layout="hero" showWordmark message="Carregando automação..." />;
+import TranslatedBrandLoading from '@/components/TranslatedBrandLoading';
+
+export default function Loading() {
+  return (
+    <TranslatedBrandLoading layout="hero" showWordmark messageKey="loadingAutomation" />
+  );
 }

@@ -36,7 +36,6 @@ export async function GET(request: Request) {
       return NextResponse.json({
         device_id: deviceId,
         base_dose: 0,
-        flow_rate: 0,
         volume: 0,
         total_ml: 0,
         kp: 1.0,

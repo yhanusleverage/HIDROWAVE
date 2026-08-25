@@ -308,7 +308,7 @@ export default function ControllerMetricsPanel({
             <section>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-violet-400/90">
-                  Auto pH — domínio H
+                  Auto pH — controle
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   <KpiChip
@@ -316,11 +316,16 @@ export default function ControllerMetricsPanel({
                     value={`${phSummary.tickCount} / ${METRICS_LIMIT}`}
                   />
                   <KpiChip
-                    label="error_h"
+                    label="Erro atual"
                     value={
-                      phSummary.lastErrorH != null
-                        ? phSummary.lastErrorH.toExponential(2)
+                      phSummary.lastError != null
+                        ? `${formatSensorValue(phSummary.lastError, 2)} pH`
                         : '--'
+                    }
+                    tone={
+                      phSummary.lastError != null && Math.abs(phSummary.lastError) > 0.2
+                        ? 'warn'
+                        : 'ok'
                     }
                   />
                   <KpiChip

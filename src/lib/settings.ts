@@ -9,7 +9,7 @@ import {
   isValidMac,
   normalizeEmail,
 } from './db-schema';
-import { normalizeLocale } from './locale';
+import { normalizeLocale, type AppLocale } from './locale';
 import { supabase } from './supabase';
 
 const STORAGE_KEY = 'hydrowave_settings';
@@ -169,6 +169,15 @@ export function getNotificationSettings() {
     emailAlerts: false,
     soundAlerts: true,
   };
+}
+
+export function readStoredLocale(): AppLocale {
+  return normalizeLocale(readLocalSettings()?.language);
+}
+
+export function persistLanguage(language: string): void {
+  const current = readLocalSettings() ?? defaultSettings;
+  writeLocalSettings({ ...current, language: normalizeLocale(language) });
 }
 
 export { getMasterDeviceId };

@@ -24,7 +24,6 @@ import {
   upsertPumpFlowRate,
   nutrientRelayNumber,
 } from '@/lib/pump-calibration';
-import { PumpPrimeHoldControl } from '@/components/PumpPrimeHoldControl';
 import { HW_TEXT } from '@/lib/design-tokens';
 
 type PumpKind = 'ec' | 'ph_up' | 'ph_down';
@@ -91,7 +90,6 @@ async function saveEcPumpFlow(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       device_id: deviceId,
-      flow_rate: existing.flow_rate,
       base_dose: existing.base_dose,
       volume: existing.volume,
       total_ml: existing.total_ml,
@@ -157,7 +155,6 @@ function PumpAccordionRow({
 }) {
   const stored = pump.flowRate;
   const isPh = pump.kind !== 'ec';
-  const accent = isPh ? 'ph' : 'ec';
   const [measuredVolumeMl, setMeasuredVolumeMl] = useState(10);
   const [measuredDurationSec, setMeasuredDurationSec] = useState(60);
   const [flowRate, setFlowRate] = useState(stored ?? (globalFlowRate > 0 ? globalFlowRate : 1));
@@ -165,6 +162,25 @@ function PumpAccordionRow({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [timingTest, setTimingTest] = useState(false);
+  const [pumpEndsAt, setPumpEndsAt] = useState(0);
+  const [, setPumpClock] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setPumpClock((t) => t + 1);
+      setPumpEndsAt((prev) => {
+        if (prev > 0 && prev <= Date.now()) {
+          setTimingTest(false);
+          setTesting(false);
+          return 0;
+        }
+        return prev;
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const pumpRemainSec = Math.max(0, Math.ceil((pumpEndsAt - Date.now()) / 1000));
 
   useEffect(() => {
     setFlowRate(stored ?? (globalFlowRate > 0 ? globalFlowRate : 1));
@@ -222,6 +238,7 @@ function PumpAccordionRow({
       return;
     }
     setTimingTest(true);
+    setPumpEndsAt(Date.now() + sec * 1000);
     try {
       const res = await fetch('/api/esp-now/command', {
         method: 'POST',
@@ -243,9 +260,9 @@ function PumpAccordionRow({
       }
       toast.success(`Bomba ON por ${sec}s — meça o volume e preencha Volume (ml)`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro no teste por tempo');
-    } finally {
+      setPumpEndsAt(0);
       setTimingTest(false);
+      toast.error(e instanceof Error ? e.message : 'Erro no teste por tempo');
     }
   };
 
@@ -259,6 +276,7 @@ function PumpAccordionRow({
     }
     const relaySeconds = doseDurationSecondsForRelay(duration);
     setTesting(true);
+    setPumpEndsAt(Date.now() + relaySeconds * 1000);
     try {
       const res = await fetch('/api/esp-now/command', {
         method: 'POST',
@@ -281,9 +299,9 @@ function PumpAccordionRow({
       }
       toast.success(`Teste: ~${testVolumeMl} ml por ${formatDoseDurationSeconds(duration)} s`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro no teste');
-    } finally {
+      setPumpEndsAt(0);
       setTesting(false);
+      toast.error(e instanceof Error ? e.message : 'Erro no teste');
     }
   };
 
@@ -313,15 +331,6 @@ function PumpAccordionRow({
 
       {open ? (
         <div className="px-4 pb-4 border-t border-dark-border space-y-4 pt-3">
-          <PumpPrimeHoldControl
-            deviceId={deviceId}
-            relayNumber={pump.relay}
-            relayLabel={pump.name}
-            isOnline={isOnline}
-            autoBlocked={autoBlocked}
-            accent={accent}
-          />
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-dark-textSecondary mb-1">Volume (ml)</label>
@@ -382,9 +391,11 @@ function PumpAccordionRow({
             }`}
           >
             <PlayIcon className="w-4 h-4" />
-            {timingTest
-              ? 'Enviando…'
-              : `Teste por tempo (${Math.max(0, Math.floor(measuredDurationSec)) || '—'}s)`}
+            {pumpRemainSec > 0
+              ? `ON ${pumpRemainSec}s`
+              : timingTest
+                ? 'Enviando…'
+                : `Teste por tempo (${Math.max(0, Math.floor(measuredDurationSec)) || '—'}s)`}
           </button>
 
           <div className="flex items-center justify-between gap-3 bg-dark-surface rounded-lg p-3">
@@ -531,8 +542,7 @@ export function EcPumpCalibrationSection({
       }
 
       setPumps(slots);
-      const g = Number(config.flow_rate);
-      setGlobalFlowRate(Number.isFinite(g) && g > 0 ? g : 1);
+      setGlobalFlowRate(1);
     } catch (e) {
       console.error(e);
       toast.error('Erro ao carregar bombas');
@@ -577,8 +587,8 @@ export function EcPumpCalibrationSection({
       <div className="mb-3">
         <h2 className="text-lg font-semibold text-cyan-400">Bombas disponíveis</h2>
         <p className="text-sm text-dark-textSecondary mt-1">
-          Toque para abrir. Cebar, medir e salvar a vazão. Ganhos químicos do pH ficam na aba Mapa
-          de ganhos.
+          Toque para abrir. Teste por tempo (medir vazão) e teste por ml. Sem cebar. Ganhos
+          químicos do pH ficam na aba Mapa de ganhos.
         </p>
       </div>
       {pumps.map((p) => {

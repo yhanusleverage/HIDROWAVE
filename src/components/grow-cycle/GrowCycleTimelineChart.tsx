@@ -40,6 +40,8 @@ interface GrowCycleTimelineChartProps {
   deviceId?: string | null;
   weeklyStats?: GrowCycleWeeklyStatsRow[];
   scheduleUiVersion?: ScheduleUiVersion;
+  cycleStartedAt?: string | null;
+  currentWeekIndex?: number;
 }
 
 const MARGIN = TIMELINE_MARGIN;
@@ -85,12 +87,18 @@ export function GrowCycleTimelineChart({
   deviceId,
   weeklyStats = [],
   scheduleUiVersion = 'p1',
+  cycleStartedAt = null,
+  currentWeekIndex,
 }: GrowCycleTimelineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
   const [pointer, setPointer] = useState({ clientX: 0, clientY: 0 });
 
-  const hoverMetrics = useGrowCycleWeekHoverMetrics(plan, hoveredWeek, deviceId);
+  const hoverMetrics = useGrowCycleWeekHoverMetrics(plan, hoveredWeek, deviceId, {
+    startedAt: cycleStartedAt,
+    currentWeekIndex: currentWeekIndex ?? playheadWeek,
+    weeklyStats,
+  });
 
   const weeks = plan.weeks.filter((w) => w.weekIndex <= plan.totalWeeks);
   const { weekSlotW, chartW, barW, scrollMode } = useGrowCycleTimelineLayout(
@@ -581,11 +589,7 @@ export function GrowCycleTimelineChart({
       </div>
 
       {hoverMetrics && hoveredWeek != null && (
-        <GrowCycleWeekHoverTooltip
-          metrics={hoverMetrics}
-          pointer={pointer}
-          deviceId={deviceId}
-        />
+        <GrowCycleWeekHoverTooltip metrics={hoverMetrics} pointer={pointer} />
       )}
 
       <div className="px-4 pb-4 border-t border-dark-border/50 bg-dark-surface/30">

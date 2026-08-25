@@ -32,12 +32,21 @@ export type PhMetricsSummary = {
   tickCount: number;
   appliedCount: number;
   neededCount: number;
-  lastErrorH: number | null;
+  /** Erro visível: pH − SP (mesma unidade da medida). H⁺ fica só no firmware. */
+  lastError: number | null;
   lastUt: number | null;
   lastSetpoint: number | null;
   lastPh: number | null;
   lastAt: string | null;
 };
+
+/** Erro de tela = pH medido − setpoint (pH). Espelho de Erro (µS/cm) no Auto EC. */
+export function phErrorPh(row: PhControllerMetricRow): number | null {
+  const ph = row.ph_before;
+  const sp = row.ph_setpoint;
+  if (!Number.isFinite(ph) || !Number.isFinite(sp)) return null;
+  return ph - sp;
+}
 
 function formatTimeLabel(iso: string): string {
   const date = new Date(iso);
@@ -92,7 +101,7 @@ export function summarizePhMetrics(rows: PhControllerMetricRow[]): PhMetricsSumm
       tickCount: 0,
       appliedCount: 0,
       neededCount: 0,
-      lastErrorH: null,
+      lastError: null,
       lastUt: null,
       lastSetpoint: null,
       lastPh: null,
@@ -104,7 +113,7 @@ export function summarizePhMetrics(rows: PhControllerMetricRow[]): PhMetricsSumm
     tickCount: rows.length,
     appliedCount: rows.filter((r) => r.adjustment_applied).length,
     neededCount: rows.filter((r) => r.adjustment_needed).length,
-    lastErrorH: last.error_h ?? null,
+    lastError: phErrorPh(last),
     lastUt: last.dose_real_ml,
     lastSetpoint: last.ph_setpoint,
     lastPh: last.ph_before,
@@ -201,8 +210,8 @@ export function buildPhMetricsChartData(rows: PhControllerMetricRow[]): ChartDat
         order: 1,
       },
       {
-        label: 'error_h',
-        data: rows.map((r) => r.error_h ?? 0),
+        label: 'Erro (pH)',
+        data: rows.map((r) => phErrorPh(r) ?? 0),
         yAxisID: 'yError',
         borderColor: CONTROLLER_METRICS_COLORS.phError.border,
         backgroundColor: CONTROLLER_METRICS_COLORS.phError.fill,
@@ -342,7 +351,7 @@ export function buildPhMetricsChartOptions(rows: PhControllerMetricRow[]): Chart
         type: 'linear',
         display: true,
         position: 'right',
-        title: { display: true, text: 'error_h', color: CHART_TICK_COLOR, font: { size: 10 } },
+        title: { display: true, text: 'Erro (pH)', color: CHART_TICK_COLOR, font: { size: 10 } },
         ticks: { color: CHART_TICK_COLOR },
         grid: { drawOnChartArea: false },
       },
@@ -397,7 +406,6 @@ export function buildMockPhMetrics(deviceId: string, points = 36): PhControllerM
     const t = now - (points - 1 - i) * intervalMs;
     const progress = i / Math.max(points - 1, 1);
     const ph = setpoint - 0.35 * (1 - progress) + Math.sin(i / 4) * 0.05;
-    const errorH = Math.max(0, setpoint - ph) * 1e-5;
     const needed = ph < setpoint - 0.08;
     const applied = needed && i % 6 === 5;
     const dose = applied ? 2.5 : needed ? 1.8 : 0;
@@ -406,7 +414,7 @@ export function buildMockPhMetrics(deviceId: string, points = 36): PhControllerM
       device_id: deviceId,
       ph_setpoint: setpoint,
       ph_before: Math.round(ph * 1000) / 1000,
-      error_h: errorH,
+      error_h: 0,
       dose_real_ml: dose,
       adjustment_needed: needed,
       adjustment_applied: applied,

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
+import { useLanguage } from '@/contexts/LanguageContext';
 import type { ESPNowSlave } from '@/lib/esp-now-slaves';
 import type { HydraulicRolesMap } from '@/lib/hydraulic-relay-roles';
 import { HydraulicRelaySetupPanel } from '@/components/automacao/HydraulicRelaySetupPanel';
@@ -27,13 +28,13 @@ export function ProceduresTabPanel({
   waterLevelEnabled,
   onSlavesRefresh,
 }: ProceduresTabPanelProps) {
+  const { t } = useLanguage();
   const [hydraulicRoles, setHydraulicRoles] = useState<HydraulicRolesMap>({});
 
   return (
     <div className="space-y-6">
       <div className={`rounded-lg border px-3 py-2 text-center text-xs font-medium ${HW_BANNER.warn}`}>
-        P1 — tipagem fixa de relés hidráulicos + builder procedural. Regras compiladas para
-        decision_rules (MAC + relé resolvidos).
+        {t.automacao.procedures.banner}
       </div>
 
       <EspNowSlaveNamesPanel

@@ -1,6 +1,7 @@
 'use client';
 
 import type { RuleProcedure } from '@/lib/rule-procedure/types';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface ProcedureTriggersEditorProps {
   triggers: RuleProcedure['triggers'];
@@ -8,11 +9,13 @@ interface ProcedureTriggersEditorProps {
 }
 
 export function ProcedureTriggersEditor({ triggers, onChange }: ProcedureTriggersEditorProps) {
+  const { t } = useLanguage();
+  const p = t.automacao.procedures;
   const tw = triggers.find((t) => t.type === 'time_window');
 
   if (!tw || tw.type !== 'time_window') {
     return (
-      <p className="text-xs text-dark-textSecondary">Nenhum trigger time_window configurado.</p>
+      <p className="text-xs text-dark-textSecondary">{p.noTimeWindow}</p>
     );
   }
 
@@ -25,7 +28,7 @@ export function ProcedureTriggersEditor({ triggers, onChange }: ProcedureTrigger
   return (
     <div className="grid sm:grid-cols-3 gap-3 text-xs">
       <label className="block">
-        <span className="text-dark-textSecondary">Início</span>
+        <span className="text-dark-textSecondary">{p.triggerStart}</span>
         <input
           type="time"
           value={tw.start}
@@ -34,7 +37,7 @@ export function ProcedureTriggersEditor({ triggers, onChange }: ProcedureTrigger
         />
       </label>
       <label className="block">
-        <span className="text-dark-textSecondary">Fim</span>
+        <span className="text-dark-textSecondary">{p.triggerEnd}</span>
         <input
           type="time"
           value={tw.end}
@@ -43,7 +46,7 @@ export function ProcedureTriggersEditor({ triggers, onChange }: ProcedureTrigger
         />
       </label>
       <label className="block">
-        <span className="text-dark-textSecondary">Timezone</span>
+        <span className="text-dark-textSecondary">{p.timezone}</span>
         <input
           type="text"
           value={tw.timezone ?? ''}

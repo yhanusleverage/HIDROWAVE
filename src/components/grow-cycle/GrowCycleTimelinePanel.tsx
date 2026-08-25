@@ -155,7 +155,7 @@ export function GrowCycleTimelinePanel({
         )}
         {liveMetricsDeviceId ? (
           <span className="block text-xs font-normal mt-0.5 opacity-90">
-            Métricas ao vivo no tooltip · {weeklyStats.length} semanas com histórico
+            Hover = resumo da semana (Δ, ml, ajustes) · {weeklyStats.length} semanas com histórico
           </span>
         ) : null}
       </div>
@@ -333,6 +333,8 @@ export function GrowCycleTimelinePanel({
             deviceId={liveMetricsDeviceId}
             weeklyStats={weeklyStats}
             scheduleUiVersion={scheduleUiVersion}
+            cycleStartedAt={activeInstance?.started_at ?? null}
+            currentWeekIndex={activeInstance?.current_week_index ?? playheadWeek}
           />
           <div className="grid md:grid-cols-2 xl:grid-cols-[1fr_360px] gap-4">
             <WeekDetailPanel
