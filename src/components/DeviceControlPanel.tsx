@@ -7,6 +7,7 @@ import { resolveDeviceOnline } from '@/lib/realtime/device-status';
 import { HW_TEXT } from '@/lib/design-tokens';
 import { useAuth } from '@/contexts/AuthContext';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
+import { getMasterLocalRelayNames } from '@/lib/nutrition-plan';
 import { getDeviceAnalytics, DosageMetrics } from '@/lib/analytics';
 import BrandLoading from '@/components/BrandLoading';
 import toast from 'react-hot-toast';
@@ -67,15 +68,15 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
   
   // Estado para relés locais (PCF8574) - apenas botões de teste por enquanto
   const [localRelays, setLocalRelays] = useState([
-    { id: 0, name: 'pH+', state: false },
-    { id: 1, name: 'pH-', state: false },
-    { id: 2, name: 'Grow', state: false },
-    { id: 3, name: 'Micro', state: false },
-    { id: 4, name: 'Bloom', state: false },
-    { id: 5, name: 'Bomba Principal', state: false },
-    { id: 6, name: 'Luz UV', state: false },
-    { id: 7, name: 'Aerador', state: false },
-    { id: 8, name: 'CalMag', state: false },
+    { id: 0, name: 'Relé 0', state: false },
+    { id: 1, name: 'Relé 1', state: false },
+    { id: 2, name: 'Relé 2', state: false },
+    { id: 3, name: 'Relé 3', state: false },
+    { id: 4, name: 'Relé 4', state: false },
+    { id: 5, name: 'Relé 5', state: false },
+    { id: 6, name: 'Relé 6', state: false },
+    { id: 7, name: 'Relé 7', state: false },
+    { id: 8, name: 'Relé 8', state: false },
   ]);
 
   // Estado para slaves ESP-NOW (carregados do Supabase)
@@ -105,8 +106,8 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
     { name: 'Micro', relayNumber: 3, mlPerLiter: 2 },
     { name: 'Bloom', relayNumber: 4, mlPerLiter: 2 },
     { name: 'CalMag', relayNumber: 5, mlPerLiter: 1 },
-    { name: 'Bomba Principal', relayNumber: 6, mlPerLiter: 0 },
-    { name: 'Aerador', relayNumber: 7, mlPerLiter: 0 },
+    { name: 'Relé 6', relayNumber: 6, mlPerLiter: 0 },
+    { name: 'Relé 7', relayNumber: 7, mlPerLiter: 0 },
   ];
   const [nutrientsState, setNutrientsState] = useState(nutrients);
   const [isLoadingNutrients, setIsLoadingNutrients] = useState<Record<number, boolean>>({});
@@ -271,6 +272,13 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
     setLoadingSlaves(true);
     try {
       const loadedSlaves = await getESPNOWSlaves(device.device_id, userProfile.email);
+      const localNames = await getMasterLocalRelayNames(device.device_id);
+      setLocalRelays((prev) =>
+        prev.map((relay) => ({
+          ...relay,
+          name: localNames.get(relay.id) || `Relé ${relay.id}`,
+        }))
+      );
       
       console.log(`✅ [DeviceControlPanel] ${loadedSlaves.length} slave(s) carregado(s) do Supabase`);
       
@@ -1107,7 +1115,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
 
                             const handleDoseNutrient = async (nut: typeof nutrients[0], idx: number) => {
                               // Para nutrientes com mlPerLiter > 0, calcular tempo baseado na dosagem
-                              // Para relés sem dosagem (Bomba Principal, Aerador), usar tempo padrão de 10 segundos
+                              // Relés sem dosagem: tempo padrão de 10 segundos
                               let timeNeeded = 0;
                               if (nut.mlPerLiter > 0) {
                                 timeNeeded = calculateTime(nut.mlPerLiter);
@@ -1116,7 +1124,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                                   return;
                                 }
                               } else {
-                                // Relés sem dosagem (Bomba Principal, Aerador) - tempo padrão de 10 segundos
+                                // Relés sem dosagem — tempo padrão de 10 segundos
                                 timeNeeded = 10;
                               }
 

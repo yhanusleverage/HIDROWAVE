@@ -118,7 +118,7 @@ export async function getESPNOWSlaves(
         
         return {
           id: esp32Relay.relay_number,
-          name: personalizedName || esp32Relay.name || `Relé ${esp32Relay.relay_number}`,
+          name: personalizedName || `Relé ${esp32Relay.relay_number}`,
           enabled: false, // Não usado mais para automação (usar decision_rules)
           // ✅ NOVO: Incluir informações completas do Master
           state: esp32Relay.state,

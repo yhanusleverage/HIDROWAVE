@@ -193,14 +193,14 @@ export default function AutomacaoPageClient() {
   const { masters: availableMasters } = useDevicesWithRealtime(userProfile?.email);
   
   const [relays, setRelays] = useState<Relay[]>([
-    { id: 0, name: 'Aquecedor' },
-    { id: 1, name: 'pH+' },
-    { id: 2, name: 'Grow' },
-    { id: 3, name: 'Micro' },
-    { id: 4, name: 'Bloom' },
-    { id: 5, name: 'Bomba Principal' },
-    { id: 6, name: 'Luz UV' },
-    { id: 7, name: 'Aerador' },
+    { id: 0, name: 'Relé 0' },
+    { id: 1, name: 'Relé 1' },
+    { id: 2, name: 'Relé 2' },
+    { id: 3, name: 'Relé 3' },
+    { id: 4, name: 'Relé 4' },
+    { id: 5, name: 'Relé 5' },
+    { id: 6, name: 'Relé 6' },
+    { id: 7, name: 'Relé 7' },
   ]);
 
   const [rules, setRules] = useState<AutomationRule[]>([]);
@@ -266,14 +266,15 @@ export default function AutomacaoPageClient() {
     try {
       const names = await getMasterLocalRelayNames(selectedDeviceId);
 
-      // ✅ PCF1: Criar lista de relés disponíveis (0-6) - 7 relays para peristálticos
-      // ✅ PCF2: Será usado para sensores de nível (não incluído aqui)
-      const relays: Array<{number: number, name: string}> = [];
+      const labeled: Array<{ number: number; name: string }> = [];
+      const localRelays: Relay[] = [];
       for (let i = 0; i <= 7; i++) {
         const name = names.get(i) || `Relé ${i}`;
-        relays.push({ number: i, name });
+        labeled.push({ number: i, name });
+        localRelays.push({ id: i, name });
       }
-      setAvailableRelays(relays);
+      setAvailableRelays(labeled);
+      setRelays(localRelays);
     } catch (error) {
       console.error('Erro ao carregar nomes de relés locais:', error);
     }
