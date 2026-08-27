@@ -28,6 +28,22 @@ export function pickNewestTimestamp(
 /** Slaves ESP-NOW: heartbeat MQTT ~45s — margen 90s (alinhado com firmware link) */
 export const SLAVE_ONLINE_THRESHOLD_MINUTES = 1.5;
 
+/** Re-evalúa last_seen en UI viva (offline por ausencia, sin F5). */
+export const SLAVE_ONLINE_TICK_MS = 12_000;
+
+/** Recalcula status online/offline a partir de last_seen (mismo array si no cambió). */
+export function refreshSlaveOnlineStatuses(slaves: ESPNowSlave[]): ESPNowSlave[] {
+  let changed = false;
+  const next = slaves.map((slave) => {
+    const online = resolveSlaveOnline(slave.last_seen);
+    const status: ESPNowSlave['status'] = online ? 'online' : 'offline';
+    if (slave.status === status) return slave;
+    changed = true;
+    return { ...slave, status };
+  });
+  return changed ? next : slaves;
+}
+
 /**
  * Online unificado para slaves: preferir relay_slaves.last_update, fallback device_status.last_seen.
  * link_online explícito do payload MQTT (quando disponível no row) prevalece.
@@ -35,23 +51,17 @@ export const SLAVE_ONLINE_THRESHOLD_MINUTES = 1.5;
 export function resolveSlaveOnline(
   relaySlavesLastUpdate?: string | null,
   deviceStatusLastSeen?: string | null,
-  linkOnline?: boolean | null
+  linkOnline?: boolean | null,
+  isOnlineFlag?: boolean | null
 ): boolean {
-  if (linkOnline === true) return true;
   if (linkOnline === false) return false;
-  if (
-    relaySlavesLastUpdate &&
-    isOnlineFromLastSeen(relaySlavesLastUpdate, SLAVE_ONLINE_THRESHOLD_MINUTES)
-  ) {
-    return true;
+  const last = pickNewestTimestamp(relaySlavesLastUpdate, deviceStatusLastSeen);
+  if (!last || !isOnlineFromLastSeen(last, SLAVE_ONLINE_THRESHOLD_MINUTES)) {
+    return false;
   }
-  if (
-    deviceStatusLastSeen &&
-    isOnlineFromLastSeen(deviceStatusLastSeen, SLAVE_ONLINE_THRESHOLD_MINUTES)
-  ) {
-    return true;
-  }
-  return false;
+  if (linkOnline === true) return true;
+  if (isOnlineFlag === false) return false;
+  return true;
 }
 
 function normalizeMac(mac: string | null | undefined): string {
@@ -88,7 +98,12 @@ export function patchSlaveFromDeviceStatus(
     matched = true;
     const relayLastUpdate = slave.last_seen;
     const deviceLastSeen = row.last_seen ?? null;
-    const online = resolveSlaveOnline(relayLastUpdate, deviceLastSeen);
+    const online = resolveSlaveOnline(
+      relayLastUpdate,
+      deviceLastSeen,
+      undefined,
+      row.is_online
+    );
     return {
       ...slave,
       name: row.device_name || slave.name,

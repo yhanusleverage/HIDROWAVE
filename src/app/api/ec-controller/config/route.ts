@@ -8,8 +8,10 @@ import {
 import {
   stripEcWritableConfig,
   sanitizeEcNumericFields,
+  omitDeprecatedEcGlobalFlowRate,
   configApiErrorResponse,
 } from '@/lib/controller-config-api';
+import { notifyDeviceControllerConfig } from '@/lib/mqtt-config-publish';
 
 /**
  * API para gerenciar configuração do EC Controller (ec_config_view).
@@ -56,7 +58,9 @@ export async function GET(request: Request) {
       );
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json(
+      omitDeprecatedEcGlobalFlowRate(data as Record<string, unknown>)
+    );
   } catch (error) {
     console.error('Erro em GET /api/ec-controller/config:', error);
     return NextResponse.json(
@@ -84,6 +88,7 @@ export async function POST(request: Request) {
     const writableConfig = sanitizeEcNumericFields(
       stripEcWritableConfig(rawConfig as Record<string, unknown>)
     );
+    delete writableConfig.flow_rate;
 
     const nutrients = writableConfig.nutrients as EcNutrientRelaySlice[] | undefined;
 
@@ -153,7 +158,16 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ success: true, data });
+    const saved = omitDeprecatedEcGlobalFlowRate(
+      ((data as Record<string, unknown>) ?? { device_id, ...writableConfig }) as Record<
+        string,
+        unknown
+      >
+    );
+
+    void notifyDeviceControllerConfig('ec', device_id, saved);
+
+    return NextResponse.json({ success: true, data: saved });
   } catch (error) {
     console.error('Erro em POST /api/ec-controller/config:', error);
     return NextResponse.json(

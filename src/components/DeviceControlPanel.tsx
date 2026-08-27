@@ -19,8 +19,18 @@ import {
   RELAY_REST_FALLBACK_MS,
 } from '@/lib/realtime/relay-apply';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
+import {
+  refreshSlaveOnlineStatuses,
+  SLAVE_ONLINE_TICK_MS,
+} from '@/lib/realtime/slave-status';
 import { subscribeRelayCommandUpdates } from '@/lib/realtime/relay-commands';
-import { applyRelayCommandAck, type PendingRelayCommand } from '@/lib/relay-pending-commands';
+import {
+  applyRelayCommandAck,
+  armPendingAckTimeout,
+  clearPendingAckTimeout,
+  type PendingAckTimerMap,
+  type PendingRelayCommand,
+} from '@/lib/relay-pending-commands';
 import {
   relayCommandKey,
   scheduleRelayCommand,
@@ -61,7 +71,10 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
 
   useEffect(() => {
     if (!isOpen) return;
-    const interval = setInterval(() => setTick((t) => t + 1), 30_000);
+    const interval = setInterval(() => {
+      setTick((t) => t + 1);
+      setSlaves((prev) => refreshSlaveOnlineStatuses(prev));
+    }, SLAVE_ONLINE_TICK_MS);
     return () => clearInterval(interval);
   }, [isOpen]);
   const [activeTab, setActiveTab] = useState<'status' | 'rules' | 'local' | 'slaves'>('status');
@@ -121,6 +134,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
   const [relayStates, setRelayStates] = useState<Map<string, boolean>>(new Map());
   const [loadingRelays, setLoadingRelays] = useState<Map<string, boolean>>(new Map());
   const commandToRelayMap = useRef<Map<string | number, PendingRelayCommand>>(new Map());
+  const pendingAckTimersRef = useRef<PendingAckTimerMap>(new Map());
 
   const applyRelayState = useCallback((relayKey: string, isOn: boolean) => {
     if (relayKey.startsWith('local-')) {
@@ -144,7 +158,8 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
         commandId,
         status,
         {
-          onCompleted: (relayKey, ackAction) => {
+          onCompleted: (relayKey, ackAction, pending) => {
+            clearPendingAckTimeout(pendingAckTimersRef.current, commandId);
             releaseRelayCommandSlot(relayKey);
             setLoadingRelays((prev) => {
               const next = new Map(prev);
@@ -154,8 +169,12 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
             if (ackAction === 'on' || ackAction === 'off') {
               applyRelayState(relayKey, ackAction === 'on');
             }
+            if (pending?.successToast) {
+              toast.success(pending.successToast);
+            }
           },
           onFailed: (relayKey, previousState, num) => {
+            clearPendingAckTimeout(pendingAckTimersRef.current, commandId);
             releaseRelayCommandSlot(relayKey);
             setLoadingRelays((prev) => {
               const next = new Map(prev);
@@ -188,10 +207,9 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
       const previousState = relayStates.has(key)
         ? relayStates.get(key) ?? false
         : relay?.state ?? false;
-      const desiredOn = action === 'on';
 
       setLoadingRelays((prev) => new Map(prev).set(key, true));
-      applyRelayState(key, desiredOn);
+      applyRelayState(key, action === 'on');
 
       const queued = scheduleRelayCommand(
         key,
@@ -233,6 +251,26 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
             const commandId = data.command_id ?? data.command?.id;
             if (commandId) {
               commandToRelayMap.current.set(commandId, { relayKey: key, previousState });
+              armPendingAckTimeout(pendingAckTimersRef.current, commandId, () => {
+                const still = commandToRelayMap.current.get(commandId);
+                if (!still) return;
+                commandToRelayMap.current.delete(commandId);
+                releaseRelayCommandSlot(key);
+                applyRelayState(key, previousState);
+                setLoadingRelays((prev) => {
+                  const next = new Map(prev);
+                  next.delete(key);
+                  return next;
+                });
+                toast.error('Slave não confirmou (timeout / offline)');
+              });
+            } else {
+              setLoadingRelays((prev) => {
+                const next = new Map(prev);
+                next.delete(key);
+                return next;
+              });
+              toast.error('Slave não confirmou (sem ACK)');
             }
             return { ok: true as const, commandId };
           } catch {
@@ -363,7 +401,16 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
             loadSlaves();
             return prev;
           }
-          setRelayStates((r) => mergeRelayStatesMap(r, updated));
+          setRelayStates((r) => {
+            const merged = mergeRelayStatesMap(r, updated);
+            if (commandToRelayMap.current.size === 0) return merged;
+            const next = new Map(merged);
+            commandToRelayMap.current.forEach(({ relayKey }) => {
+              const optimistic = r.get(relayKey);
+              if (optimistic !== undefined) next.set(relayKey, optimistic);
+            });
+            return next;
+          });
           return updated;
         });
       }

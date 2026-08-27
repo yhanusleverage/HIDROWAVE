@@ -1,6 +1,7 @@
 import type { ESPNowSlave } from '@/lib/esp-now-slaves';
 import type { RelayMasterRow, RelaySlaveRow } from '@/lib/realtime/relay-states';
-import { resolveSlaveOnline } from '@/lib/realtime/slave-status';
+import { resolveSlaveOnline, SLAVE_ONLINE_THRESHOLD_MINUTES } from '@/lib/realtime/slave-status';
+import { isOnlineFromLastSeen } from '@/lib/realtime/device-status';
 import { slaveRelayNamesToMap } from '@/lib/relay-names-prod';
 
 /** Fallback REST lento para timers y eventos perdidos tras reconexión WS. */
@@ -55,7 +56,14 @@ export function applySlaveRelayRow(
     return {
       ...slave,
       status: online ? ('online' as const) : ('offline' as const),
-      last_seen: lastUpdate ?? slave.last_seen,
+      last_seen: online
+        ? lastUpdate ?? slave.last_seen
+        : lastUpdate &&
+            !isOnlineFromLastSeen(lastUpdate, SLAVE_ONLINE_THRESHOLD_MINUTES)
+          ? lastUpdate
+          : new Date(
+              Date.now() - (SLAVE_ONLINE_THRESHOLD_MINUTES * 60 + 5) * 1000
+            ).toISOString(),
       relays: slave.relays.map((relay) => {
         const idx = relay.id;
         const nameFromRow = nameMap?.[idx];

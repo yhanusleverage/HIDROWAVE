@@ -1,4 +1,5 @@
 import type { ChartData, ChartOptions } from 'chart.js';
+import { SOLID_LEGEND_LABELS, solidTooltipSwatch } from '@/lib/chart-legend';
 import { formatSensorValue } from '@/lib/format-sensor-value';
 import type { EcControllerMetricRow, PhControllerMetricRow } from '@/lib/controller-metrics';
 
@@ -246,7 +247,11 @@ function baseChartOptions(): ChartOptions<'line'> {
     plugins: {
       legend: {
         position: 'top',
-        labels: { boxWidth: 10, font: { size: 11 }, color: CHART_TICK_COLOR },
+        labels: {
+          ...SOLID_LEGEND_LABELS,
+          font: { size: 11 },
+          color: '#ffffff',
+        },
       },
     },
     scales: {
@@ -265,7 +270,9 @@ export function buildEcMetricsChartOptions(rows: EcControllerMetricRow[]): Chart
     plugins: {
       ...base.plugins,
       tooltip: {
+        usePointStyle: false,
         callbacks: {
+          labelColor: solidTooltipSwatch,
           title: (items) => {
             const idx = items[0]?.dataIndex ?? 0;
             const row = rows[idx];
@@ -320,7 +327,9 @@ export function buildPhMetricsChartOptions(rows: PhControllerMetricRow[]): Chart
     plugins: {
       ...base.plugins,
       tooltip: {
+        usePointStyle: false,
         callbacks: {
+          labelColor: solidTooltipSwatch,
           title: (items) => {
             const idx = items[0]?.dataIndex ?? 0;
             const row = rows[idx];

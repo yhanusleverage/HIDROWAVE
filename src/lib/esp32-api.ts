@@ -48,6 +48,7 @@ interface DeviceStatusFromSupabase {
   device_type?: string;
   mac_address?: string;
   last_seen?: string;
+  is_online?: boolean;
   [key: string]: unknown;
 }
 
@@ -216,7 +217,12 @@ export async function getSlavesFromSupabase(masterDeviceId: string): Promise<ESP
       
       // Online unificado: relay_slaves.last_update (preferido) ou device_status.last_seen
       const relaySlaveLastUpdate = slaveLastUpdateMap.get(device.device_id);
-      const calculatedIsOnline = resolveSlaveOnline(relaySlaveLastUpdate, device.last_seen);
+      const calculatedIsOnline = resolveSlaveOnline(
+        relaySlaveLastUpdate,
+        device.last_seen,
+        undefined,
+        device.is_online
+      );
 
       const lastSeenTimestamp = relaySlaveLastUpdate
         ? Math.floor(new Date(relaySlaveLastUpdate).getTime() / 1000)
@@ -248,7 +254,7 @@ export async function getSlavesFromSupabase(masterDeviceId: string): Promise<ESP
         mac_address: device.mac_address || '',
         is_online: calculatedIsOnline, // ✅ Status recalculado
         num_relays: 8, // Default para slaves ESP-NOW
-        last_seen: lastSeenTimestamp || Math.floor(Date.now() / 1000),
+        last_seen: lastSeenTimestamp ?? 0,
         relays,
       };
     });

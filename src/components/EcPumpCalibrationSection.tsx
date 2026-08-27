@@ -80,7 +80,7 @@ async function saveEcPumpFlow(
   const getRes = await fetch(
     `/api/ec-controller/config?device_id=${encodeURIComponent(deviceId)}`
   );
-  const existing = getRes.ok ? await getRes.json() : {};
+  const existing = getRes.ok ? unwrapConfigRow(await getRes.json()) : {};
   const current: EcNutrientRow[] = Array.isArray(existing.nutrients)
     ? existing.nutrients
     : [];
@@ -109,6 +109,27 @@ async function saveEcPumpFlow(
   }
 }
 
+function unwrapConfigRow(json: unknown): Record<string, unknown> {
+  if (!json || typeof json !== 'object') return {};
+  const row = json as Record<string, unknown>;
+  if (row.data && typeof row.data === 'object' && !Array.isArray(row.data)) {
+    return row.data as Record<string, unknown>;
+  }
+  return row;
+}
+
+function numericOr(
+  value: unknown,
+  fallback: number
+): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === 'string') {
+    const n = parseFloat(value.replace(',', '.'));
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return fallback;
+}
+
 async function savePhPumpFlow(
   deviceId: string,
   kind: 'ph_up' | 'ph_down',
@@ -117,20 +138,25 @@ async function savePhPumpFlow(
   const getRes = await fetch(
     `/api/ph-controller/config?device_id=${encodeURIComponent(deviceId)}`
   );
-  const existing = getRes.ok ? await getRes.json() : {};
+  const existing = getRes.ok ? unwrapConfigRow(await getRes.json()) : {};
+  const q = flowRate;
   const res = await fetch('/api/ph-controller/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       ...existing,
       device_id: deviceId,
-      flow_rate_ph_up: kind === 'ph_up' ? flowRate : existing.flow_rate_ph_up,
-      flow_rate_ph_down: kind === 'ph_down' ? flowRate : existing.flow_rate_ph_down,
+      flow_rate_ph_up: kind === 'ph_up' ? q : numericOr(existing.flow_rate_ph_up, 1),
+      flow_rate_ph_down: kind === 'ph_down' ? q : numericOr(existing.flow_rate_ph_down, 1),
     }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(typeof err.error === 'string' ? err.error : 'Erro ao salvar');
+    throw new Error(
+      typeof (err as { error?: unknown }).error === 'string'
+        ? (err as { error: string }).error
+        : 'Erro ao salvar vazão pH'
+    );
   }
 }
 
@@ -201,13 +227,18 @@ function PumpAccordionRow({
   };
 
   const save = async () => {
-    if (flowRate <= 0) {
-      toast.error('Informe uma vazão válida');
+    const fromMeasure =
+      calculatedRate != null && calculatedRate > 0
+        ? roundFlowRateMlPerSec(calculatedRate)
+        : 0;
+    const q = fromMeasure > 0 ? fromMeasure : roundFlowRateMlPerSec(flowRate);
+    if (!(q > 0)) {
+      toast.error('Informe volume/tempo ou uma vazão > 0');
       return;
     }
+    setFlowRate(q);
     setSaving(true);
     try {
-      const q = roundFlowRateMlPerSec(flowRate);
       if (pump.kind === 'ec') {
         await saveEcPumpFlow(deviceId, pump.relay, q, pump.name);
       } else {
@@ -215,6 +246,7 @@ function PumpAccordionRow({
       }
       onSaved(pump.relay, pump.kind, q);
       hwToast.success(`${pump.name}: ${formatFlowRate(q)}`, 'CALIBRAGEM');
+      toast.success(`${pump.name}: ${formatFlowRate(q)}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao salvar');
     } finally {
@@ -426,7 +458,9 @@ function PumpAccordionRow({
               min={0.001}
               step={0.0001}
               value={flowRate}
-              onChange={(e) => setFlowRate(parseFloat(e.target.value) || 0)}
+              onChange={(e) =>
+                setFlowRate(parseFloat(e.target.value.replace(',', '.')) || 0)
+              }
               className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text font-mono"
             />
             <p className="text-xs text-dark-textSecondary mt-1">{formatFlowRateMlPerMin(flowRate)}</p>
@@ -502,8 +536,8 @@ export function EcPumpCalibrationSection({
         fetch(`/api/ph-controller/config?device_id=${encodeURIComponent(deviceId)}`),
       ]);
       if (!ecRes.ok) throw new Error('Erro ao carregar');
-      const config = await ecRes.json();
-      const ph = phRes.ok ? await phRes.json() : {};
+      const config = unwrapConfigRow(await ecRes.json());
+      const ph = phRes.ok ? unwrapConfigRow(await phRes.json()) : {};
       const rows = parseNutrientsJson(config.nutrients);
       const phUp = Number(ph.relay_ph_up);
       const phDown = Number(ph.relay_ph_down);
@@ -562,6 +596,7 @@ export function EcPumpCalibrationSection({
     window.dispatchEvent(
       new CustomEvent('flowRateUpdated', { detail: { deviceId, flowRate, relay } })
     );
+    void load();
   };
 
   if (loading) {

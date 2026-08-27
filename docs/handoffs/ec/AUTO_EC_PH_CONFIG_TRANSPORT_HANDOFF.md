@@ -99,10 +99,88 @@ Topic **aparte** de relés (`command` ≠ `ec/config`). Relés ya van por MQTT.
 
 ---
 
-## 5. Orden
+## 5. Orden (ejecución 27/08)
 
-1. P0 para dejar de mentir web ON / serial NÃO.  
-2. P1 cuando el ON/OFF deba ser instantáneo (espejo del puente de relés).
+**Bancada 27/08:** GET HTTPS **não desahogou** (`maxAlloc=38900` vs 40960, `sslBusy=0`, mqtt=1). Poll config **não é canal**. Auto EC/pH config passa a **MQTT retained**. GET só fallback se MQTT config ainda não chegou nesta sessão.
+
+Save web: **não enviar** coluna `flow_rate` (dropada). Vazão = `nutrients[].flowRate`.
+
+### Fase B — MQTT config (código 27/08)
+
+```text
+UI POST /api/ec-controller/config
+  → UPSERT ec_config_view (sem flow_rate)
+  → publish retained hidrowave/{id}/ec/config
+ESP subscribe → apply RAM
+GET HTTPS só se MQTT estável mas config MQTT ainda não chegou
+```
+
+**ACL VM:** foto incompleta 27/08 + ACL objetivo y mapa: [ACL_MAPA_FUNCIONALIDADES_27AGO2026.md](../../../../ESP-HIDROWAVE-main/docs/mqtt/ACL_MAPA_FUNCIONALIDADES_27AGO2026.md)
+
+Serial verde:
+
+```text
+[MQTT] subscribe ec/config QoS1
+[MQTT] rx topic=hidrowave/.../ec/config
+[EC CONFIG] apply via=mqtt auto=SIM
+```
+
+### O que ainda aperta TLS (próximos MQTT)
+
+| Canal | Hoje | Migrar? |
+|-------|--------|---------|
+| Auto EC/pH config GET | skip maxAlloc | **MQTT agora** |
+| device_status 60s | MQTT + last_seen 4 min | já fallback |
+| decision_rules poll | HTTPS ~30s | sim, depois |
+| PATCH K ganhos / doses se MQTT publish falha | pontual | manter HTTPS |
+| Claim/registro | 1x boot | ficar HTTPS |
+
+---
+
+## 5. Orden (ejecución 25/08)
+
+**Regla:** el GET HTTPS de Auto EC/pH tiene que **funcionar como principal** antes de bajarlo a fallback. Si MQTT se pone primero y el GET nunca se vio verde, el apagón del broker deja el ESP sordo otra vez.
+
+### Fase A — ahora (aliviar TLS; GET sigue principal)
+
+HTTPS que **ya debía ser fallback** y aún corría en paralelo:
+
+| Canal | Cambio | Fallback |
+|-------|--------|----------|
+| `device_status` cada 60 s | `mqtt_health_only=1` | HTTPS solo si MQTT caído (120 s) + last_seen ≤4 min |
+| PATCH `relay_master` en ese mismo ciclo | skip si MQTT comando estable 60 s | HTTPS en `syncAllRelayStates` / status si MQTT cae |
+
+**No se borra** la tabla `device_status` ni el GET de config.
+
+**Gate bancada (esta fase):**
+
+```text
+health=mqtt+https_fallback     ← boot
+[SSL] skip relay_master HTTPS (MQTT command path OK)
+[SYNC] EC config poll          ← GET de verdad, no skip
+[EC CONFIG] auto_enabled: SIM  ← RAM = web
+[SYNC] PH config poll           ← ≥15 s después, no pegado a EC
+[PH CONFIG] auto_enabled: SIM
+```
+
+Rojo: `GET skip: maxAllocLow` en soak ≥20 min. Entonces no se pasa a Fase B.
+
+### Fase B — después del gate (MQTT principal Auto EC/pH)
+
+Mismo JSON que la view, retained:
+
+`hidrowave/{device_id}/ec/config` y `.../ph/config`
+
+GET HTTPS **queda**, ya probado, solo si MQTT caído >60 s.
+
+---
+
+## 5b. Hecho 25/08 (Fase A código)
+
+- `secrets.ini` / `secrets.ini.example`: `mqtt_health_only=1`
+- `Config.h` default `MQTT_HEALTH_ONLY=1`
+- Loop: con MQTT OK el HTTPS de status pasa de 60 s → 4 min
+- `sendDeviceStatusToSupabase`: no PATCH `relay_master` si `isMqttCommandPathStable()`
 
 ---
 

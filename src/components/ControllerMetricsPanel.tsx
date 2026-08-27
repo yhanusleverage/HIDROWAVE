@@ -11,6 +11,7 @@ import {
   Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { MetricRow } from '@/components/ui/MetricRow';
 import { formatSensorValue } from '@/lib/format-sensor-value';
@@ -63,6 +64,9 @@ export type ControllerMetricsPanelProps = {
   /** Fija EC o pH (Automacao); omitir tabs si hideTabs */
   focus?: MetricsFocus;
   hideTabs?: boolean;
+  /** Accordion del chart (Auto EC / Auto pH). Default: true si hideTabs. */
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 };
 
 function KpiChip({
@@ -96,7 +100,11 @@ export default function ControllerMetricsPanel({
   className = '',
   focus = 'both',
   hideTabs = false,
+  collapsible,
+  defaultOpen = true,
 }: ControllerMetricsPanelProps) {
+  const canCollapse = collapsible ?? hideTabs;
+  const [open, setOpen] = useState(defaultOpen);
   const [tab, setTab] = useState<MetricsFocus>(focus === 'both' ? 'both' : focus);
   const [ecRows, setEcRows] = useState<EcControllerMetricRow[]>([]);
   const [phRows, setPhRows] = useState<PhControllerMetricRow[]>([]);
@@ -183,27 +191,53 @@ export default function ControllerMetricsPanel({
   const showPh = tab === 'ph' || tab === 'both';
   const hasData = displayEc.length > 0 || displayPh.length > 0;
   const showTabs = !hideTabs && focus === 'both';
+  const titleLabel =
+    focus === 'ec' ? 'Métricas de ciclo Auto EC' : focus === 'ph' ? 'Métricas de ciclo Auto pH' : 'Métricas de ciclo Auto EC / pH';
+
+  const header = (
+    <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+      <span>{titleLabel}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        {preview && (
+          <span className="text-xs font-normal rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-300">
+            Demo local
+          </span>
+        )}
+        <span className="text-xs font-normal text-dark-textSecondary">
+          últimos {METRICS_LIMIT} ticks · ventana 24h
+        </span>
+        {canCollapse ? (
+          open ? (
+            <ChevronUpIcon className="w-4 h-4 text-dark-textSecondary shrink-0" />
+          ) : (
+            <ChevronDownIcon className="w-4 h-4 text-dark-textSecondary shrink-0" />
+          )
+        ) : null}
+      </div>
+    </div>
+  );
 
   return (
     <InstrumentCard
       accent="brand"
       className={className}
       title={
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span>Métricas de ciclo Auto EC / pH</span>
-          <div className="flex flex-wrap items-center gap-2">
-            {preview && (
-              <span className="text-xs font-normal rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-300">
-                Demo local
-              </span>
-            )}
-            <span className="text-xs font-normal text-dark-textSecondary">
-              últimos {METRICS_LIMIT} ticks · ventana 24h
-            </span>
-          </div>
-        </div>
+        canCollapse ? (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex w-full items-center text-left"
+            aria-expanded={open}
+          >
+            {header}
+          </button>
+        ) : (
+          header
+        )
       }
     >
+      {canCollapse && !open ? null : (
+      <>
       {showTabs && (
         <div className="mb-3 flex flex-wrap gap-2">
           {(['both', 'ec', 'ph'] as const).map((key) => (
@@ -387,6 +421,8 @@ export default function ControllerMetricsPanel({
             </div>
           )}
         </div>
+      )}
+      </>
       )}
     </InstrumentCard>
   );

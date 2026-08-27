@@ -39,11 +39,19 @@ import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import {
   isSlaveDeviceRow,
   patchSlaveFromDeviceStatus,
+  refreshSlaveOnlineStatuses,
   SLAVES_METADATA_FALLBACK_MS,
+  SLAVE_ONLINE_TICK_MS,
 } from '@/lib/realtime/slave-status';
 import { subscribeDeviceStatusUpdates } from '@/lib/realtime/device-status';
 import { subscribeRelayCommandUpdates } from '@/lib/realtime/relay-commands';
-import { applyRelayCommandAck, type PendingRelayCommand } from '@/lib/relay-pending-commands';
+import {
+  applyRelayCommandAck,
+  armPendingAckTimeout,
+  clearPendingAckTimeout,
+  type PendingAckTimerMap,
+  type PendingRelayCommand,
+} from '@/lib/relay-pending-commands';
 import { sendSlaveRelayCommand } from '@/lib/slave-relay-command';
 // Removido: import { getRelayStates } from '@/lib/automation'; // não usar mais relay_states
 import { getMasterLocalRelayNames } from '@/lib/nutrition-plan';
@@ -248,6 +256,7 @@ export default function AutomacaoPageClient() {
   
   // ✅ NOVO: Mapeamento Command ID → Relay Key (padrão indústria)
   const commandToRelayMap = useRef<Map<string | number, PendingRelayCommand>>(new Map());
+  const pendingAckTimersRef = useRef<PendingAckTimerMap>(new Map());
   
   // ✅ NOVO: Estado para rastrear si cada slave está bloqueado (MAC address -> boolean)
   const [lockedSlaves, setLockedSlaves] = useState<Map<string, boolean>>(new Map());
@@ -551,6 +560,116 @@ export default function AutomacaoPageClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, userProfile?.email]);
 
+  // Reloj: offline por last_seen viejo sin esperar F5 ni UPDATE WS
+  useEffect(() => {
+    if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
+    return setVisibleInterval(() => {
+      setEspnowSlaves((prev) => refreshSlaveOnlineStatuses(prev));
+    }, SLAVE_ONLINE_TICK_MS);
+  }, [selectedDeviceId]);
+
+  const clearRelayLoading = useCallback((relayKey: string) => {
+    setLoadingRelays((prev) => {
+      const next = new Map(prev);
+      next.delete(relayKey);
+      return next;
+    });
+  }, []);
+
+  const revertSlaveRelay = useCallback(
+    (relayKey: string, previousState: boolean) => {
+      setRelayStates((prev) => new Map(prev).set(relayKey, previousState));
+      startLocalTimer(relayKey, 0);
+      clearRelayLoading(relayKey);
+    },
+    [startLocalTimer, clearRelayLoading]
+  );
+
+  const clearTimerAssignment = useCallback((relayKey: string) => {
+    setArmedTimers((prev) => {
+      const next = new Map(prev);
+      next.delete(relayKey);
+      return next;
+    });
+    setRelayTimers((prev) => {
+      const next = new Map(prev);
+      next.delete(relayKey);
+      return next;
+    });
+    startLocalTimer(relayKey, 0);
+    setShowTimerInput(null);
+  }, [startLocalTimer]);
+
+  const registerPendingSlaveAck = useCallback(
+    (commandId: string | number, pending: PendingRelayCommand) => {
+      commandToRelayMap.current.set(commandId, pending);
+      armPendingAckTimeout(pendingAckTimersRef.current, commandId, () => {
+        const still = commandToRelayMap.current.get(commandId);
+        if (!still) return;
+        commandToRelayMap.current.delete(commandId);
+        revertSlaveRelay(still.relayKey, still.previousState);
+        toast.error('Slave não confirmou (timeout / offline)');
+      });
+    },
+    [revertSlaveRelay]
+  );
+
+  /** Desarma el reloj y, si el Atlas ya cuenta, cancela el timer (ON/OFF sin duración). */
+  const disarmSlaveTimer = useCallback(
+    async (opts: {
+      relayKey: string;
+      slaveMac: string;
+      slaveName: string;
+      relayNumber: number;
+      isRelayOn: boolean;
+      remainingTime: number;
+    }) => {
+      const { relayKey, slaveMac, slaveName, relayNumber, isRelayOn, remainingTime } = opts;
+      const wasRunning = remainingTime > 0;
+      clearTimerAssignment(relayKey);
+
+      if (wasRunning && selectedDeviceId && selectedDeviceId !== 'default_device') {
+        setLoadingRelays((prev) => new Map(prev).set(relayKey, true));
+        try {
+          const result = await sendSlaveRelayCommand({
+            master_device_id: selectedDeviceId,
+            slave_mac_address: slaveMac,
+            slave_name: slaveName,
+            relay_number: relayNumber,
+            mode: 'instant',
+            action: isRelayOn ? 'on' : 'off',
+            duration_seconds: 0,
+          });
+          if (result.success && result.command_id) {
+            registerPendingSlaveAck(result.command_id, {
+              relayKey,
+              previousState: isRelayOn,
+              desiredOn: isRelayOn,
+              durationSeconds: 0,
+            });
+            toast.success(
+              isRelayOn
+                ? 'Timer cancelado — relé permanece ON (convencional)'
+                : 'Timer cancelado — ON/OFF convencional'
+            );
+            return;
+          }
+          if (!result.success) {
+            toast.error(result.error ?? 'Não foi possível cancelar o timer no Atlas');
+          }
+        } catch {
+          toast.error('Não foi possível cancelar o timer no Atlas');
+        } finally {
+          clearRelayLoading(relayKey);
+        }
+        return;
+      }
+
+      toast.success('Timer desarmado — próximo ON/OFF é convencional');
+    },
+    [clearTimerAssignment, selectedDeviceId, registerPendingSlaveAck, clearRelayLoading]
+  );
+
   const processCommandAck = useCallback(
     (commandId: number | string, status: string, action?: string, relayNumber?: number) => {
       applyRelayCommandAck(
@@ -558,21 +677,54 @@ export default function AutomacaoPageClient() {
         commandId,
         status,
         {
-          onCompleted: (relayKey, ackAction) => {
+          onCompleted: (relayKey, ackAction, pending) => {
+            clearPendingAckTimeout(pendingAckTimersRef.current, commandId);
+            clearRelayLoading(relayKey);
             if (ackAction === 'on' || ackAction === 'off') {
               setRelayStates((prev) => {
                 const newMap = new Map(prev);
                 newMap.set(relayKey, ackAction === 'on');
                 return newMap;
               });
+              if (ackAction === 'on' && pending?.durationSeconds && pending.durationSeconds > 0) {
+                startLocalTimer(relayKey, pending.durationSeconds);
+              }
+              if (ackAction === 'off') {
+                startLocalTimer(relayKey, 0);
+                setRelayCycles((prev) => {
+                  const next = new Map(prev);
+                  const c = next.get(relayKey);
+                  if (c) next.set(relayKey, { ...c, enabled: false });
+                  return next;
+                });
+              }
+            }
+            if (pending?.cycle === 'stop') {
+              setRelayCycles((prev) => {
+                const next = new Map(prev);
+                const c = next.get(relayKey);
+                if (c) next.set(relayKey, { ...c, enabled: false });
+                return next;
+              });
+            } else if (pending?.cycle) {
+              const cycle = pending.cycle;
+              setRelayCycles((prev) =>
+                new Map(prev).set(relayKey, {
+                  onDuration: cycle.onDuration,
+                  offDuration: cycle.offDuration,
+                  enabled: true,
+                  phase: 'on',
+                })
+              );
+              setShowCycleInput(null);
+            }
+            if (pending?.successToast) {
+              toast.success(pending.successToast);
             }
           },
           onFailed: (relayKey, previousState, num) => {
-            setRelayStates((prev) => {
-              const newMap = new Map(prev);
-              newMap.set(relayKey, previousState);
-              return newMap;
-            });
+            clearPendingAckTimeout(pendingAckTimersRef.current, commandId);
+            revertSlaveRelay(relayKey, previousState);
             const relayNum = num !== undefined ? String(num) : 'desconhecido';
             toast.error(`Comando falhou para relé ${relayNum}`);
           },
@@ -581,7 +733,7 @@ export default function AutomacaoPageClient() {
         relayNumber
       );
     },
-    []
+    [clearRelayLoading, revertSlaveRelay, startLocalTimer]
   );
 
   // ACKs — WSS relay_commands (sin polling 5s); REST fallback solo si hay pendientes
@@ -1581,12 +1733,17 @@ export default function AutomacaoPageClient() {
                                               {isRelayOn ? '🟢 ON' : '⚫ OFF'}
                                             </p>
                                             {/* ✅ Mostrar timer se estiver ativo */}
-                                            {remainingTime > 0 && (
+                                            {remainingTime > 0 ? (
                                               <p className="text-xs text-yellow-400 mt-1 flex items-center gap-1">
                                                 <ClockIcon className="w-3 h-3" />
                                                 {Math.floor(remainingTime / 60)}:{(remainingTime % 60).toString().padStart(2, '0')}
                                               </p>
-                                            )}
+                                            ) : timerArmed ? (
+                                              <p className="text-xs text-yellow-400/90 mt-1 flex items-center gap-1">
+                                                <ClockIcon className="w-3 h-3" />
+                                                Timer {armedTimers.get(relayKey)}s
+                                              </p>
+                                            ) : null}
                                           </div>
                                           <span
                                             className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -1628,9 +1785,6 @@ export default function AutomacaoPageClient() {
                                                   nextOn && armedSecs && armedSecs > 0 ? armedSecs : 0;
                                                 setLoadingRelays(prev => new Map(prev).set(relayKey, true));
                                                 setRelayStates(prev => new Map(prev).set(relayKey, nextOn));
-                                                if (nextOn && durationSeconds > 0) {
-                                                  startLocalTimer(relayKey, durationSeconds);
-                                                }
                                                 try {
                                                   const result = await sendSlaveRelayCommand({
                                                     master_device_id: selectedDeviceId!,
@@ -1641,47 +1795,28 @@ export default function AutomacaoPageClient() {
                                                     action: nextOn ? 'on' : 'off',
                                                     duration_seconds: durationSeconds,
                                                   });
-                                                  if (result.success) {
-                                                    if (result.command_id) {
-                                                      commandToRelayMap.current.set(result.command_id, {
-                                                        relayKey,
-                                                        previousState,
-                                                      });
-                                                    }
-                                                    if (!nextOn) {
-                                                      startLocalTimer(relayKey, 0);
-                                                      setArmedTimers(prev => {
-                                                        const next = new Map(prev);
-                                                        next.delete(relayKey);
-                                                        return next;
-                                                      });
-                                                      setRelayCycles(prev => {
-                                                        const next = new Map(prev);
-                                                        const c = next.get(relayKey);
-                                                        if (c) next.set(relayKey, { ...c, enabled: false });
-                                                        return next;
-                                                      });
-                                                    }
-                                                    toast.success(
-                                                      nextOn
+                                                  if (result.success && result.command_id) {
+                                                    registerPendingSlaveAck(result.command_id, {
+                                                      relayKey,
+                                                      previousState,
+                                                      desiredOn: nextOn,
+                                                      durationSeconds,
+                                                      successToast: nextOn
                                                         ? durationSeconds > 0
                                                           ? `${relayLabel} ligado ${durationSeconds}s`
                                                           : `${relayLabel} ligado`
-                                                        : `${relayLabel} desligado`
-                                                    );
+                                                        : `${relayLabel} desligado`,
+                                                    });
+                                                  } else if (result.success) {
+                                                    revertSlaveRelay(relayKey, previousState);
+                                                    toast.error('Slave não confirmou (sem ACK)');
                                                   } else {
-                                                    setRelayStates(prev => new Map(prev).set(relayKey, previousState));
+                                                    revertSlaveRelay(relayKey, previousState);
                                                     toast.error(`Erro: ${result.error}`);
                                                   }
                                                 } catch {
-                                                  setRelayStates(prev => new Map(prev).set(relayKey, previousState));
+                                                  revertSlaveRelay(relayKey, previousState);
                                                   toast.error('Erro ao enviar comando');
-                                                } finally {
-                                                  setLoadingRelays(prev => {
-                                                    const next = new Map(prev);
-                                                    next.delete(relayKey);
-                                                    return next;
-                                                  });
                                                 }
                                               }}
                                               disabled={isLoading || controlsDisabled}
@@ -1769,8 +1904,10 @@ export default function AutomacaoPageClient() {
                                                   relayCycles.get(relayKey)?.enabled
                                                     ? `Ciclo: ON ${relayCycles.get(relayKey)!.onDuration}s / OFF ${relayCycles.get(relayKey)!.offDuration}s`
                                                     : timerArmed
-                                                      ? `Timer armado: ${armedTimers.get(relayKey)}s — pulsa ON`
-                                                      : 'Configurar Timer/Ciclo'
+                                                      ? `Timer asignado: ${armedTimers.get(relayKey)}s — pulsa ON (amarillo = timer)`
+                                                      : remainingTime > 0
+                                                        ? 'Timer corriendo en el Atlas'
+                                                        : 'Sin timer — ON/OFF convencional'
                                                 }
                                               >
                                                 {relayCycles.get(relayKey)?.enabled ? (
@@ -1850,7 +1987,7 @@ export default function AutomacaoPageClient() {
                                                     <span className="text-xs text-dark-textSecondary">s</span>
                                                   </div>
                                                   <p className="text-xs text-dark-textSecondary/80">
-                                                    Ativar só arma o relógio amarelo. O relé só liga ao pulsar ON.
+                                                    Reloj amarillo = timer asignado. El relé solo cambia al pulsar ON/OFF.
                                                   </p>
                                                   <button
                                                     type="button"
@@ -1860,31 +1997,28 @@ export default function AutomacaoPageClient() {
                                                       const secs = relayTimers.get(relayKey) || 10;
                                                       setArmedTimers(prev => new Map(prev).set(relayKey, secs));
                                                       setShowTimerInput(null);
-                                                      toast.success(`Timer armado ${secs}s — pulsa ON para ligar`);
+                                                      toast.success(`Timer atribuído ${secs}s — relógio amarelo. Pulse ON para ligar`);
                                                     }}
                                                     className="w-full py-2 px-3 text-xs font-medium rounded bg-aqua-500/20 text-aqua-400 border border-aqua-500/40 hover:bg-aqua-500/30 disabled:opacity-50"
                                                   >
-                                                    Ativar Timer
+                                                    Asignar timer
                                                   </button>
                                                   <button
                                                     type="button"
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      setArmedTimers(prev => {
-                                                        const next = new Map(prev);
-                                                        next.delete(relayKey);
-                                                        return next;
+                                                      void disarmSlaveTimer({
+                                                        relayKey,
+                                                        slaveMac: slave.macAddress,
+                                                        slaveName: slave.name,
+                                                        relayNumber: relay.id,
+                                                        isRelayOn,
+                                                        remainingTime,
                                                       });
-                                                      setRelayTimers(prev => {
-                                                        const next = new Map(prev);
-                                                        next.delete(relayKey);
-                                                        return next;
-                                                      });
-                                                      setShowTimerInput(null);
                                                     }}
                                                     className="w-full py-1.5 text-xs text-dark-textSecondary hover:text-red-400"
                                                   >
-                                                    Desarmar / Fechar
+                                                    Desarmar (ON/OFF convencional)
                                                   </button>
                                                 </div>
                                               )}
@@ -1959,23 +2093,17 @@ export default function AutomacaoPageClient() {
                                                             action: 'off',
                                                             duration_seconds: 0,
                                                           });
-                                                          setLoadingRelays(prev => {
-                                                            const next = new Map(prev);
-                                                            next.delete(relayKey);
-                                                            return next;
-                                                          });
-                                                          if (result.success) {
-                                                            setRelayCycles(prev => {
-                                                              const next = new Map(prev);
-                                                              const c = next.get(relayKey);
-                                                              if (c) next.set(relayKey, { ...c, enabled: false });
-                                                              return next;
+                                                          if (result.success && result.command_id) {
+                                                            registerPendingSlaveAck(result.command_id, {
+                                                              relayKey,
+                                                              previousState: isRelayOn,
+                                                              desiredOn: false,
+                                                              cycle: 'stop',
+                                                              successToast: 'Ciclo parado',
                                                             });
-                                                            startLocalTimer(relayKey, 0);
-                                                            setRelayStates(prev => new Map(prev).set(relayKey, false));
-                                                            toast.success('Ciclo parado');
                                                           } else {
-                                                            toast.error(result.error ?? 'Erro ao parar ciclo');
+                                                            clearRelayLoading(relayKey);
+                                                            toast.error(result.error ?? 'Slave não confirmou (sem ACK)');
                                                           }
                                                         }}
                                                         className="w-full py-2 px-3 text-xs font-medium rounded bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 disabled:opacity-50"
@@ -1995,8 +2123,6 @@ export default function AutomacaoPageClient() {
                                                             phase: 'on' as const,
                                                           };
                                                           setLoadingRelays(prev => new Map(prev).set(relayKey, true));
-                                                          startLocalTimer(relayKey, cycle.onDuration);
-                                                          setRelayStates(prev => new Map(prev).set(relayKey, true));
                                                           const result = await sendSlaveRelayCommand({
                                                             master_device_id: selectedDeviceId!,
                                                             slave_mac_address: slave.macAddress,
@@ -2007,27 +2133,21 @@ export default function AutomacaoPageClient() {
                                                             duration_seconds: cycle.onDuration,
                                                             cycle_off_seconds: cycle.offDuration,
                                                           });
-                                                          setLoadingRelays(prev => {
-                                                            const next = new Map(prev);
-                                                            next.delete(relayKey);
-                                                            return next;
-                                                          });
-                                                          if (result.success) {
-                                                            setRelayCycles(prev =>
-                                                              new Map(prev).set(relayKey, {
-                                                                ...cycle,
-                                                                enabled: true,
-                                                                phase: 'on',
-                                                              })
-                                                            );
-                                                            toast.success(
-                                                              `Ciclo ON ${cycle.onDuration}s / OFF ${cycle.offDuration}s`
-                                                            );
-                                                            setShowCycleInput(null);
+                                                          if (result.success && result.command_id) {
+                                                            registerPendingSlaveAck(result.command_id, {
+                                                              relayKey,
+                                                              previousState: isRelayOn,
+                                                              desiredOn: true,
+                                                              durationSeconds: cycle.onDuration,
+                                                              cycle: {
+                                                                onDuration: cycle.onDuration,
+                                                                offDuration: cycle.offDuration,
+                                                              },
+                                                              successToast: `Ciclo ON ${cycle.onDuration}s / OFF ${cycle.offDuration}s`,
+                                                            });
                                                           } else {
-                                                            startLocalTimer(relayKey, 0);
-                                                            setRelayStates(prev => new Map(prev).set(relayKey, isRelayOn));
-                                                            toast.error(result.error ?? 'Erro ao ativar ciclo');
+                                                            clearRelayLoading(relayKey);
+                                                            toast.error(result.error ?? 'Slave não confirmou (sem ACK)');
                                                           }
                                                         }}
                                                         className="w-full py-2 px-3 text-xs font-medium rounded bg-aqua-500/20 text-aqua-400 border border-aqua-500/40 hover:bg-aqua-500/30 disabled:opacity-50"

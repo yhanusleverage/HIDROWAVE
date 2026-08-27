@@ -20,13 +20,13 @@ Eso no tiene sentido: S5 no está ocurriendo ahora. “Atual” copiado en todas
 
 | Semana | Qué mostrar |
 |--------|-------------|
-| **Futura** | Só alvo EC / pH / tanque L |
-| **Atual** | Alvo + Δ + médio + ml + nº ajustes **desta semana até agora** |
+| **Futura** | Alvo EC / pH + filas **Queda** e **médio** (— até a semana começar) |
+| **Atual** | Alvo + queda/Δ + médio + ml + nº ajustes **desta semana até agora** |
 | **Passada** | Idem, ventana completa de 7 días |
 
 **No mostrar:** EC/pH live, erro vs sensor agora, última dosis 24 h, badge “Ao vivo / Simulado” como si fuera Auto EC.
 
-**Δ** = último valor − primeiro valor na janela (`queda` se negativo).
+**Δ** = último valor − primeiro valor na janela (`queda N` se negativo, `+N` se subiu).
 
 ---
 

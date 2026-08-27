@@ -43,7 +43,11 @@ import {
   resolveEcManualDoseButtonLock,
   resolveRelayNamingLock,
 } from '@/lib/relay-naming-lock';
-import { parseConfigApiError, sanitizeEcNumericFields } from '@/lib/controller-config-api';
+import {
+  parseConfigApiError,
+  sanitizeEcNumericFields,
+  stripEcWritableConfig,
+} from '@/lib/controller-config-api';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { MetricRow } from '@/components/ui/MetricRow';
 import ControllerMetricsPanel from '@/components/ControllerMetricsPanel';
@@ -97,6 +101,11 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   const [pulseGapSec, setPulseGapSec] = useState<number>(2.0);
   const justSavedRef = useRef<boolean>(false);
   const savingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [configSyncTick, setConfigSyncTick] = useState(0);
+  const [savedConfigSnapshot, setSavedConfigSnapshot] = useState<string | null>(null);
+  const markConfigSynced = useCallback(() => {
+    setConfigSyncTick((n) => n + 1);
+  }, []);
 
   // ✅ Funções helper para converter entre formato de tempo (HH:MM) e milissegundos
   const timeToMilliseconds = (timeStr: string): number => {
@@ -142,6 +151,44 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   const [isNutrientModalOpen, setIsNutrientModalOpen] = useState<boolean>(false);
   const [editingNutrientIndex, setEditingNutrientIndex] = useState<number | null>(null);
   const [modalRelayNumber, setModalRelayNumber] = useState(0);
+
+  const ecFormSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        totalVolume,
+        baseDose,
+        ecSetpoint,
+        ecTolerance,
+        intervaloAutoEC,
+        tempoRecirculacaoHours,
+        tempoRecirculacaoMinutes,
+        aggressiveness,
+        consumo24h,
+        pulseMl,
+        pulseGapSec,
+        nutrients: nutrientsState.map((n) => ({
+          name: n.name,
+          relayNumber: n.relayNumber,
+          mlPerLiter: n.mlPerLiter,
+          flowRate: Number(n.flowRate) > 0 ? n.flowRate : 0,
+        })),
+      }),
+    [
+      totalVolume,
+      baseDose,
+      ecSetpoint,
+      ecTolerance,
+      intervaloAutoEC,
+      tempoRecirculacaoHours,
+      tempoRecirculacaoMinutes,
+      aggressiveness,
+      consumo24h,
+      pulseMl,
+      pulseGapSec,
+      nutrientsState,
+    ]
+  );
+  const ecConfigDirty = savedConfigSnapshot !== null && savedConfigSnapshot !== ecFormSnapshot;
   
   // ✅ NOVO: Nomes de relés LOCAIS do Master
   const [localRelayNames, setLocalRelayNames] = useState<Map<number, string>>(new Map());
@@ -471,10 +518,11 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       if (typeof config.consumo_24h === 'boolean') {
         setConsumo24h(config.consumo_24h);
       }
+      markConfigSynced();
     } catch (error) {
       console.error('Erro ao carregar config EC Controller:', error);
     }
-  }, [deviceId]);
+  }, [deviceId, markConfigSynced]);
   
   // ✅ Sincronizar tempoRecirculacao com campos separados (horas e minutos)
   useEffect(() => {
@@ -631,7 +679,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       );
       if (missingFlow.length > 0) {
         toast.error(
-          `Calibre a vazão em Calibragem: ${missingFlow.map((n) => n.name || 'bomba').join(', ')}`
+          `Ainda falta calibrar a bomba de: ${missingFlow.map((n) => n.name || 'nutriente').join(', ')}. Sem isso o Auto EC não dosifica.`
         );
       }
       
@@ -710,16 +758,17 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
         return false;
       }
 
-      const sanitizedPayload = sanitizeEcNumericFields(
-        payload as unknown as Record<string, unknown>
-      ) as typeof payload;
-      
-      console.log('📤 [EC Controller] Payload optimizado:', JSON.stringify(sanitizedPayload, null, 2));
-      
+      const writable = sanitizeEcNumericFields(
+        stripEcWritableConfig(payload as unknown as Record<string, unknown>)
+      );
+      const postBody = { device_id: deviceId, ...writable };
+
+      console.log('📤 [EC Controller] Payload optimizado:', JSON.stringify(postBody, null, 2));
+
       const response = await fetch('/api/ec-controller/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sanitizedPayload),
+        body: JSON.stringify(postBody),
       });
       
       if (!response.ok) {
@@ -728,7 +777,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
           status: parsed.status,
           message: parsed.message,
           body: parsed.body,
-          payload: sanitizedPayload,
+          payload: postBody,
           device_id: deviceId,
         });
         toast.error(`Erro ao salvar: ${parsed.message}`);
@@ -760,6 +809,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       }, 2000);
       
       // Só mostrar toast se não estiver em modo silencioso
+      markConfigSynced();
       if (!silent) {
         hwToast.success('Configuração salva com sucesso!', 'AUTO EC');
       }
@@ -769,7 +819,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       toast.error(`Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`);
       return false;
     }
-  }, [deviceId, nutrientsState, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, availableRelays, relayAllocation]);
+  }, [deviceId, nutrientsState, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, availableRelays, relayAllocation, markConfigSynced]);
   
   // ✅ Cleanup: Limpiar timeout al desmontar componente
   useEffect(() => {
@@ -949,6 +999,8 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   }, []);
 
   useEffect(() => {
+    setSavedConfigSnapshot(null);
+    setConfigSyncTick(0);
     if (deviceId && deviceId !== 'default_device') {
       loadLocalRelayNames();
       loadECControllerConfig();
@@ -956,6 +1008,13 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId]);
+
+  useEffect(() => {
+    if (configSyncTick === 0) return;
+    setSavedConfigSnapshot(ecFormSnapshot);
+    // Capture only on load/save ticks — not on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configSyncTick]);
 
   useEffect(() => {
     const onFlowRateUpdated = (e: Event) => {
@@ -1078,6 +1137,16 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
         }
       }
 
+      const mqttPush = await fetch('/api/ec-controller/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: deviceId, auto_enabled: newValue }),
+      });
+      if (!mqttPush.ok) {
+        const parsed = await parseConfigApiError(mqttPush);
+        console.warn('[EC Controller] Postgres OK, MQTT config falhou:', parsed.message);
+      }
+
       savingTimeoutRef.current = setTimeout(() => {
         justSavedRef.current = false;
       }, 2000);
@@ -1180,6 +1249,117 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                             </div>
                             )}
                           </div>
+
+                          {deviceId ? (
+                            <div className="mb-6">
+                              <ControllerMetricsPanel
+                                deviceId={deviceId}
+                                focus="ec"
+                                hideTabs
+                              />
+                            </div>
+                          ) : null}
+
+                          {/* Status / Ajuste agora — abaixo do chart, acima da config Auto EC */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            {/* Status do EC Controller */}
+                            <InstrumentCard accent="ec" title="📊 Status do Controle" ariaLive="polite">
+                              <div className="space-y-2.5">
+                                <OperationStateBanners
+                                  autoEnabled={autoEnabled}
+                                  isDosando={isDosando}
+                                  dosandoLabel="Dosando"
+                                  isAguardandoRecirculacao={isAguardandoRecirculacao}
+                                  operationRemainingSec={recirculacaoRestanteSec}
+                                  showNextCheck={
+                                    !isDosando &&
+                                    !isAguardandoRecirculacao &&
+                                    autoEnabled &&
+                                    ecNextCheckInSec > 0
+                                  }
+                                  nextCheckInSec={ecNextCheckInSec}
+                                  nextCheckLabel="Próxima verificação EC"
+                                  formatCountdown={formatRecircCountdown}
+                                />
+                                <MetricRow
+                                  label="Status:"
+                                  value={autoEnabled ? '✅ Ativado' : '❌ Desativado'}
+                                  variant={autoEnabled ? 'ok' : 'danger'}
+                                />
+                                <MetricRow
+                                  label="Setpoint:"
+                                  value={
+                                    ecSetpoint > 0
+                                      ? `${formatSensorValue(ecSetpoint, 0)} µS/cm`
+                                      : '--'
+                                  }
+                                  variant="setpoint"
+                                  domain="ec"
+                                />
+                                <MetricRow
+                                  label="Banda morta:"
+                                  value={`± ${formatSensorValue(ecTolerance, 0)} µS/cm`}
+                                />
+                                <MetricRow
+                                  label="Erro (SP − EC):"
+                                  value={
+                                    ecAtual !== null
+                                      ? `${formatSensorValue(Math.max(0, ecError), 1)} µS/cm`
+                                      : '-- µS/cm'
+                                  }
+                                  variant={ecWithinDeadBand === false ? 'alarm' : 'default'}
+                                />
+                                <MetricRow
+                                  label="Zona de controle:"
+                                  value={
+                                    ecWithinDeadBand === null
+                                      ? '--'
+                                      : ecWithinDeadBand
+                                        ? '✓ Sem dosagem (EC ≥ limite)'
+                                        : '⚡ Ajuste Kp (EC abaixo da banda)'
+                                  }
+                                  variant={
+                                    ecWithinDeadBand === true ? 'ok' : ecWithinDeadBand === false ? 'alarm' : 'default'
+                                  }
+                                />
+                                <MetricRow
+                                  label="Última dosagem:"
+                                  value={lastDosageMl != null ? `${lastDosageMl.toFixed(2)} ml` : '-- ml'}
+                                  variant="preview"
+                                  domain="ec"
+                                />
+                                <MetricRow
+                                  label="EC Atual:"
+                                  value={
+                                    ecAtual !== null
+                                      ? `${formatSensorValue(ecAtual, 1)} µS/cm`
+                                      : '-- µS/cm'
+                                  }
+                                  variant="live"
+                                />
+                              </div>
+                              <NutrientDosageDetail
+                                deviceId={deviceId}
+                                sequenceId={lastDosageSequenceId}
+                                enabled={ecDeviceActive}
+                              />
+                            </InstrumentCard>
+                            
+                            <EcGrowerSummaryCard
+                              deviceId={deviceId}
+                              consumo24h={consumo24h}
+                              ecNow={ecAtual}
+                              setpoint={ecSetpoint}
+                              tolerance={ecTolerance}
+                              estimatedDoseMl={estimatedDoseMl}
+                              lastDoseMl={lastDosageMl}
+                              lastDoseAt={lastDosageCompletedAt}
+                              autoEnabled={autoEnabled}
+                              showNextCheck={showEcNextCheck}
+                              nextCheckInSec={ecNextCheckInSec}
+                              formatCountdown={formatRecircCountdown}
+                            />
+                          </div>
                           
                           {/* ===== TABELA DE NUTRIÇÃO (PRIMEIRO) ===== */}
                           <div className="mb-6 sm:mb-8 pb-6 sm:pb-8 border-b border-dark-border">
@@ -1205,12 +1385,12 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                           <div className="bg-dark-surface/60 border border-aqua-500/25 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <div>
-                              <p className="text-sm font-medium text-dark-textSecondary">
-                                Vazão por bomba
+                              <p className="text-sm font-medium text-dark-text">
+                                Quanto cada bomba dosifica
                               </p>
                               <p className="text-xs text-dark-textSecondary mt-1">
-                                Cada nutriente usa <span className="font-mono text-aqua-400">flowRate</span> da
-                                Calibragem. Sem calibrar, essa bomba não dosa.
+                                Cada bomba precisa saber quanto líquido solta por segundo. Isso se mede em
+                                Calibragem. Sem calibrar, essa bomba não dosifica o nutriente.
                               </p>
                             </div>
                             <NavLink
@@ -1338,7 +1518,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                     timeNeeded = calculateTime(nut.mlPerLiter);
                                     if (timeNeeded <= 0) {
                                       toast.error(
-                                        'Calibre a vazão desta bomba em Calibragem (flowRate)'
+                                        'Esta bomba ainda não está calibrada. Vá em Calibragem e meça quanto líquido ela solta por segundo.'
                                       );
                                       return;
                                     }
@@ -1777,117 +1957,6 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                             </div>
                           </div>
                           </div>
-                          
-                          {/* Controles e Status */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            {/* Status do EC Controller */}
-                            <InstrumentCard accent="ec" title="📊 Status do Controle" ariaLive="polite">
-                              <div className="space-y-2.5">
-                                <OperationStateBanners
-                                  autoEnabled={autoEnabled}
-                                  isDosando={isDosando}
-                                  dosandoLabel="Dosando"
-                                  isAguardandoRecirculacao={isAguardandoRecirculacao}
-                                  operationRemainingSec={recirculacaoRestanteSec}
-                                  showNextCheck={
-                                    !isDosando &&
-                                    !isAguardandoRecirculacao &&
-                                    autoEnabled &&
-                                    ecNextCheckInSec > 0
-                                  }
-                                  nextCheckInSec={ecNextCheckInSec}
-                                  nextCheckLabel="Próxima verificação EC"
-                                  formatCountdown={formatRecircCountdown}
-                                />
-                                <MetricRow
-                                  label="Status:"
-                                  value={autoEnabled ? '✅ Ativado' : '❌ Desativado'}
-                                  variant={autoEnabled ? 'ok' : 'danger'}
-                                />
-                                <MetricRow
-                                  label="Setpoint:"
-                                  value={
-                                    ecSetpoint > 0
-                                      ? `${formatSensorValue(ecSetpoint, 0)} µS/cm`
-                                      : '--'
-                                  }
-                                  variant="setpoint"
-                                  domain="ec"
-                                />
-                                <MetricRow
-                                  label="Banda morta:"
-                                  value={`± ${formatSensorValue(ecTolerance, 0)} µS/cm`}
-                                />
-                                <MetricRow
-                                  label="Erro (SP − EC):"
-                                  value={
-                                    ecAtual !== null
-                                      ? `${formatSensorValue(Math.max(0, ecError), 1)} µS/cm`
-                                      : '-- µS/cm'
-                                  }
-                                  variant={ecWithinDeadBand === false ? 'alarm' : 'default'}
-                                />
-                                <MetricRow
-                                  label="Zona de controle:"
-                                  value={
-                                    ecWithinDeadBand === null
-                                      ? '--'
-                                      : ecWithinDeadBand
-                                        ? '✓ Sem dosagem (EC ≥ limite)'
-                                        : '⚡ Ajuste Kp (EC abaixo da banda)'
-                                  }
-                                  variant={
-                                    ecWithinDeadBand === true ? 'ok' : ecWithinDeadBand === false ? 'alarm' : 'default'
-                                  }
-                                />
-                                <MetricRow
-                                  label="Última dosagem:"
-                                  value={lastDosageMl != null ? `${lastDosageMl.toFixed(2)} ml` : '-- ml'}
-                                  variant="preview"
-                                  domain="ec"
-                                />
-                                <MetricRow
-                                  label="EC Atual:"
-                                  value={
-                                    ecAtual !== null
-                                      ? `${formatSensorValue(ecAtual, 1)} µS/cm`
-                                      : '-- µS/cm'
-                                  }
-                                  variant="live"
-                                />
-                              </div>
-                              <NutrientDosageDetail
-                                deviceId={deviceId}
-                                sequenceId={lastDosageSequenceId}
-                                enabled={ecDeviceActive}
-                              />
-                            </InstrumentCard>
-                            
-                            <EcGrowerSummaryCard
-                              deviceId={deviceId}
-                              consumo24h={consumo24h}
-                              ecNow={ecAtual}
-                              setpoint={ecSetpoint}
-                              tolerance={ecTolerance}
-                              estimatedDoseMl={estimatedDoseMl}
-                              lastDoseMl={lastDosageMl}
-                              lastDoseAt={lastDosageCompletedAt}
-                              autoEnabled={autoEnabled}
-                              showNextCheck={showEcNextCheck}
-                              nextCheckInSec={ecNextCheckInSec}
-                              formatCountdown={formatRecircCountdown}
-                            />
-                          </div>
-          
-                          {deviceId ? (
-                            <div className="mb-6">
-                              <ControllerMetricsPanel
-                                deviceId={deviceId}
-                                focus="ec"
-                                hideTabs
-                              />
-                            </div>
-                          ) : null}
           
                           {deviceId && deviceId !== 'default_device' && (
                             <EcMalhaFechadaConfig
@@ -1951,13 +2020,22 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                           <div className="flex flex-wrap gap-3 mb-4">
                             <button
                               onClick={async () => {
+                                if (!ecConfigDirty) return;
                                 await saveECControllerConfig();
                               }}
-                              disabled={ecControllerLocked}
-                              className={`px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg transition-all shadow-lg hover:shadow-green-500/50 ${
-                                ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                              disabled={ecControllerLocked || !ecConfigDirty}
+                              className={`px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg transition-all ${
+                                ecControllerLocked || !ecConfigDirty
+                                  ? 'opacity-50 cursor-not-allowed'
+                                  : 'hover:from-green-600 hover:to-emerald-600 shadow-lg hover:shadow-green-500/50'
                               }`}
-                              title={ecControllerLocked ? 'Controles bloqueados' : 'Salvar parâmetros'}
+                              title={
+                                ecControllerLocked
+                                  ? 'Controles bloqueados'
+                                  : ecConfigDirty
+                                    ? 'Salvar parâmetros'
+                                    : 'Nada a salvar — já está gravado'
+                              }
                             >
                               💾 Salvar Parâmetros
                             </button>

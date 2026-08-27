@@ -1,4 +1,5 @@
 import type { ChartData, ChartOptions, Plugin } from 'chart.js';
+import { SOLID_LEGEND_LABELS, solidTooltipSwatch } from '@/lib/chart-legend';
 import { formatSensorValue } from '@/lib/format-sensor-value';
 import { HYDRO_CHART_RAW_LIMIT } from '@/lib/realtime/chart-history';
 import { resolveEcForDisplay } from '@/lib/realtime/hydro-ec';
@@ -310,9 +311,8 @@ export function buildHydroCombinedChartOptions(series: HydroChartSeries): ChartO
         display: true,
         position: 'top',
         labels: {
+          ...SOLID_LEGEND_LABELS,
           color: CHART_TICK_COLOR,
-          usePointStyle: true,
-          boxWidth: 10,
           font: { size: 11 },
           padding: 12,
         },
@@ -321,6 +321,7 @@ export function buildHydroCombinedChartOptions(series: HydroChartSeries): ChartO
       tooltip: {
         mode: 'index',
         intersect: false,
+        usePointStyle: false,
         backgroundColor: '#152547',
         titleColor: '#e0f2fe',
         bodyColor: CHART_TICK_COLOR,
@@ -328,6 +329,7 @@ export function buildHydroCombinedChartOptions(series: HydroChartSeries): ChartO
         borderWidth: 1,
         filter: () => true,
         callbacks: {
+          labelColor: solidTooltipSwatch,
           title: (items) => {
             const idx = items[0]?.dataIndex;
             if (idx == null) return '';
@@ -502,7 +504,10 @@ export function hydroChartBaseOptions(): ChartOptions<'line'> {
     plugins: {
       legend: {
         position: 'top',
-        labels: { color: CHART_TICK_COLOR },
+        labels: {
+          ...SOLID_LEGEND_LABELS,
+          color: CHART_TICK_COLOR,
+        },
       },
       title: {
         display: true,
@@ -512,11 +517,15 @@ export function hydroChartBaseOptions(): ChartOptions<'line'> {
       tooltip: {
         mode: 'index',
         intersect: false,
+        usePointStyle: false,
         backgroundColor: '#152547',
         titleColor: '#e0f2fe',
         bodyColor: CHART_TICK_COLOR,
         borderColor: CHART_GRID_COLOR,
         borderWidth: 1,
+        callbacks: {
+          labelColor: solidTooltipSwatch,
+        },
       },
     },
     scales: {

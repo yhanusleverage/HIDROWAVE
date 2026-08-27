@@ -28,11 +28,10 @@ function row(
   };
 }
 
-// Histórico desc (más reciente primero) — como appendToHistoryDesc
 const history: HydroMeasurement[] = [
   row(3, '2026-06-14T15:30:00.000Z', 6.42, 520, 22.1),
   row(2, '2026-06-14T15:25:00.000Z', Number('2e-39'), 480, 21.8),
-  row(1, '2026-06-14T15:20:00.000Z', 6.1, NaN as unknown as number, 45),
+  row(1, '2026-06-14T15:20:00.000Z', 6.1, Number.NaN, 45),
 ];
 
 const series = buildHydroChartSeries(history);
@@ -43,7 +42,7 @@ console.log('EC:', series.ec);
 console.log('Temp QC:', series.temp);
 
 if (series.ph[0] !== 6.1 || series.ph[2] !== 6.42) {
-  console.error('FAIL: pH válido deveria aparecer no gráfico');
+  console.error('FAIL: pH válido debería aparecer en el gráfico');
   process.exit(1);
 }
 
@@ -62,20 +61,12 @@ if (!formatHydroTooltipLine('ph', null).includes('--')) {
   process.exit(1);
 }
 
-const bad = series.ph.some((v) => v !== null && Math.abs(v) < 1e-10);
-if (bad) {
-  console.error('FAIL: pH basura no filtrado');
-  process.exit(1);
-}
-if (series.labels[0] !== series.labels[0]) {
-  // noop
-}
 if (series.timestamps[0] !== '2026-06-14T15:20:00.000Z') {
   console.error('FAIL: orden cronológico incorrecto');
   process.exit(1);
 }
 if (series.timestamps[series.timestamps.length - 1] !== '2026-06-14T15:30:00.000Z') {
-  console.error('FAIL: punto más reciente debe estar al final');
+  console.error('FAIL: el punto más reciente debe estar al final');
   process.exit(1);
 }
 

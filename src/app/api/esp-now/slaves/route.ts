@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { resolveSlaveOnline } from '@/lib/realtime/slave-status';
 
 /**
  * API Proxy para buscar slaves do ESP32 Master
@@ -96,12 +97,13 @@ export async function GET(request: Request) {
     // ✅ Buscar estados dos relés usando relay_slaves (não relay_states)
     const deviceIds = (devices || []).map((d: DeviceFromSupabase) => d.device_id);
     const relayStatesMap = new Map<string, RelayState[]>();
+    const slaveLastUpdateMap = new Map<string, string>();
     
     if (deviceIds.length > 0) {
       // ✅ CORRETO: Usar relay_slaves (arrays)
       const { data: slaveRelays, error: relayError } = await supabase
         .from('relay_slaves')
-        .select('device_id, relay_states, relay_has_timers, relay_remaining_times, relay_names')
+        .select('device_id, relay_states, relay_has_timers, relay_remaining_times, relay_names, last_update, updated_at')
         .eq('master_device_id', masterDeviceId)
         .in('device_id', deviceIds);
 
@@ -111,11 +113,17 @@ export async function GET(request: Request) {
         relay_has_timers?: boolean[];
         relay_remaining_times?: number[];
         relay_names?: string[] | null;
+        last_update?: string | null;
+        updated_at?: string | null;
       }
       
       if (!relayError && slaveRelays) {
         // Converter arrays em objetos individuais por relé
         slaveRelays.forEach((slave: SlaveRelayData) => {
+          const lastUpdate = slave.last_update || slave.updated_at;
+          if (lastUpdate) {
+            slaveLastUpdateMap.set(slave.device_id, lastUpdate);
+          }
           const states = slave.relay_states || Array(8).fill(false);
           const hasTimers = slave.relay_has_timers || Array(8).fill(false);
           const remainingTimes = slave.relay_remaining_times || Array(8).fill(0);
@@ -158,16 +166,26 @@ export async function GET(request: Request) {
         };
       });
 
+      const relaySlaveLastUpdate = slaveLastUpdateMap.get(device.device_id);
+      const lastSeenTimestamp = relaySlaveLastUpdate
+        ? Math.floor(new Date(relaySlaveLastUpdate).getTime() / 1000)
+        : device.last_seen
+          ? Math.floor(new Date(device.last_seen).getTime() / 1000)
+          : 0;
+
       return {
         device_id: device.device_id,
         device_name: device.device_name || device.device_id,
         device_type: device.device_type || 'ESP32_SLAVE',
         mac_address: device.mac_address || '',
-        is_online: device.is_online || false,
+        is_online: resolveSlaveOnline(
+          relaySlaveLastUpdate,
+          device.last_seen,
+          null,
+          device.is_online
+        ),
         num_relays: 8,
-        last_seen: device.last_seen 
-          ? Math.floor(new Date(device.last_seen).getTime() / 1000)
-          : Math.floor(Date.now() / 1000),
+        last_seen: lastSeenTimestamp,
         relays,
       };
     });

@@ -146,6 +146,11 @@ export default function PhControllerPanel({
   const [showPhConfigPreview, setShowPhConfigPreview] = useState(false);
   const [locked, setLocked] = useState(() => process.env.NODE_ENV !== 'development');
   const justSavedRef = useRef(false);
+  const [configSyncTick, setConfigSyncTick] = useState(0);
+  const [savedConfigSnapshot, setSavedConfigSnapshot] = useState<string | null>(null);
+  const markConfigSynced = useCallback(() => {
+    setConfigSyncTick((n) => n + 1);
+  }, []);
 
   const [phSetpoint, setPhSetpoint] = useState(6.0);
   const [phTolerance, setPhTolerance] = useState(0.2);
@@ -176,6 +181,42 @@ export default function PhControllerPanel({
   const [consumo24h, setConsumo24h] = useState(false);
   const [pulseMl, setPulseMl] = useState(2.0);
   const [pulseGapSec, setPulseGapSec] = useState(2.0);
+
+  const phFormSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        phSetpoint,
+        phTolerance,
+        volume,
+        mlPerPhUnitAcid,
+        mlPerPhUnitBase,
+        relayPhUp,
+        relayPhDown,
+        intervaloAutoPh,
+        tempoRecirculacao,
+        aggressiveness,
+        consumo24h,
+        pulseMl,
+        pulseGapSec,
+      }),
+    [
+      phSetpoint,
+      phTolerance,
+      volume,
+      mlPerPhUnitAcid,
+      mlPerPhUnitBase,
+      relayPhUp,
+      relayPhDown,
+      intervaloAutoPh,
+      tempoRecirculacao,
+      aggressiveness,
+      consumo24h,
+      pulseMl,
+      pulseGapSec,
+    ]
+  );
+  const phConfigDirty = savedConfigSnapshot !== null && savedConfigSnapshot !== phFormSnapshot;
+
   const [kAcid, setKAcid] = useState<number | null>(null);
   const [kBase, setKBase] = useState<number | null>(null);
   const [stalePhFromDosage, setStalePhFromDosage] = useState<number | null>(null);
@@ -299,14 +340,27 @@ export default function PhControllerPanel({
       }
       setKAcid(data.k_acid != null ? Number(data.k_acid) : null);
       setKBase(data.k_base != null ? Number(data.k_base) : null);
+      markConfigSynced();
     } catch (err) {
       console.error('[PH Controller] load error', err);
     }
+  }, [deviceId, markConfigSynced]);
+
+  useEffect(() => {
+    setSavedConfigSnapshot(null);
+    setConfigSyncTick(0);
   }, [deviceId]);
 
   useEffect(() => {
     loadConfig();
   }, [loadConfig]);
+
+  useEffect(() => {
+    if (configSyncTick === 0) return;
+    setSavedConfigSnapshot(phFormSnapshot);
+    // Capture only on load/save ticks — not on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configSyncTick]);
 
   useEffect(() => {
     if (!deviceId || !autoEnabled) return;
@@ -427,8 +481,6 @@ export default function PhControllerPanel({
           device_id: deviceId,
           ph_setpoint: phSetpoint,
           ph_tolerance: phTolerance,
-          flow_rate_ph_up: flowRatePhUp,
-          flow_rate_ph_down: flowRatePhDown,
           volume,
           ml_per_ph_unit_acid: mlPerPhUnitAcid,
           ml_per_ph_unit_base: mlPerPhUnitBase,
@@ -454,6 +506,7 @@ export default function PhControllerPanel({
         await saveMasterLocalRelayName(deviceId, relayPhDown, 'pH-');
         await relayAllocation?.refresh?.();
       }
+      markConfigSynced();
       if (!silent) hwToast.success('Parâmetros pH salvos', 'AUTO PH');
       return true;
     } catch (err) {
@@ -464,7 +517,7 @@ export default function PhControllerPanel({
     deviceId, phSetpoint, phTolerance, flowRatePhUp, flowRatePhDown, volume,
     mlPerPhUnitAcid, mlPerPhUnitBase, relayPhUp, relayPhDown, intervaloAutoPh,
     tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, ecNutrientsForRelayCheck,
-    relayAllocation,
+    relayAllocation, markConfigSynced,
   ]);
 
   const saveVolumeOnly = useCallback(async () => {
@@ -540,6 +593,16 @@ export default function PhControllerPanel({
           })
           .eq('device_id', deviceId);
         hwToast.info('Auto pH desativado', 'AUTO PH');
+      }
+
+      const mqttPush = await fetch('/api/ph-controller/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: deviceId, auto_enabled: newValue }),
+      });
+      if (!mqttPush.ok) {
+        const parsed = await parseConfigApiError(mqttPush);
+        console.warn('[PH] Postgres OK, MQTT config falhou:', parsed.message);
       }
 
       justToggledTimeoutRef.current = setTimeout(() => {
@@ -962,6 +1025,112 @@ export default function PhControllerPanel({
             </p>
           )}
 
+          {deviceId ? (
+            <div className="mb-6">
+              <ControllerMetricsPanel deviceId={deviceId} focus="ph" hideTabs />
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <InstrumentCard accent="ph" title="📊 Status do Controle" ariaLive="polite">
+              <div className="space-y-2.5">
+                <OperationStateBanners
+                  autoEnabled={autoEnabled}
+                  isDosando={phOp.isDosando}
+                  dosandoLabel="Dosando pH"
+                  isAguardandoRecirculacao={phOp.isAguardandoRecirculacao}
+                  operationRemainingSec={phOp.operationRemainingSec}
+                  showNextCheck={showNextCheck}
+                  nextCheckInSec={phOp.nextCheckInSec}
+                  nextCheckLabel="Próxima verificação pH"
+                  formatCountdown={formatCountdown}
+                />
+                <MetricRow
+                  label="Status:"
+                  value={autoEnabled ? '✅ Ativado' : '❌ Desativado'}
+                  variant={autoEnabled ? 'ok' : 'danger'}
+                />
+                <MetricRow
+                  label="Setpoint:"
+                  value={`pH ${formatSensorValue(phSetpoint, 1)}`}
+                  variant="setpoint"
+                />
+                <MetricRow
+                  label="Banda morta:"
+                  value={`± ${formatSensorValue(phTolerance, 2)}`}
+                />
+                <MetricRow
+                  label="Erro (|pH − SP|):"
+                  value={phError !== null ? formatSensorValue(phError, 2) : '--'}
+                  variant={phWithinTolerance === false ? 'alarm' : 'default'}
+                />
+                <MetricRow
+                  label="Zona de controle:"
+                  value={
+                    phWithinTolerance === null
+                      ? '--'
+                      : phWithinTolerance
+                        ? '✓ Sem dosagem (dentro da banda)'
+                        : `⚡ Ajuste A (${phDirection})`
+                  }
+                  variant={
+                    phWithinTolerance === true ? 'ok' : phWithinTolerance === false ? 'alarm' : 'default'
+                  }
+                />
+                <MetricRow
+                  label="Última dosagem registrada:"
+                  value={
+                    lastDosageMl != null
+                      ? `${lastDosageMl.toFixed(2)} ml${
+                          lastDosageAt
+                            ? ` · ${new Date(lastDosageAt).toLocaleString('pt-BR')}`
+                            : ''
+                        }`
+                      : '-- ml'
+                  }
+                  variant="preview"
+                  hint="Histórico ph_dosages — não muda ao editar V"
+                />
+                <MetricRow
+                  label="pH Atual:"
+                  value={
+                    displayPh !== null
+                      ? Math.abs(displayPh) < 0.01 || Math.abs(displayPh) >= 1000
+                        ? displayPh.toExponential(3)
+                        : formatSensorValue(displayPh, 2)
+                      : '--'
+                  }
+                  variant="live"
+                />
+                <MetricRow label="Direção:" value={phDirection} />
+              </div>
+              <PhDosageDetail
+                deviceId={deviceId}
+                enabled={autoEnabled}
+                variant="footer"
+                onLastMlChange={setLastDosageMl}
+              />
+            </InstrumentCard>
+
+            <PhGrowerSummaryCard
+              deviceId={deviceId}
+              consumo24h={consumo24h}
+              phNow={displayPh}
+              setpoint={phSetpoint}
+              tolerance={phTolerance}
+              estimatedDoseMl={previewDoseMl}
+              lastDoseMl={lastDosageMl}
+              lastDoseAt={lastDosageAt}
+              directionLabel={phDirection}
+              autoEnabled={autoEnabled}
+              showNextCheck={showNextCheck}
+              nextCheckInSec={phOp.nextCheckInSec}
+              formatCountdown={formatCountdown}
+              calibBaseLine={calibBaseLine}
+              calibAcidLine={calibAcidLine}
+            />
+          </div>
+
           <SectionHeader title="Objetivo" accent="ph" />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div>
@@ -1151,119 +1320,25 @@ export default function PhControllerPanel({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <InstrumentCard accent="ph" title="📊 Status do Controle" ariaLive="polite">
-              <div className="space-y-2.5">
-                <OperationStateBanners
-                  autoEnabled={autoEnabled}
-                  isDosando={phOp.isDosando}
-                  dosandoLabel="Dosando pH"
-                  isAguardandoRecirculacao={phOp.isAguardandoRecirculacao}
-                  operationRemainingSec={phOp.operationRemainingSec}
-                  showNextCheck={showNextCheck}
-                  nextCheckInSec={phOp.nextCheckInSec}
-                  nextCheckLabel="Próxima verificação pH"
-                  formatCountdown={formatCountdown}
-                />
-                <MetricRow
-                  label="Status:"
-                  value={autoEnabled ? '✅ Ativado' : '❌ Desativado'}
-                  variant={autoEnabled ? 'ok' : 'danger'}
-                />
-                <MetricRow
-                  label="Setpoint:"
-                  value={`pH ${formatSensorValue(phSetpoint, 1)}`}
-                  variant="setpoint"
-                />
-                <MetricRow
-                  label="Banda morta:"
-                  value={`± ${formatSensorValue(phTolerance, 2)}`}
-                />
-                <MetricRow
-                  label="Erro (|pH − SP|):"
-                  value={phError !== null ? formatSensorValue(phError, 2) : '--'}
-                  variant={phWithinTolerance === false ? 'alarm' : 'default'}
-                />
-                <MetricRow
-                  label="Zona de controle:"
-                  value={
-                    phWithinTolerance === null
-                      ? '--'
-                      : phWithinTolerance
-                        ? '✓ Sem dosagem (dentro da banda)'
-                        : `⚡ Ajuste A (${phDirection})`
-                  }
-                  variant={
-                    phWithinTolerance === true ? 'ok' : phWithinTolerance === false ? 'alarm' : 'default'
-                  }
-                />
-                <MetricRow
-                  label="Última dosagem registrada:"
-                  value={
-                    lastDosageMl != null
-                      ? `${lastDosageMl.toFixed(2)} ml${
-                          lastDosageAt
-                            ? ` · ${new Date(lastDosageAt).toLocaleString('pt-BR')}`
-                            : ''
-                        }`
-                      : '-- ml'
-                  }
-                  variant="preview"
-                  hint="Histórico ph_dosages — não muda ao editar V"
-                />
-                <MetricRow
-                  label="pH Atual:"
-                  value={
-                    displayPh !== null
-                      ? Math.abs(displayPh) < 0.01 || Math.abs(displayPh) >= 1000
-                        ? displayPh.toExponential(3)
-                        : formatSensorValue(displayPh, 2)
-                      : '--'
-                  }
-                  variant="live"
-                />
-                <MetricRow label="Direção:" value={phDirection} />
-              </div>
-              <PhDosageDetail
-                deviceId={deviceId}
-                enabled={autoEnabled}
-                variant="footer"
-                onLastMlChange={setLastDosageMl}
-              />
-            </InstrumentCard>
-
-            <PhGrowerSummaryCard
-              deviceId={deviceId}
-              consumo24h={consumo24h}
-              phNow={displayPh}
-              setpoint={phSetpoint}
-              tolerance={phTolerance}
-              estimatedDoseMl={previewDoseMl}
-              lastDoseMl={lastDosageMl}
-              lastDoseAt={lastDosageAt}
-              directionLabel={phDirection}
-              autoEnabled={autoEnabled}
-              showNextCheck={showNextCheck}
-              nextCheckInSec={phOp.nextCheckInSec}
-              formatCountdown={formatCountdown}
-              calibBaseLine={calibBaseLine}
-              calibAcidLine={calibAcidLine}
-            />
-          </div>
-
-          {deviceId ? (
-            <div className="mb-6">
-              <ControllerMetricsPanel deviceId={deviceId} focus="ph" hideTabs />
-            </div>
-          ) : null}
-
           <div className="flex flex-wrap gap-3 mb-4">
             <button
-              disabled={disabled}
-              onClick={() => saveConfig()}
-              className={`px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg transition-all shadow-lg hover:shadow-green-500/50 ${
-                disabled ? 'opacity-50 cursor-not-allowed' : ''
+              disabled={disabled || !phConfigDirty}
+              onClick={() => {
+                if (!phConfigDirty) return;
+                saveConfig();
+              }}
+              className={`px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg transition-all ${
+                disabled || !phConfigDirty
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:from-green-600 hover:to-emerald-600 shadow-lg hover:shadow-green-500/50'
               }`}
+              title={
+                disabled
+                  ? 'Controles bloqueados'
+                  : phConfigDirty
+                    ? 'Salvar parâmetros'
+                    : 'Nada a salvar — já está gravado'
+              }
             >
               💾 Salvar Parâmetros
             </button>

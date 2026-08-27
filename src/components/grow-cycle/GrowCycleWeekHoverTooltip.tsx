@@ -12,12 +12,22 @@ interface GrowCycleWeekHoverTooltipProps {
 
 const TOOLTIP_OFFSET = 14;
 const TOOLTIP_W = 300;
-const TOOLTIP_H = 280;
+const TOOLTIP_H = 320;
 
-function formatDelta(value: number | null, digits: number, unit: string): string {
+function dropCaption(value: number | null, metric: string): string {
+  if (value == null || value < 0) return `Queda ${metric}`;
+  if (value > 0) return `Subida ${metric}`;
+  return `Δ ${metric}`;
+}
+
+function formatDrop(value: number | null, digits: number, unit: string): string {
   if (value == null) return '—';
+  if (value < 0) {
+    const abs = Math.abs(value).toFixed(digits);
+    return unit ? `queda ${abs} ${unit}` : `queda ${abs}`;
+  }
   const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(digits)} ${unit}`;
+  return unit ? `${sign}${value.toFixed(digits)} ${unit}` : `${sign}${value.toFixed(digits)}`;
 }
 
 function formatMl(value: number): string {
@@ -77,20 +87,22 @@ export function GrowCycleWeekHoverTooltip({
               {metrics.ecSetpoint} µS/cm
             </p>
           </div>
+          <div>
+            <p className="text-dark-textSecondary">
+              {dropCaption(metrics.ecDelta, 'EC')} {weekLabel}
+            </p>
+            <p className={`font-semibold tabular-nums ${HW_TEXT.ec}`}>
+              {formatDrop(metrics.ecDelta, 0, 'µS')}
+            </p>
+          </div>
+          <div>
+            <p className="text-dark-textSecondary">EC médio</p>
+            <p className="text-dark-text tabular-nums">
+              {metrics.ecAvg != null ? `${Math.round(metrics.ecAvg)} µS/cm` : '—'}
+            </p>
+          </div>
           {!future && (
             <>
-              <div>
-                <p className="text-dark-textSecondary">Δ EC {weekLabel}</p>
-                <p className={`font-semibold tabular-nums ${HW_TEXT.ec}`}>
-                  {formatDelta(metrics.ecDelta, 0, 'µS')}
-                </p>
-              </div>
-              <div>
-                <p className="text-dark-textSecondary">EC médio</p>
-                <p className="text-dark-text tabular-nums">
-                  {metrics.ecAvg != null ? `${Math.round(metrics.ecAvg)} µS/cm` : '—'}
-                </p>
-              </div>
               <div>
                 <p className="text-dark-textSecondary">ml nutrientes</p>
                 <p className="text-dark-text tabular-nums">{formatMl(metrics.ecMlTotal)}</p>
@@ -120,20 +132,22 @@ export function GrowCycleWeekHoverTooltip({
               {metrics.phSetpoint.toFixed(1)}
             </p>
           </div>
+          <div>
+            <p className="text-dark-textSecondary">
+              {dropCaption(metrics.phDelta, 'pH')} {weekLabel}
+            </p>
+            <p className={`font-semibold tabular-nums ${HW_TEXT.ph}`}>
+              {formatDrop(metrics.phDelta, 2, '')}
+            </p>
+          </div>
+          <div>
+            <p className="text-dark-textSecondary">pH médio</p>
+            <p className="text-dark-text tabular-nums">
+              {metrics.phAvg != null ? metrics.phAvg.toFixed(2) : '—'}
+            </p>
+          </div>
           {!future && (
             <>
-              <div>
-                <p className="text-dark-textSecondary">Δ pH {weekLabel}</p>
-                <p className={`font-semibold tabular-nums ${HW_TEXT.ph}`}>
-                  {formatDelta(metrics.phDelta, 2, '')}
-                </p>
-              </div>
-              <div>
-                <p className="text-dark-textSecondary">pH médio</p>
-                <p className="text-dark-text tabular-nums">
-                  {metrics.phAvg != null ? metrics.phAvg.toFixed(2) : '—'}
-                </p>
-              </div>
               <div>
                 <p className="text-dark-textSecondary">ml pH+ / pH−</p>
                 <p className="text-dark-text tabular-nums">
@@ -151,7 +165,7 @@ export function GrowCycleWeekHoverTooltip({
 
       <p className="text-[9px] text-dark-textSecondary mt-2 pt-2 border-t border-dark-border/50">
         {future
-          ? 'Semana futura — só receta (alvo).'
+          ? 'Semana futura — alvo da receita. Queda e média quando a semana começar.'
           : metrics.hasWeekData
             ? `Resumo ${weekLabel} · tanque ${metrics.tankVolumeL} L`
             : `Sem dados ainda ${weekLabel} · tanque ${metrics.tankVolumeL} L`}

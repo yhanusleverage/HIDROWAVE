@@ -68,8 +68,12 @@ function pickKeys(
 }
 
 function finiteFloat(value: unknown): number | undefined {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-  return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const n = parseFloat(value.trim().replace(',', '.'));
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
 }
 
 function clampAggressiveness(value: unknown): number | undefined {
@@ -125,6 +129,7 @@ export function stripEcWritableConfig(
     'k_value',
     '_debug',
     'device_id',
+    'flow_rate',
   ]);
   return pickKeys(withoutMeta, EC_WRITABLE_KEYS);
 }
@@ -149,6 +154,7 @@ export function sanitizeEcNumericFields(
   config: Record<string, unknown>
 ): Record<string, unknown> {
   const out = { ...config };
+  delete out.flow_rate;
 
   for (const key of ['base_dose', 'volume', 'total_ml', 'kp', 'ec_setpoint', 'tolerance', 'dilution_max_volume_l', 'flowmeter_pulses_per_liter', 'dilution_fill_flow_lps'] as const) {
     const v = finiteFloat(out[key]);
@@ -259,9 +265,14 @@ export async function parseConfigApiError(
     body = rawText.trim() ? { raw: rawText.slice(0, 500) } : {};
   }
 
+  const nestedError =
+    body.error && typeof body.error === 'object' && body.error !== null
+      ? (body.error as Record<string, unknown>)
+      : null;
   const fromBody =
     (typeof body.error === 'string' && body.error) ||
     (typeof body.message === 'string' && body.message) ||
+    (typeof nestedError?.message === 'string' && nestedError.message) ||
     (typeof body.raw === 'string' && body.raw) ||
     '';
 
@@ -270,6 +281,15 @@ export async function parseConfigApiError(
     `HTTP ${status}${response.statusText ? `: ${response.statusText}` : ''}`;
 
   return { message, status, body };
+}
+
+/** Coluna SQL `flow_rate` é legado. Vazão real = `nutrients[].flowRate` (Calibragem). */
+export function omitDeprecatedEcGlobalFlowRate<T extends Record<string, unknown>>(
+  row: T
+): T {
+  const out = { ...row };
+  delete (out as Record<string, unknown>).flow_rate;
+  return out;
 }
 
 /** Resposta JSON padronizada para rotas API (server). */

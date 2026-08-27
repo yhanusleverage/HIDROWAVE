@@ -9,6 +9,7 @@ import {
   sanitizePhNumericFields,
   configApiErrorResponse,
 } from '@/lib/controller-config-api';
+import { notifyDeviceControllerConfig } from '@/lib/mqtt-config-publish';
 
 const DEFAULT_PH_CONFIG = {
   ph_setpoint: 6.0,
@@ -87,15 +88,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const writableConfig = sanitizePhNumericFields(
-      stripPhWritableConfig(rawConfig as Record<string, unknown>)
-    );
-
     const { data: existingPh } = await supabase
       .from('ph_config_view')
-      .select('relay_ph_up, relay_ph_down')
+      .select('*')
       .eq('device_id', device_id)
       .maybeSingle();
+
+    const writableConfig = sanitizePhNumericFields(
+      stripPhWritableConfig({
+        ...(existingPh ?? {}),
+        ...(rawConfig as Record<string, unknown>),
+      })
+    );
 
     const relayPhUp = Number(
       writableConfig.relay_ph_up ?? existingPh?.relay_ph_up ?? 1
@@ -178,6 +182,12 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
+
+    void notifyDeviceControllerConfig(
+      'ph',
+      device_id,
+      (data as Record<string, unknown>) ?? { device_id, ...writableConfig }
+    );
 
     return NextResponse.json({ success: true, data });
   } catch (error) {

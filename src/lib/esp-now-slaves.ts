@@ -6,10 +6,12 @@ import {
   getSlavesFromMaster, 
   getRelayNamesFromSupabase,
 } from './esp32-api';
+import { resolveSlaveOnline } from './realtime/slave-status';
 
 function formatSlaveLastSeen(lastSeen: number | string | undefined): string | undefined {
   if (lastSeen == null) return undefined;
   if (typeof lastSeen === 'number') {
+    if (lastSeen <= 0) return undefined;
     const ms = lastSeen < 1e12 ? lastSeen * 1000 : lastSeen;
     return new Date(ms).toISOString();
   }
@@ -127,13 +129,16 @@ export async function getESPNOWSlaves(
         };
       });
 
+      const lastSeenIso = formatSlaveLastSeen(esp32Slave.last_seen);
       return {
         macAddress: slaveMac,
         name: esp32Slave.device_name,
-        status: esp32Slave.is_online ? 'online' : 'offline',
+        status: resolveSlaveOnline(lastSeenIso, undefined, undefined, esp32Slave.is_online)
+          ? 'online'
+          : 'offline',
         relays,
         device_id: esp32Slave.device_id,
-        last_seen: formatSlaveLastSeen(esp32Slave.last_seen),
+        last_seen: lastSeenIso,
         ip_address: undefined, // Não disponível do ESP32 Master
         firmware_version: undefined, // Não disponível do ESP32 Master
       };
