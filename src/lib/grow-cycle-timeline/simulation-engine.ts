@@ -20,8 +20,12 @@ export type WeekHoverMetrics = {
   phSetpoint: number;
   tankVolumeL: number;
   autoStatus: 'on' | 'paused_p1' | 'off';
-  ecDelta: number | null;
-  phDelta: number | null;
+  ecFirst: number | null;
+  ecLast: number | null;
+  ecAvgDailyDrop: number | null;
+  phFirst: number | null;
+  phLast: number | null;
+  phAvgDailyDrop: number | null;
   ecAvg: number | null;
   phAvg: number | null;
   ecMlTotal: number;
@@ -51,8 +55,12 @@ export function resolveWeekKind(weekIndex: number, currentWeekIndex: number): We
 
 export function emptyWeekHoverStats(): Pick<
   WeekHoverMetrics,
-  | 'ecDelta'
-  | 'phDelta'
+  | 'ecFirst'
+  | 'ecLast'
+  | 'ecAvgDailyDrop'
+  | 'phFirst'
+  | 'phLast'
+  | 'phAvgDailyDrop'
   | 'ecAvg'
   | 'phAvg'
   | 'ecMlTotal'
@@ -64,8 +72,12 @@ export function emptyWeekHoverStats(): Pick<
   | 'hasWeekData'
 > {
   return {
-    ecDelta: null,
-    phDelta: null,
+    ecFirst: null,
+    ecLast: null,
+    ecAvgDailyDrop: null,
+    phFirst: null,
+    phLast: null,
+    phAvgDailyDrop: null,
     ecAvg: null,
     phAvg: null,
     ecMlTotal: 0,

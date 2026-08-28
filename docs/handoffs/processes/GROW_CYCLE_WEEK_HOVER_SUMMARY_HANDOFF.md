@@ -20,13 +20,16 @@ Eso no tiene sentido: S5 no está ocurriendo ahora. “Atual” copiado en todas
 
 | Semana | Qué mostrar |
 |--------|-------------|
-| **Futura** | Alvo EC / pH + filas **Queda** e **médio** (— até a semana começar) |
-| **Atual** | Alvo + queda/Δ + médio + ml + nº ajustes **desta semana até agora** |
+| **Futura** | Só alvo EC / pH; inicial / final / queda média/dia = — |
+| **Atual** | Alvo + inicial + final + queda média/dia + ml + nº ajustes **desta semana até agora** |
 | **Passada** | Idem, ventana completa de 7 días |
 
-**No mostrar:** EC/pH live, erro vs sensor agora, última dosis 24 h, badge “Ao vivo / Simulado” como si fuera Auto EC.
+**No mostrar:** EC/pH live (“Atual”), erro vs sensor agora, última dosis 24 h, badge “Ao vivo”.
 
-**Δ** = último valor − primeiro valor na janela (`queda N` se negativo, `+N` se subiu).
+**Inicial / final** = primeiro e último sample **daquela semana** (não o tanque agora).
+
+**Queda média/dia** = soma das quedas diárias / dias com ≥ 2 samples.  
+`queda_d = max(0, primeiro_do_dia − último_do_dia)` — doses a meio da semana não escondem o consumo.
 
 ---
 
@@ -35,15 +38,16 @@ Eso no tiene sentido: S5 no está ocurriendo ahora. “Atual” copiado en todas
 **EC**
 
 - Alvo (`plan.weeks[].ecSetpointUsCm`)
-- Δ EC da semana
-- EC médio
+- EC inicial / EC final da semana
+- Queda média/dia
 - ml nutrientes (total + GROW/BLOW/YULEH)
 - nº ajustes (`sequence_id` distintos em `nutrient_dosages`)
 
 **pH**
 
 - Alvo
-- Δ pH
+- pH inicial / pH final da semana
+- Queda média/dia
 - ml pH+ / pH−
 - nº ajustes (`ph_dosages` com ml > 0)
 
@@ -67,7 +71,7 @@ Playhead / `current_week_index` define future vs current vs past.
 | Ficheiro | Papel |
 |---------|--------|
 | `src/lib/grow-cycle-timeline/simulation-engine.ts` | `WeekHoverMetrics`, `getWeekHoverRecipe` |
-| `src/lib/grow-cycle-timeline/week-hover-summary.ts` | `weekTimeWindow` + `fetchWeekHoverStats` |
+| `src/lib/grow-cycle-timeline/week-hover-summary.ts` | `weekTimeWindow` + `computeWeekSeriesStats` + `fetchWeekHoverStats` |
 | `src/hooks/useGrowCycleWeekHoverMetrics.ts` | junta receta + fetch |
 | `src/components/grow-cycle/GrowCycleWeekHoverTooltip.tsx` | UI |
 | `GrowCycleTimelineChart.tsx` | passa `cycleStartedAt`, `currentWeekIndex` |
@@ -75,7 +79,7 @@ Playhead / `current_week_index` define future vs current vs past.
 
 **Leituras (fail-soft se a tabela não existe):**
 
-- `hydro_measurements` (Δ/médio; fallback `ec_controller_metrics` / `ph_controller_metrics`)
+- `hydro_measurements` (inicial/final/queda média; fallback `ec_controller_metrics` / `ph_controller_metrics`)
 - `nutrient_dosages` (ml + ajustes EC)
 - `ph_dosages` (ml + ajustes pH)
 - fallback médio: `grow_cycle_weekly_stats.ec_avg` / `ph_avg`
@@ -87,8 +91,8 @@ Playhead / `current_week_index` define future vs current vs past.
 ## 6. Verificar em bancada
 
 1. Ciclo publicado com `started_at`.
-2. Hover **semana futura** → só alvo.
-3. Hover **semana atual** após uma dose EC → ml e ajustes > 0; Δ coerente com 1.º/último sample.
+2. Hover **semana futura** → só alvo; inicial/final/queda = —.
+3. Hover **semana atual** → inicial ≠ live; final = último sample da semana; queda média/dia > 0 se EC caiu em algum dia.
 4. Hover **semana passada** → não muda se o tanque mudar agora.
 5. Sem instância (preview) → só alvo, sem “simulado” de erro fake.
 

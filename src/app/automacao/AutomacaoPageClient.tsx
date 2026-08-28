@@ -49,6 +49,8 @@ import {
   applyRelayCommandAck,
   armPendingAckTimeout,
   clearPendingAckTimeout,
+  commandAckId,
+  settlePendingByRelayState,
   type PendingAckTimerMap,
   type PendingRelayCommand,
 } from '@/lib/relay-pending-commands';
@@ -233,6 +235,8 @@ export default function AutomacaoPageClient() {
   
   // ✅ Estado para rastrear relés ligados/desligados (slave_mac-relay_id -> boolean)
   const [relayStates, setRelayStates] = useState<Map<string, boolean>>(new Map());
+  const relayStatesRef = useRef(relayStates);
+  relayStatesRef.current = relayStates;
   const [loadingRelays, setLoadingRelays] = useState<Map<string, boolean>>(new Map());
   
   // ✅ NOVO: Estados para renombrar relés (igual a DeviceControlPanel)
@@ -602,16 +606,23 @@ export default function AutomacaoPageClient() {
 
   const registerPendingSlaveAck = useCallback(
     (commandId: string | number, pending: PendingRelayCommand) => {
-      commandToRelayMap.current.set(commandId, pending);
-      armPendingAckTimeout(pendingAckTimersRef.current, commandId, () => {
-        const still = commandToRelayMap.current.get(commandId);
+      const id = commandAckId(commandId);
+      commandToRelayMap.current.set(id, pending);
+      armPendingAckTimeout(pendingAckTimersRef.current, id, () => {
+        const still = commandToRelayMap.current.get(id);
         if (!still) return;
-        commandToRelayMap.current.delete(commandId);
+        commandToRelayMap.current.delete(id);
+        const live = relayStatesRef.current.get(still.relayKey);
+        if (still.desiredOn !== undefined && live === still.desiredOn) {
+          clearRelayLoading(still.relayKey);
+          if (still.successToast) toast.success(still.successToast);
+          return;
+        }
         revertSlaveRelay(still.relayKey, still.previousState);
         toast.error('Slave não confirmou (timeout / offline)');
       });
     },
-    [revertSlaveRelay]
+    [revertSlaveRelay, clearRelayLoading]
   );
 
   /** Desarma el reloj y, si el Atlas ya cuenta, cancela el timer (ON/OFF sin duración). */
@@ -788,11 +799,23 @@ export default function AutomacaoPageClient() {
           }
           setRelayStates((r) => {
             const merged = mergeRelayStatesMap(r, updated);
+            settlePendingByRelayState(
+              commandToRelayMap.current,
+              pendingAckTimersRef.current,
+              merged,
+              (pending) => {
+                clearRelayLoading(pending.relayKey);
+                if (pending.successToast) toast.success(pending.successToast);
+              }
+            );
             if (commandToRelayMap.current.size === 0) return merged;
             const next = new Map(merged);
-            commandToRelayMap.current.forEach(({ relayKey }) => {
-              const optimistic = r.get(relayKey);
-              if (optimistic !== undefined) next.set(relayKey, optimistic);
+            commandToRelayMap.current.forEach((pending) => {
+              if (pending.desiredOn !== undefined && merged.get(pending.relayKey) === pending.desiredOn) {
+                return;
+              }
+              const optimistic = r.get(pending.relayKey);
+              if (optimistic !== undefined) next.set(pending.relayKey, optimistic);
             });
             return next;
           });
@@ -1974,7 +1997,7 @@ export default function AutomacaoPageClient() {
                                                     <input
                                                       type="number"
                                                       min="1"
-                                                      max="3600"
+                                                      max="86400"
                                                       value={relayTimers.get(relayKey) || 10}
                                                       onChange={(e) => {
                                                         const value = parseInt(e.target.value) || 10;
@@ -1984,7 +2007,7 @@ export default function AutomacaoPageClient() {
                                                       className="flex-1 px-2 py-1.5 bg-dark-surface border border-dark-border rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-aqua-500"
                                                       autoFocus
                                                     />
-                                                    <span className="text-xs text-dark-textSecondary">s</span>
+                                                    <span className="text-xs text-dark-textSecondary">s (máx 24h)</span>
                                                   </div>
                                                   <p className="text-xs text-dark-textSecondary/80">
                                                     Reloj amarillo = timer asignado. El relé solo cambia al pulsar ON/OFF.
@@ -2027,11 +2050,11 @@ export default function AutomacaoPageClient() {
                                               {showCycleInput === relayKey && (
                                                 <div className="space-y-3">
                                                   <div className="space-y-2">
-                                                    <label className="text-xs text-dark-textSecondary">ON (segundos)</label>
+                                                    <label className="text-xs text-dark-textSecondary">ON (segundos, máx 24h = 86400)</label>
                                                     <input
                                                       type="number"
                                                       min="1"
-                                                      max="3600"
+                                                      max="86400"
                                                       value={relayCycles.get(relayKey)?.onDuration || 10}
                                                       onChange={(e) => {
                                                         const value = parseInt(e.target.value) || 10;
@@ -2052,11 +2075,11 @@ export default function AutomacaoPageClient() {
                                                     />
                                                   </div>
                                                   <div className="space-y-2">
-                                                    <label className="text-xs text-dark-textSecondary">OFF (segundos)</label>
+                                                    <label className="text-xs text-dark-textSecondary">OFF (segundos, máx 24h = 86400)</label>
                                                     <input
                                                       type="number"
                                                       min="1"
-                                                      max="3600"
+                                                      max="86400"
                                                       value={relayCycles.get(relayKey)?.offDuration || 10}
                                                       onChange={(e) => {
                                                         const value = parseInt(e.target.value) || 10;

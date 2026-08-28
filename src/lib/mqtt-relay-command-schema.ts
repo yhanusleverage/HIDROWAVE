@@ -132,16 +132,16 @@ export function validateNotifyInput(input: MqttRelayCommandNotifyInput): string 
   const duration = Math.max(0, Math.floor(input.duration_s ?? 0));
   const cycleOff = Math.max(0, Math.floor(input.cycle_off_s ?? 0));
   if (mode === 'timed_on' || mode === 'timed_off') {
-    if (duration < 1 || duration > 3600) {
-      return 'timed_on/timed_off exige duration_s entre 1 e 3600';
+    if (duration < 1 || duration > 86400) {
+      return 'timed_on/timed_off exige duration_s entre 1 e 86400 (24 h)';
     }
   }
   if (mode === 'cycle') {
-    if (duration < 1 || duration > 3600) {
-      return 'cycle exige duration_s (ON) entre 1 e 3600';
+    if (duration < 1 || duration > 86400) {
+      return 'cycle exige duration_s (ON) entre 1 e 86400 (24 h)';
     }
-    if (cycleOff < 1 || cycleOff > 3600) {
-      return 'cycle exige cycle_off_s entre 1 e 3600';
+    if (cycleOff < 1 || cycleOff > 86400) {
+      return 'cycle exige cycle_off_s entre 1 e 86400 (24 h)';
     }
   }
   const target = normalizeTargetDeviceId(input.target_device_id);

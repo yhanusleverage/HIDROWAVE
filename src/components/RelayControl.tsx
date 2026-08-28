@@ -77,7 +77,7 @@ export default function RelayControl({
             label="Tempo (segundos)"
             type="number"
             min={1}
-            max={3600}
+            max={86400}
             value={seconds}
             onChange={(e) => setSeconds(parseInt(e.target.value, 10) || 1)}
           />

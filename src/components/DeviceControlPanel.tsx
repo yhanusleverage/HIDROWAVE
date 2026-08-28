@@ -28,6 +28,8 @@ import {
   applyRelayCommandAck,
   armPendingAckTimeout,
   clearPendingAckTimeout,
+  commandAckId,
+  settlePendingByRelayState,
   type PendingAckTimerMap,
   type PendingRelayCommand,
 } from '@/lib/relay-pending-commands';
@@ -132,6 +134,8 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
   
   // ✅ Estado para rastrear relés ligados/desligados (slave_mac-relay_id -> boolean)
   const [relayStates, setRelayStates] = useState<Map<string, boolean>>(new Map());
+  const relayStatesRef = useRef(relayStates);
+  relayStatesRef.current = relayStates;
   const [loadingRelays, setLoadingRelays] = useState<Map<string, boolean>>(new Map());
   const commandToRelayMap = useRef<Map<string | number, PendingRelayCommand>>(new Map());
   const pendingAckTimersRef = useRef<PendingAckTimerMap>(new Map());
@@ -250,11 +254,27 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
             const data = await response.json();
             const commandId = data.command_id ?? data.command?.id;
             if (commandId) {
-              commandToRelayMap.current.set(commandId, { relayKey: key, previousState });
-              armPendingAckTimeout(pendingAckTimersRef.current, commandId, () => {
-                const still = commandToRelayMap.current.get(commandId);
+              const id = commandAckId(commandId);
+              const desiredOn = intent.action === 'on';
+              commandToRelayMap.current.set(id, {
+                relayKey: key,
+                previousState,
+                desiredOn,
+              });
+              armPendingAckTimeout(pendingAckTimersRef.current, id, () => {
+                const still = commandToRelayMap.current.get(id);
                 if (!still) return;
-                commandToRelayMap.current.delete(commandId);
+                commandToRelayMap.current.delete(id);
+                const live = relayStatesRef.current.get(still.relayKey);
+                if (still.desiredOn !== undefined && live === still.desiredOn) {
+                  releaseRelayCommandSlot(key);
+                  setLoadingRelays((prev) => {
+                    const next = new Map(prev);
+                    next.delete(key);
+                    return next;
+                  });
+                  return;
+                }
                 releaseRelayCommandSlot(key);
                 applyRelayState(key, previousState);
                 setLoadingRelays((prev) => {
@@ -403,11 +423,27 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
           }
           setRelayStates((r) => {
             const merged = mergeRelayStatesMap(r, updated);
+            settlePendingByRelayState(
+              commandToRelayMap.current,
+              pendingAckTimersRef.current,
+              merged,
+              (pending) => {
+                releaseRelayCommandSlot(pending.relayKey);
+                setLoadingRelays((prev) => {
+                  const next = new Map(prev);
+                  next.delete(pending.relayKey);
+                  return next;
+                });
+              }
+            );
             if (commandToRelayMap.current.size === 0) return merged;
             const next = new Map(merged);
-            commandToRelayMap.current.forEach(({ relayKey }) => {
-              const optimistic = r.get(relayKey);
-              if (optimistic !== undefined) next.set(relayKey, optimistic);
+            commandToRelayMap.current.forEach((pending) => {
+              if (pending.desiredOn !== undefined && merged.get(pending.relayKey) === pending.desiredOn) {
+                return;
+              }
+              const optimistic = r.get(pending.relayKey);
+              if (optimistic !== undefined) next.set(pending.relayKey, optimistic);
             });
             return next;
           });
