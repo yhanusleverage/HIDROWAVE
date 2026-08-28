@@ -423,19 +423,23 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
           }
           setRelayStates((r) => {
             const merged = mergeRelayStatesMap(r, updated);
-            settlePendingByRelayState(
+            const settled = settlePendingByRelayState(
               commandToRelayMap.current,
               pendingAckTimersRef.current,
-              merged,
-              (pending) => {
-                releaseRelayCommandSlot(pending.relayKey);
-                setLoadingRelays((prev) => {
-                  const next = new Map(prev);
-                  next.delete(pending.relayKey);
-                  return next;
-                });
-              }
+              merged
             );
+            if (settled.length > 0) {
+              queueMicrotask(() => {
+                settled.forEach((pending) => {
+                  releaseRelayCommandSlot(pending.relayKey);
+                  setLoadingRelays((prev) => {
+                    const next = new Map(prev);
+                    next.delete(pending.relayKey);
+                    return next;
+                  });
+                });
+              });
+            }
             if (commandToRelayMap.current.size === 0) return merged;
             const next = new Map(merged);
             commandToRelayMap.current.forEach((pending) => {

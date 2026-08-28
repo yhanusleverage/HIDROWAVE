@@ -55,6 +55,7 @@ import {
   type PendingRelayCommand,
 } from '@/lib/relay-pending-commands';
 import { sendSlaveRelayCommand } from '@/lib/slave-relay-command';
+import type { RelayCommandMode } from '@/lib/mqtt-relay-command-schema';
 // Removido: import { getRelayStates } from '@/lib/automation'; // não usar mais relay_states
 import { getMasterLocalRelayNames } from '@/lib/nutrition-plan';
 import { useRelayAllocation } from '@/hooks/useRelayAllocation';
@@ -600,6 +601,11 @@ export default function AutomacaoPageClient() {
       next.delete(relayKey);
       return next;
     });
+    setTimerModes((prev) => {
+      const next = new Map(prev);
+      next.delete(relayKey);
+      return next;
+    });
     startLocalTimer(relayKey, 0);
     setShowTimerInput(null);
   }, [startLocalTimer]);
@@ -799,15 +805,19 @@ export default function AutomacaoPageClient() {
           }
           setRelayStates((r) => {
             const merged = mergeRelayStatesMap(r, updated);
-            settlePendingByRelayState(
+            const settled = settlePendingByRelayState(
               commandToRelayMap.current,
               pendingAckTimersRef.current,
-              merged,
-              (pending) => {
-                clearRelayLoading(pending.relayKey);
-                if (pending.successToast) toast.success(pending.successToast);
-              }
+              merged
             );
+            if (settled.length > 0) {
+              queueMicrotask(() => {
+                settled.forEach((pending) => {
+                  clearRelayLoading(pending.relayKey);
+                  if (pending.successToast) toast.success(pending.successToast);
+                });
+              });
+            }
             if (commandToRelayMap.current.size === 0) return merged;
             const next = new Map(merged);
             commandToRelayMap.current.forEach((pending) => {
@@ -1804,8 +1814,17 @@ export default function AutomacaoPageClient() {
                                                 const previousState = isRelayOn;
                                                 const nextOn = !isRelayOn;
                                                 const armedSecs = armedTimers.get(relayKey);
-                                                const durationSeconds =
-                                                  nextOn && armedSecs && armedSecs > 0 ? armedSecs : 0;
+                                                const timerMode = timerModes.get(relayKey) ?? 'timed_on';
+                                                let durationSeconds = 0;
+                                                let mode: RelayCommandMode = 'instant';
+                                                if (nextOn && armedSecs && armedSecs > 0) {
+                                                  durationSeconds = armedSecs;
+                                                  if (timerMode === 'timed_off' && previousState) {
+                                                    mode = 'timed_off';
+                                                  } else {
+                                                    mode = timerMode === 'timed_off' ? 'timed_on' : timerMode;
+                                                  }
+                                                }
                                                 setLoadingRelays(prev => new Map(prev).set(relayKey, true));
                                                 setRelayStates(prev => new Map(prev).set(relayKey, nextOn));
                                                 try {
@@ -1814,7 +1833,7 @@ export default function AutomacaoPageClient() {
                                                     slave_mac_address: slave.macAddress,
                                                     slave_name: slave.name,
                                                     relay_number: relay.id,
-                                                    mode: 'instant',
+                                                    mode,
                                                     action: nextOn ? 'on' : 'off',
                                                     duration_seconds: durationSeconds,
                                                   });
@@ -1826,10 +1845,20 @@ export default function AutomacaoPageClient() {
                                                       durationSeconds,
                                                       successToast: nextOn
                                                         ? durationSeconds > 0
-                                                          ? `${relayLabel} ligado ${durationSeconds}s`
+                                                          ? mode === 'timed_off'
+                                                            ? `${relayLabel} desliga em ${durationSeconds}s`
+                                                            : `${relayLabel} ligado ${durationSeconds}s`
                                                           : `${relayLabel} ligado`
                                                         : `${relayLabel} desligado`,
                                                     });
+                                                    if (nextOn && durationSeconds > 0) {
+                                                      startLocalTimer(relayKey, durationSeconds);
+                                                      setArmedTimers((prev) => {
+                                                        const next = new Map(prev);
+                                                        next.delete(relayKey);
+                                                        return next;
+                                                      });
+                                                    }
                                                   } else if (result.success) {
                                                     revertSlaveRelay(relayKey, previousState);
                                                     toast.error('Slave não confirmou (sem ACK)');
@@ -2010,7 +2039,8 @@ export default function AutomacaoPageClient() {
                                                     <span className="text-xs text-dark-textSecondary">s (máx 24h)</span>
                                                   </div>
                                                   <p className="text-xs text-dark-textSecondary/80">
-                                                    Reloj amarillo = timer asignado. El relé solo cambia al pulsar ON/OFF.
+                                                    Reloj amarillo = timer asignado. ON envía el timer; modo
+                                                    &quot;Desligar em X s&quot; requiere relé ya ON (o assign directo).
                                                   </p>
                                                   <button
                                                     type="button"
@@ -2018,9 +2048,43 @@ export default function AutomacaoPageClient() {
                                                     onClick={(e) => {
                                                       e.stopPropagation();
                                                       const secs = relayTimers.get(relayKey) || 10;
+                                                      const mode = timerModes.get(relayKey) ?? 'timed_on';
+                                                      if (mode === 'timed_off' && isRelayOn) {
+                                                        void (async () => {
+                                                          setLoadingRelays((prev) => new Map(prev).set(relayKey, true));
+                                                          const result = await sendSlaveRelayCommand({
+                                                            master_device_id: selectedDeviceId!,
+                                                            slave_mac_address: slave.macAddress,
+                                                            slave_name: slave.name,
+                                                            relay_number: relay.id,
+                                                            mode: 'timed_off',
+                                                            action: 'on',
+                                                            duration_seconds: secs,
+                                                          });
+                                                          if (result.success && result.command_id) {
+                                                            registerPendingSlaveAck(result.command_id, {
+                                                              relayKey,
+                                                              previousState: isRelayOn,
+                                                              desiredOn: true,
+                                                              durationSeconds: secs,
+                                                              successToast: `${relayLabel} desliga em ${secs}s`,
+                                                            });
+                                                            startLocalTimer(relayKey, secs);
+                                                            setShowTimerInput(null);
+                                                          } else {
+                                                            clearRelayLoading(relayKey);
+                                                            toast.error(result.error ?? 'Slave não confirmou (sem ACK)');
+                                                          }
+                                                        })();
+                                                        return;
+                                                      }
                                                       setArmedTimers(prev => new Map(prev).set(relayKey, secs));
                                                       setShowTimerInput(null);
-                                                      toast.success(`Timer atribuído ${secs}s — relógio amarelo. Pulse ON para ligar`);
+                                                      toast.success(
+                                                        mode === 'timed_off'
+                                                          ? `Timer OFF ${secs}s — ligue o relé e pulse ON, ou assign com relé ON`
+                                                          : `Timer atribuído ${secs}s — relógio amarelo. Pulse ON para ligar`
+                                                      );
                                                     }}
                                                     className="w-full py-2 px-3 text-xs font-medium rounded bg-aqua-500/20 text-aqua-400 border border-aqua-500/40 hover:bg-aqua-500/30 disabled:opacity-50"
                                                   >

@@ -83,9 +83,9 @@ export function applyRelayCommandAck(
 export function settlePendingByRelayState(
   pendingMap: Map<string | number, PendingRelayCommand>,
   timers: PendingAckTimerMap,
-  states: Map<string, boolean>,
-  onSettled: (pending: PendingRelayCommand) => void
-): void {
+  states: Map<string, boolean>
+): PendingRelayCommand[] {
+  const settled: PendingRelayCommand[] = [];
   const ids: Array<string | number> = [];
   pendingMap.forEach((pending, id) => {
     if (pending.desiredOn === undefined) return;
@@ -98,6 +98,7 @@ export function settlePendingByRelayState(
     if (!pending) return;
     clearPendingAckTimeout(timers, id);
     pendingMap.delete(id);
-    onSettled(pending);
+    settled.push(pending);
   });
+  return settled;
 }
