@@ -27,7 +27,7 @@ const STEPS = [
   {
     title: 'Teste por ml',
     body:
-      'Use Teste (ml) na card: o ESP liga a bomba pelo tempo ml/vazão. Auto EC/pH deve estar desligado. Sem botão de manter/cebar.',
+      'Use Cebar (manter apertado) para encher a linha, ou Teste (ml) na card: o ESP liga a bomba pelo tempo ml/vazão. Auto EC/pH deve estar desligado.',
   },
   {
     title: 'Colete uma amostra cronometrada',
@@ -181,7 +181,7 @@ export default function CalibragemPage() {
                 <div className="text-sm text-dark-textSecondary space-y-2">
                   <p>
                     <strong className="text-dark-text">Só bombas atribuídas.</strong> Toque para
-                    abrir: teste por tempo (medir vazão) e teste por ml. Sem cebar.
+                    abrir: cebar, teste por tempo (medir vazão) e teste por ml.
                   </p>
                 </div>
               </div>

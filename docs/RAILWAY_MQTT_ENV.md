@@ -62,7 +62,7 @@ Local: `npm run verify:mqtt-publish-env`
    ```
 4. Supabase: fila `relay_commands` pasa `pending` → `completed` en &lt;2s.
 
-Si no hay `[MQTT CMD] published` → revisar env vars. Si hay publish pero no `[CMD mqtt]` → ACL Mosquitto o firewall `:1883`.
+Si no hay `[MQTT CMD] published` → revisar env vars. Si hay publish pero no `[CMD mqtt]` → **ACL Mosquitto** (≈95% de casos) o firewall `:1883`. Ver guía: [MQTT_COMANDOS_DEBUG_ACL.md](MQTT_COMANDOS_DEBUG_ACL.md).
 
 ### Slave ESP-NOW
 
@@ -93,6 +93,7 @@ Patch na VM: `sudo bash patch-acl-hidrowave-publish.sh` (em `ESP-HIDROWAVE-main/
 
 ## Relacionado
 
+- [`MQTT_COMANDOS_DEBUG_ACL.md`](MQTT_COMANDOS_DEBUG_ACL.md) — debug comandos / cebar / ACL (~95% problemas)
 - [`HANDOFF_RELAY_COMMANDS_MANUAL_14JUN2026.md`](HANDOFF_RELAY_COMMANDS_MANUAL_14JUN2026.md) — ciclo manual Dosificar
 - [`scripts/BANCADA_MANUAL_COMMANDS_KPI.md`](../scripts/BANCADA_MANUAL_COMMANDS_KPI.md) — KPI 10 comandos
 - [`MQTT_COMANDOS_RAPIDOS_SLAVES.md`](MQTT_COMANDOS_RAPIDOS_SLAVES.md) — slaves ESP-NOW

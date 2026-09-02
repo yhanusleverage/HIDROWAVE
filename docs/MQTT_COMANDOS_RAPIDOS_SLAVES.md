@@ -131,6 +131,8 @@ node scripts/test-publish-slave-command.js
 
 ## Fase E — Diagnóstico
 
+> **Regra bancada:** ~95% das falhas de comando = **ACL Mosquitto** ou credenciais. Guia completo: [MQTT_COMANDOS_DEBUG_ACL.md](MQTT_COMANDOS_DEBUG_ACL.md)
+
 | Sintoma | Causa provável | Ação |
 |---------|----------------|------|
 | `[RPC SLAVE] Array recebido: 0` com pending visible | RPC stub en Supabase | Ejecutar `PRODUCTION_RPC_GET_AND_LOCK_SLAVE.sql` completo — ver [COMANDOS_SLAVE_RPC.md](COMANDOS_SLAVE_RPC.md) |
@@ -153,6 +155,7 @@ node scripts/test-publish-slave-command.js
 
 ## Relacionado
 
+- [`MQTT_COMANDOS_DEBUG_ACL.md`](MQTT_COMANDOS_DEBUG_ACL.md) — debug E2E, ACL, cebar (~95% problemas = ACL)
 - [`docs/COMANDOS_SLAVE_RPC.md`](COMANDOS_SLAVE_RPC.md) — **RPC slave obligatoria** (prerrequisito MQTT y HTTPS)
 - [`ESP-HIDROWAVE-main/docs/mqtt/HANDOFF_FASE3_COMANDOS_HIBRIDOS.md`](../../ESP-HIDROWAVE-main/docs/mqtt/HANDOFF_FASE3_COMANDOS_HIBRIDOS.md)
 - [`scripts/BANCADA_MANUAL_COMMANDS_KPI.md`](../scripts/BANCADA_MANUAL_COMMANDS_KPI.md) — KPI master + slave

@@ -24,6 +24,7 @@ import {
   upsertPumpFlowRate,
   nutrientRelayNumber,
 } from '@/lib/pump-calibration';
+import { PumpPrimeHoldControl } from '@/components/PumpPrimeHoldControl';
 import { HW_TEXT } from '@/lib/design-tokens';
 
 type PumpKind = 'ec' | 'ph_up' | 'ph_down';
@@ -214,6 +215,7 @@ function PumpAccordionRow({
 
   const calculatedRate = calculateFlowRateMlPerSecond(measuredVolumeMl, measuredDurationSec);
   const usingFallback = stored == null;
+  const accent = isPh ? 'ph' : 'ec';
   const titleColor = isPh ? HW_TEXT.ph : HW_TEXT.ec;
   const borderAccent = isPh ? 'border-l-violet-500' : 'border-l-emerald-500';
 
@@ -363,6 +365,15 @@ function PumpAccordionRow({
 
       {open ? (
         <div className="px-4 pb-4 border-t border-dark-border space-y-4 pt-3">
+          <PumpPrimeHoldControl
+            deviceId={deviceId}
+            relayNumber={pump.relay}
+            relayLabel={pump.name}
+            isOnline={isOnline}
+            autoBlocked={autoBlocked}
+            accent={accent}
+          />
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-dark-textSecondary mb-1">Volume (ml)</label>
@@ -622,8 +633,8 @@ export function EcPumpCalibrationSection({
       <div className="mb-3">
         <h2 className="text-lg font-semibold text-cyan-400">Bombas disponíveis</h2>
         <p className="text-sm text-dark-textSecondary mt-1">
-          Toque para abrir. Teste por tempo (medir vazão) e teste por ml. Sem cebar. Ganhos
-          químicos do pH ficam na aba Mapa de ganhos.
+          Toque para abrir. Cebar, medir e salvar a vazão. Ganhos químicos do pH ficam na aba Mapa
+          de ganhos.
         </p>
       </div>
       {pumps.map((p) => {
