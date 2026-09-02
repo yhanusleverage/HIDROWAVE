@@ -38,7 +38,8 @@ async function fetchRange(
     if (isSupabaseMissingTableError(error)) return [];
     return [];
   }
-  return (data as Record<string, unknown>[]) ?? [];
+  if (!Array.isArray(data)) return [];
+  return data as unknown as Record<string, unknown>[];
 }
 
 function num(value: unknown): number | null {
