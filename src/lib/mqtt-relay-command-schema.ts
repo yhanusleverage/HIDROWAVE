@@ -235,6 +235,28 @@ export function mqttCommandAckTopic(deviceId: string): string {
   return `hidrowave/${deviceId}/command_ack`;
 }
 
+/** hidrowave/{id}/rule_executed — DE local → bridge INSERT relay_commands (completed) */
+export type MqttRuleExecutedMessageV1 = {
+  v: typeof MQTT_CMD_SCHEMA_VERSION;
+  device_id: string;
+  ts: number;
+  event_id: string;
+  rule_id: string;
+  relay_index: number;
+  action?: MqttRelayAction | 'toggle';
+  current_state: boolean;
+  success?: boolean;
+  duration_s?: number;
+  slave_mac_address?: string;
+};
+
+export function mqttRuleExecutedTopic(deviceId: string): string {
+  if (!validateDeviceId(deviceId)) {
+    throw new Error(`[MQTT CMD schema] device_id inválido: ${deviceId}`);
+  }
+  return `hidrowave/${deviceId}/rule_executed`;
+}
+
 /** hidrowave/{id}/relay/state — doc mqtt/04 §3.4 */
 export type MqttRelayStateMessageV1 = {
   v: typeof MQTT_CMD_SCHEMA_VERSION;

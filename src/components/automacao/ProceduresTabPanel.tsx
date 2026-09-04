@@ -30,6 +30,7 @@ export function ProceduresTabPanel({
 }: ProceduresTabPanelProps) {
   const { t } = useLanguage();
   const [hydraulicRoles, setHydraulicRoles] = useState<HydraulicRolesMap>({});
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -46,18 +47,53 @@ export function ProceduresTabPanel({
       <HydraulicRelaySetupPanel
         deviceId={deviceId}
         espnowSlaves={espnowSlaves}
-        onRolesChange={setHydraulicRoles}
+        mode="essential"
+        roles={hydraulicRoles}
+        onRolesStateChange={setHydraulicRoles}
       />
 
-      {deviceId && deviceId !== 'default_device' && (
-        <WaterLevelSection deviceId={deviceId} enabled={waterLevelEnabled} />
-      )}
+      <div className="rounded-xl border border-dark-border bg-dark-card/60 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((v) => !v)}
+          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-dark-surface/50 transition-colors"
+          aria-expanded={advancedOpen}
+        >
+          <div>
+            <p className="text-sm font-medium text-dark-text">
+              {t.automacao.procedures.advancedToggle}
+            </p>
+            <p className="text-xs text-dark-textSecondary mt-0.5">
+              {t.automacao.procedures.advancedHint}
+            </p>
+          </div>
+          <span className="text-aqua-400 text-lg leading-none shrink-0">
+            {advancedOpen ? '−' : '+'}
+          </span>
+        </button>
 
-      <ProcedureBuilderPanel
-        deviceId={deviceId}
-        hydraulicRoles={hydraulicRoles}
-        embedded
-      />
+        {advancedOpen && (
+          <div className="border-t border-dark-border p-4 space-y-6">
+            <HydraulicRelaySetupPanel
+              deviceId={deviceId}
+              espnowSlaves={espnowSlaves}
+              mode="advanced"
+              roles={hydraulicRoles}
+              onRolesStateChange={setHydraulicRoles}
+            />
+
+            {deviceId && deviceId !== 'default_device' && (
+              <WaterLevelSection deviceId={deviceId} enabled={waterLevelEnabled} />
+            )}
+
+            <ProcedureBuilderPanel
+              deviceId={deviceId}
+              hydraulicRoles={hydraulicRoles}
+              embedded
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

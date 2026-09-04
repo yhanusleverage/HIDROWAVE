@@ -1,5 +1,10 @@
 import { getSupabaseServerClient } from '@/lib/supabase-server';
 import { getHydraulicRolesForDevice } from '@/lib/hydraulic-roles-server';
+import {
+  notifyDeviceRuleUpsert,
+  notifyDeviceRulesManifest,
+  hashRulePayload,
+} from '@/lib/mqtt-rules-publish';
 import type { RuleProcedure } from './types';
 import { validateProcedure } from './validate-procedure';
 import {
@@ -12,6 +17,48 @@ export interface SaveProcedureServerResult {
   error?: string;
   ruleDbId?: string;
   created: boolean;
+}
+
+async function publishProcedureRuleMqtt(
+  deviceId: string,
+  procedure: RuleProcedure,
+  ruleJson: unknown
+): Promise<void> {
+  const op = procedure.enabled ? 'upsert' : 'disable';
+  await notifyDeviceRuleUpsert(
+    deviceId,
+    {
+      rule_id: procedure.id,
+      rule_name: procedure.name,
+      rule_description: procedure.description,
+      rule_json: ruleJson,
+      enabled: procedure.enabled,
+      priority: procedure.priority,
+    },
+    op
+  );
+
+  const sb = getSupabaseServerClient();
+  const { data: rows } = await sb
+    .from('decision_rules')
+    .select('rule_id, rule_name, rule_description, rule_json, enabled, priority')
+    .eq('device_id', deviceId);
+  if (!rows) return;
+  await notifyDeviceRulesManifest(
+    deviceId,
+    rows.map((r) => ({
+      rule_id: String(r.rule_id),
+      hash: hashRulePayload({
+        rule_id: r.rule_id,
+        rule_name: r.rule_name,
+        rule_description: r.rule_description,
+        enabled: Boolean(r.enabled),
+        priority: r.priority ?? 50,
+        rule_json: r.rule_json ?? {},
+      }),
+      enabled: Boolean(r.enabled),
+    }))
+  );
 }
 
 export async function saveProcedureToDecisionRulesServer(
@@ -85,6 +132,7 @@ export async function saveProcedureToDecisionRulesServer(
         .eq('id', existing.id);
 
       if (error) return { ok: false, error: error.message, created: false };
+      await publishProcedureRuleMqtt(deviceId.trim(), procedure, ruleJson);
       return { ok: true, ruleDbId: existing.id, created: false };
     }
 
@@ -106,6 +154,7 @@ export async function saveProcedureToDecisionRulesServer(
     if (error || !created?.id) {
       return { ok: false, error: error?.message ?? 'Falha ao criar regra', created: false };
     }
+    await publishProcedureRuleMqtt(deviceId.trim(), procedure, ruleJson);
     return { ok: true, ruleDbId: created.id, created: true };
   } catch (e) {
     return {

@@ -23,7 +23,20 @@ import {
 } from '@heroicons/react/24/outline';
 import { formatInstructionPreview } from '@/lib/instruction-labels';
 import { getDecisionRules, createDecisionRule, updateDecisionRule, deleteDecisionRule, DecisionRule } from '@/lib/automation';
+import {
+  requestDecisionRuleMqttSync,
+  requestDecisionRulesResync,
+} from '@/lib/decision-rules-mqtt-client';
+import {
+  isFixedFunctionMacroRule,
+  isMotorScriptStyleRule,
+  resolveDecisionRuleDisplayName,
+} from '@/lib/decision-rule-display-name';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
+import {
+  getDeviceDisplayStatus,
+  type DeviceDisplayStatus,
+} from '@/lib/realtime/device-status';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toBcp47 } from '@/lib/locale';
@@ -55,12 +68,18 @@ import {
   type PendingRelayCommand,
 } from '@/lib/relay-pending-commands';
 import { sendSlaveRelayCommand } from '@/lib/slave-relay-command';
+import {
+  formatSlaveAckTimeoutMessage,
+  formatSlaveCommandFailedMessage,
+  formatSlaveNoTrackingMessage,
+} from '@/lib/slave-relay-user-messages';
 import type { RelayCommandMode } from '@/lib/mqtt-relay-command-schema';
 // Removido: import { getRelayStates } from '@/lib/automation'; // não usar mais relay_states
 import { getMasterLocalRelayNames } from '@/lib/nutrition-plan';
 import { useRelayAllocation } from '@/hooks/useRelayAllocation';
 import { AutomacaoTabs, useAutomacaoTab } from '@/components/automacao/AutomacaoTabs';
 import { ProceduresTabPanel } from '@/components/automacao/ProceduresTabPanel';
+import ScheduleEditor from '@/components/automacao/ScheduleEditor';
 import { showLockUnlockToast, validateAdminPassword } from '@/lib/automacao/admin-lock';
 
 const SectionSkeleton = ({ className = 'h-32' }: { className?: string }) => (
@@ -229,6 +248,8 @@ export default function AutomacaoPageClient() {
   
   // Estado para gerenciar relés ESP-NOW Slaves (nomes globais)
   const [espnowSlaves, setEspnowSlaves] = useState<ESPNowSlave[]>([]);
+  const espnowSlavesRef = useRef(espnowSlaves);
+  espnowSlavesRef.current = espnowSlaves;
   const [loadingSlaves, setLoadingSlaves] = useState(false);
   const [expandedSlaveRelayManager, setExpandedSlaveRelayManager] = useState<boolean>(false);
   const [expandedSlaves, setExpandedSlaves] = useState<Set<string>>(new Set());
@@ -625,7 +646,18 @@ export default function AutomacaoPageClient() {
           return;
         }
         revertSlaveRelay(still.relayKey, still.previousState);
-        toast.error('Slave não confirmou (timeout / offline)');
+        const slaveRow = still.slaveMac
+          ? espnowSlavesRef.current.find((s) => s.macAddress === still.slaveMac)
+          : undefined;
+        toast.error(
+          formatSlaveAckTimeoutMessage({
+            slaveName: still.slaveName ?? slaveRow?.name,
+            relayLabel: still.relayLabel,
+            slaveOnline: slaveRow?.status === 'online' ? true : slaveRow?.status === 'offline' ? false : undefined,
+            previousState: still.previousState,
+          }),
+          { duration: 6000 }
+        );
       });
     },
     [revertSlaveRelay, clearRelayLoading]
@@ -663,6 +695,8 @@ export default function AutomacaoPageClient() {
               previousState: isRelayOn,
               desiredOn: isRelayOn,
               durationSeconds: 0,
+              slaveMac: slaveMac,
+              slaveName: slaveName,
             });
             toast.success(
               isRelayOn
@@ -739,11 +773,19 @@ export default function AutomacaoPageClient() {
               toast.success(pending.successToast);
             }
           },
-          onFailed: (relayKey, previousState, num) => {
+          onFailed: (relayKey, previousState, num, pending) => {
             clearPendingAckTimeout(pendingAckTimersRef.current, commandId);
             revertSlaveRelay(relayKey, previousState);
-            const relayNum = num !== undefined ? String(num) : 'desconhecido';
-            toast.error(`Comando falhou para relé ${relayNum}`);
+            toast.error(
+              formatSlaveCommandFailedMessage(
+                {
+                  slaveName: pending?.slaveName,
+                  relayLabel: pending?.relayLabel,
+                },
+                num
+              ),
+              { duration: 5000 }
+            );
           },
         },
         action,
@@ -1052,10 +1094,63 @@ export default function AutomacaoPageClient() {
     });
   };
 
-  const toggleRule = (id: number | string) => {
-    setRules(rules.map(rule => 
-      rule.id === id ? { ...rule, enabled: !rule.enabled } : rule
-    ));
+  const toggleRule = async (id: number | string) => {
+    const rule = rules.find((r) => r.id === id || r.supabase_id === id);
+    if (!rule) return;
+
+    const nextEnabled = !rule.enabled;
+    const dbId = rule.supabase_id || (typeof rule.id === 'string' ? rule.id : null);
+    if (!dbId || typeof dbId === 'number') {
+      toast.error('Erro: UUID da regra não encontrado para ativar/desativar');
+      return;
+    }
+
+    setRules((prev) =>
+      prev.map((r) => (r.id === id || r.supabase_id === id ? { ...r, enabled: nextEnabled } : r))
+    );
+
+    const ok = await updateDecisionRule(String(dbId), { enabled: nextEnabled });
+    if (!ok) {
+      setRules((prev) =>
+        prev.map((r) =>
+          r.id === id || r.supabase_id === id ? { ...r, enabled: !nextEnabled } : r
+        )
+      );
+      toast.error('Erro ao atualizar regra no banco');
+      return;
+    }
+
+    if (selectedDeviceId && selectedDeviceId !== 'default_device' && rule.rule_id) {
+      const sync = await requestDecisionRuleMqttSync({
+        device_id: selectedDeviceId,
+        rule_id: rule.rule_id,
+        rule_name: rule.rule_name || rule.name,
+        rule_description: rule.rule_description || rule.description,
+        rule_json: rule.rule_json,
+        enabled: nextEnabled,
+        priority: rule.priority,
+        op: nextEnabled ? 'upsert' : 'disable',
+      });
+      if (!sync.ok) {
+        console.warn('[toggleRule] MQTT sync:', sync.error);
+        toast.error(
+          `Regra salva no banco, mas MQTT falhou: ${sync.error ?? 'erro'}. Use Resync ↻`
+        );
+      }
+    }
+  };
+
+  const handleResyncRulesToDevice = async () => {
+    if (!selectedDeviceId || selectedDeviceId === 'default_device') {
+      toast.error('Selecione um dispositivo');
+      return;
+    }
+    const result = await requestDecisionRulesResync(selectedDeviceId);
+    if (result.ok) {
+      toast.success(`Regras sincronizadas com o Core (${result.republished ?? 0})`);
+    } else {
+      toast.error(result.error ?? 'Falha ao resync regras');
+    }
   };
 
   interface NewRuleData {
@@ -1105,8 +1200,16 @@ export default function AutomacaoPageClient() {
       
       // ✅ Se tiver script (instruções sequenciais), usar formato de SequentialScriptEditor
       let ruleJson: RuleJson;
-      
-      if (newRule.script && newRule.script.instructions && newRule.script.instructions.length > 0) {
+
+      // Macro tipada: preservar rule_json original (condition + actions DE / while script)
+      if (
+        editingRule &&
+        isFixedFunctionMacroRule(editingRule) &&
+        (newRule.preserve_rule_json || newRule.rule_json) ||
+        (editingRule.rule_json && Object.keys(editingRule.rule_json).length > 0)
+      ) {
+        ruleJson = (newRule.rule_json ?? editingRule.rule_json) as RuleJson;
+      } else if (newRule.script && newRule.script.instructions && newRule.script.instructions.length > 0) {
         // ✅ Formato de Sequential Script (Nova Função)
         ruleJson = {
           script: {
@@ -1254,6 +1357,19 @@ export default function AutomacaoPageClient() {
       }
       
       if (result) {
+        const mqtt = await requestDecisionRuleMqttSync({
+          device_id: decisionRule.device_id,
+          rule_id: decisionRule.rule_id,
+          rule_name: decisionRule.rule_name,
+          rule_description: decisionRule.rule_description,
+          rule_json: decisionRule.rule_json,
+          enabled: decisionRule.enabled,
+          priority: decisionRule.priority,
+          op: decisionRule.enabled ? 'upsert' : 'disable',
+        });
+        if (!mqtt.ok) {
+          console.warn('[handleSaveRule] MQTT sync:', mqtt.error);
+        }
         await loadRules(); // Recarregar regras
         setEditingRule(null); // ✅ Resetar regra de edição após salvar
       }
@@ -1427,6 +1543,15 @@ export default function AutomacaoPageClient() {
         return;
       }
 
+      if (selectedDeviceId && selectedDeviceId !== 'default_device' && rule.rule_id) {
+        await requestDecisionRuleMqttSync({
+          device_id: selectedDeviceId,
+          rule_id: rule.rule_id,
+          enabled: false,
+          op: 'delete',
+        });
+      }
+
       const result = await deleteDecisionRule(ruleIdToDelete.toString());
       if (result) {
         await loadRules(); // Recarregar regras do Supabase
@@ -1451,6 +1576,10 @@ export default function AutomacaoPageClient() {
   
   // ✅ Status do motor de decisão (verificar se há regras ativas e dispositivo online)
   const selectedMaster = availableMasters.find(m => m.device_id === selectedDeviceId);
+  const masterDisplayStatus: DeviceDisplayStatus = selectedMaster
+    ? getDeviceDisplayStatus(selectedMaster)
+    : 'offline';
+  const masterIsOnline = masterDisplayStatus !== 'offline';
   const decisionEngineActive = selectedMaster?.decision_engine_enabled && activeRules > 0;
   
   return (
@@ -1474,11 +1603,15 @@ export default function AutomacaoPageClient() {
                 onChange={(e) => setSelectedDeviceId(e.target.value)}
                 className="w-full sm:w-auto min-w-[200px] px-4 py-3 text-base sm:text-lg bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
               >
-                {availableMasters.map(master => (
-                  <option key={master.device_id} value={master.device_id || ''}>
-                    {master.device_name || master.device_id} {master.is_online ? '🟢' : '🔴'}
-                  </option>
-                ))}
+                {availableMasters.map(master => {
+                  const st = getDeviceDisplayStatus(master);
+                  return (
+                    <option key={master.device_id} value={master.device_id || ''}>
+                      {master.device_name || master.device_id}{' '}
+                      {st === 'online' ? '🟢' : st === 'warning' ? '🟡' : '🔴'}
+                    </option>
+                  );
+                })}
               </select>
             )}
           </div>
@@ -1513,7 +1646,7 @@ export default function AutomacaoPageClient() {
               <p className={`text-base font-medium ${decisionEngineActive ? 'text-green-400' : 'text-dark-textSecondary'}`}>
                 {decisionEngineActive
                   ? t.common.active
-                  : selectedMaster?.is_online
+                  : masterIsOnline
                     ? t.common.inactive
                     : t.common.offline}
               </p>
@@ -1530,10 +1663,16 @@ export default function AutomacaoPageClient() {
                       .replace('{inactive}', String(inactiveRules))}
                   </p>
                 </div>
-                {selectedMaster?.is_online && (
+                {masterIsOnline && (
                   <div className="flex flex-col items-end">
-                    <span className="text-sm text-green-400">🟢 {t.common.online}</span>
-                    {selectedMaster.last_seen && (
+                    <span
+                      className={`text-sm ${
+                        masterDisplayStatus === 'warning' ? 'text-amber-400' : 'text-green-400'
+                      }`}
+                    >
+                      {masterDisplayStatus === 'warning' ? '🟡' : '🟢'} {t.common.online}
+                    </span>
+                    {selectedMaster?.last_seen && (
                       <span className="text-sm text-dark-textSecondary">
                         {new Date(selectedMaster.last_seen).toLocaleTimeString(toBcp47(locale), { hour: '2-digit', minute: '2-digit' })}
                       </span>
@@ -1843,6 +1982,9 @@ export default function AutomacaoPageClient() {
                                                       previousState,
                                                       desiredOn: nextOn,
                                                       durationSeconds,
+                                                      slaveMac: slave.macAddress,
+                                                      slaveName: slave.name,
+                                                      relayLabel,
                                                       successToast: nextOn
                                                         ? durationSeconds > 0
                                                           ? mode === 'timed_off'
@@ -1861,7 +2003,13 @@ export default function AutomacaoPageClient() {
                                                     }
                                                   } else if (result.success) {
                                                     revertSlaveRelay(relayKey, previousState);
-                                                    toast.error('Slave não confirmou (sem ACK)');
+                                                    toast.error(
+                                                      formatSlaveNoTrackingMessage({
+                                                        slaveName: slave.name,
+                                                        relayLabel,
+                                                      }),
+                                                      { duration: 5000 }
+                                                    );
                                                   } else {
                                                     revertSlaveRelay(relayKey, previousState);
                                                     toast.error(`Erro: ${result.error}`);
@@ -2067,13 +2215,23 @@ export default function AutomacaoPageClient() {
                                                               previousState: isRelayOn,
                                                               desiredOn: true,
                                                               durationSeconds: secs,
+                                                              slaveMac: slave.macAddress,
+                                                              slaveName: slave.name,
+                                                              relayLabel,
                                                               successToast: `${relayLabel} desliga em ${secs}s`,
                                                             });
                                                             startLocalTimer(relayKey, secs);
                                                             setShowTimerInput(null);
                                                           } else {
                                                             clearRelayLoading(relayKey);
-                                                            toast.error(result.error ?? 'Slave não confirmou (sem ACK)');
+                                                            toast.error(
+                                                              result.error ??
+                                                                formatSlaveNoTrackingMessage({
+                                                                  slaveName: slave.name,
+                                                                  relayLabel,
+                                                                }),
+                                                              { duration: 5000 }
+                                                            );
                                                           }
                                                         })();
                                                         return;
@@ -2186,11 +2344,21 @@ export default function AutomacaoPageClient() {
                                                               previousState: isRelayOn,
                                                               desiredOn: false,
                                                               cycle: 'stop',
+                                                              slaveMac: slave.macAddress,
+                                                              slaveName: slave.name,
+                                                              relayLabel,
                                                               successToast: 'Ciclo parado',
                                                             });
                                                           } else {
                                                             clearRelayLoading(relayKey);
-                                                            toast.error(result.error ?? 'Slave não confirmou (sem ACK)');
+                                                            toast.error(
+                                                              result.error ??
+                                                                formatSlaveNoTrackingMessage({
+                                                                  slaveName: slave.name,
+                                                                  relayLabel,
+                                                                }),
+                                                              { duration: 5000 }
+                                                            );
                                                           }
                                                         }}
                                                         className="w-full py-2 px-3 text-xs font-medium rounded bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 disabled:opacity-50"
@@ -2226,6 +2394,9 @@ export default function AutomacaoPageClient() {
                                                               previousState: isRelayOn,
                                                               desiredOn: true,
                                                               durationSeconds: cycle.onDuration,
+                                                              slaveMac: slave.macAddress,
+                                                              slaveName: slave.name,
+                                                              relayLabel,
                                                               cycle: {
                                                                 onDuration: cycle.onDuration,
                                                                 offDuration: cycle.offDuration,
@@ -2234,7 +2405,14 @@ export default function AutomacaoPageClient() {
                                                             });
                                                           } else {
                                                             clearRelayLoading(relayKey);
-                                                            toast.error(result.error ?? 'Slave não confirmou (sem ACK)');
+                                                            toast.error(
+                                                              result.error ??
+                                                                formatSlaveNoTrackingMessage({
+                                                                  slaveName: slave.name,
+                                                                  relayLabel,
+                                                                }),
+                                                              { duration: 5000 }
+                                                            );
                                                           }
                                                         }}
                                                         className="w-full py-2 px-3 text-xs font-medium rounded bg-aqua-500/20 text-aqua-400 border border-aqua-500/40 hover:bg-aqua-500/30 disabled:opacity-50"
@@ -2431,6 +2609,20 @@ export default function AutomacaoPageClient() {
                   <LockOpenIcon className="w-4 h-4" />
                 )}
               </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!decisionEngineLocked) void handleResyncRulesToDevice();
+                }}
+                disabled={decisionEngineLocked}
+                className={`p-1.5 rounded transition-colors bg-dark-surface text-dark-textSecondary hover:text-aqua-400 border border-dark-border hover:border-aqua-500/40 ${
+                  decisionEngineLocked ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                title="Resync regras → Core (MQTT)"
+              >
+                <ArrowPathIcon className="w-4 h-4" />
+              </button>
               <div
                 onClick={(e) => {
                   e.stopPropagation();
@@ -2472,7 +2664,7 @@ export default function AutomacaoPageClient() {
             ) : (
               <div className="space-y-3">
                 {rules
-                  .filter(r => !r.rule_json?.script?.instructions) // ✅ Solo mostrar regras tradicionales (sin script)
+                  .filter((r) => !isMotorScriptStyleRule(r)) // tradicionais (sem script / sem macro tipada)
                   .map((rule) => (
                     <RuleCard
                       key={rule.id}
@@ -2490,13 +2682,13 @@ export default function AutomacaoPageClient() {
               <div className="mt-4 pt-4 border-t border-dark-border">
                 <div className="flex justify-between items-center mb-4">
                   <p className="text-sm text-dark-textSecondary">
-                    📋 Regras de Script Sequencial ({rules.filter(r => r.rule_json?.script?.instructions && r.enabled).length} ativas / {rules.filter(r => r.rule_json?.script?.instructions && !r.enabled).length} inativas)
+                    📋 Regras de Script Sequencial ({rules.filter((r) => isMotorScriptStyleRule(r) && r.enabled).length} ativas / {rules.filter((r) => isMotorScriptStyleRule(r) && !r.enabled).length} inativas)
                   </p>
                 </div>
 
                 {loading ? (
                   <div className="text-center py-8 text-dark-textSecondary">{t.common.loading}</div>
-                ) : rules.filter(r => r.rule_json?.script?.instructions).length === 0 ? (
+                ) : rules.filter((r) => isMotorScriptStyleRule(r)).length === 0 ? (
                   <div className="text-center py-8 text-dark-textSecondary bg-dark-surface border border-dark-border rounded-lg">
                     Nenhum script sequencial ativo. Crie uma regra com instruções sequenciais.
                   </div>
@@ -2506,10 +2698,10 @@ export default function AutomacaoPageClient() {
                     <div className="space-y-3">
                       <h3 className="text-sm font-semibold text-green-400 mb-2 flex items-center gap-2">
                         <CheckCircleIcon className="w-4 h-4" />
-                        Ativas ({rules.filter(r => r.rule_json?.script?.instructions && r.enabled).length})
+                        Ativas ({rules.filter((r) => isMotorScriptStyleRule(r) && r.enabled).length})
                       </h3>
                       {rules
-                        .filter(r => r.rule_json?.script?.instructions && r.enabled)
+                        .filter((r) => isMotorScriptStyleRule(r) && r.enabled)
                         .map((script) => (
                         <div
                           key={script.id}
@@ -2518,12 +2710,37 @@ export default function AutomacaoPageClient() {
                           <div className="flex justify-between items-start">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center space-x-2 mb-1">
-                                <h4 className="font-semibold text-white truncate">{script.name || script.rule_name}</h4>
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 ${
+                                <h4 className="font-semibold text-white truncate">
+                                  {resolveDecisionRuleDisplayName(
+                                    {
+                                      rule_id: script.rule_id,
+                                      rule_name: script.rule_name || script.name,
+                                      rule_json: script.rule_json,
+                                    },
+                                    t
+                                  )}
+                                </h4>
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void toggleRule(script.id);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      void toggleRule(script.id);
+                                    }
+                                  }}
+                                  className={`px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 cursor-pointer ${
                                   script.enabled
                                     ? 'bg-aqua-500/20 text-aqua-400 border-aqua-500/30'
                                     : 'bg-dark-surface text-dark-textSecondary border-dark-border'
-                                }`}>
+                                }`}
+                                  title={script.enabled ? 'Desativar regra' : 'Ativar regra'}
+                                >
                                   {script.enabled ? (
                                     <span className="flex items-center">
                                       <CheckCircleIcon className="w-3 h-3 mr-1 text-green-500" />
@@ -2541,10 +2758,11 @@ export default function AutomacaoPageClient() {
                                 <p className="text-xs text-dark-textSecondary mt-1">{script.description || script.rule_description}</p>
                               )}
                               <p className="text-xs text-dark-textSecondary/80 mt-1">
-                                Sequential Script
+                                {isFixedFunctionMacroRule(script)
+                                  ? t.automacao.procedures.fixedFunctionKind
+                                  : t.automacao.procedures.sequentialScriptKind}
                               </p>
 
-                              {/* Preview das instruções - Linha circular do script */}
                               {script.rule_json?.script?.instructions && (
                                 <div className="mt-2 text-xs text-dark-textSecondary space-y-1 font-mono">
                                   {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
@@ -2559,12 +2777,19 @@ export default function AutomacaoPageClient() {
                                   )}
                                 </div>
                               )}
+                              {isFixedFunctionMacroRule(script) &&
+                                !script.rule_json?.script?.instructions &&
+                                (script.rule_description || script.description) && (
+                                  <div className="mt-2 text-xs text-aqua-300">
+                                    1. {script.rule_description || script.description}
+                                  </div>
+                                )}
 
                               <div className="mt-3 flex gap-2 flex-wrap items-center">
                                 <span className="text-xs bg-aqua-500/15 text-aqua-300 px-2 py-1 rounded border border-aqua-500/40">
                                   Prioridade: {script.priority || 50}
                                 </span>
-                                {/* ✅ rule_id - Fácil de copiar */}
+                                {/* rule_id — visível também nas macros tipadas */}
                                 {script.rule_id && (
                                   <div className="flex items-center gap-1 bg-purple-500/20 border border-purple-500/40 rounded px-2 py-1 group">
                                     <span className="text-xs text-purple-300 font-mono">
@@ -2619,7 +2844,7 @@ export default function AutomacaoPageClient() {
                           </div>
                         </div>
                       ))}
-                      {rules.filter(r => r.rule_json?.script?.instructions && r.enabled).length === 0 && (
+                      {rules.filter((r) => isMotorScriptStyleRule(r) && r.enabled).length === 0 && (
                         <div className="text-center py-6 text-dark-textSecondary/80 bg-dark-surface/30 border border-dark-border rounded-lg text-xs">
                           Nenhuma regra ativa
                         </div>
@@ -2630,10 +2855,10 @@ export default function AutomacaoPageClient() {
                     <div className="space-y-3">
                       <h3 className="text-sm font-semibold text-red-400 mb-2 flex items-center gap-2">
                         <XCircleIcon className="w-4 h-4" />
-                        Inativas ({rules.filter(r => r.rule_json?.script?.instructions && !r.enabled).length})
+                        Inativas ({rules.filter((r) => isMotorScriptStyleRule(r) && !r.enabled).length})
                       </h3>
                       {rules
-                        .filter(r => r.rule_json?.script?.instructions && !r.enabled)
+                        .filter((r) => isMotorScriptStyleRule(r) && !r.enabled)
                         .map((script) => (
                           <div
                             key={script.id}
@@ -2642,12 +2867,37 @@ export default function AutomacaoPageClient() {
                             <div className="flex justify-between items-start">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center space-x-2 mb-1">
-                                  <h4 className="font-semibold text-white truncate">{script.name || script.rule_name}</h4>
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 ${
+                                  <h4 className="font-semibold text-white truncate">
+                                  {resolveDecisionRuleDisplayName(
+                                    {
+                                      rule_id: script.rule_id,
+                                      rule_name: script.rule_name || script.name,
+                                      rule_json: script.rule_json,
+                                    },
+                                    t
+                                  )}
+                                </h4>
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void toggleRule(script.id);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        void toggleRule(script.id);
+                                      }
+                                    }}
+                                    className={`px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 cursor-pointer ${
                                     script.enabled
                                       ? 'bg-aqua-500/20 text-aqua-400 border-aqua-500/30'
                                       : 'bg-dark-surface text-dark-textSecondary border-dark-border'
-                                  }`}>
+                                  }`}
+                                    title={script.enabled ? 'Desativar regra' : 'Ativar regra'}
+                                  >
                                     {script.enabled ? (
                                       <span className="flex items-center">
                                         <CheckCircleIcon className="w-3 h-3 mr-1 text-green-500" />
@@ -2665,7 +2915,9 @@ export default function AutomacaoPageClient() {
                                   <p className="text-xs text-dark-textSecondary mt-1">{script.description || script.rule_description}</p>
                                 )}
                                 <p className="text-xs text-dark-textSecondary/80 mt-1">
-                                  Sequential Script
+                                  {isFixedFunctionMacroRule(script)
+                                    ? t.automacao.procedures.fixedFunctionKind
+                                    : t.automacao.procedures.sequentialScriptKind}
                                 </p>
 
                                 {/* Preview das instruções - Linha circular do script */}
@@ -2683,12 +2935,19 @@ export default function AutomacaoPageClient() {
                                     )}
                                   </div>
                                 )}
+                                {isFixedFunctionMacroRule(script) &&
+                                  !script.rule_json?.script?.instructions &&
+                                  (script.rule_description || script.description) && (
+                                    <div className="mt-2 text-xs text-aqua-300">
+                                      1. {script.rule_description || script.description}
+                                    </div>
+                                  )}
 
                                 <div className="mt-3 flex gap-2 flex-wrap items-center">
                                   <span className="text-xs bg-aqua-500/15 text-aqua-300 px-2 py-1 rounded border border-aqua-500/40">
                                     Prioridade: {script.priority || 50}
                                   </span>
-                                  {/* ✅ rule_id - Fácil de copiar */}
+                                  {/* rule_id — visível também nas macros tipadas */}
                                   {script.rule_id && (
                                     <div className="flex items-center gap-1 bg-purple-500/20 border border-purple-500/40 rounded px-2 py-1 group">
                                       <span className="text-xs text-purple-300 font-mono">
@@ -2743,7 +3002,7 @@ export default function AutomacaoPageClient() {
                             </div>
                           </div>
                         ))}
-                      {rules.filter(r => r.rule_json?.script?.instructions && !r.enabled).length === 0 && (
+                      {rules.filter((r) => isMotorScriptStyleRule(r) && !r.enabled).length === 0 && (
                         <div className="text-center py-6 text-dark-textSecondary/80 bg-dark-surface/30 border border-dark-border rounded-lg text-xs">
                           Nenhuma regra inativa
                         </div>
@@ -2769,6 +3028,10 @@ export default function AutomacaoPageClient() {
           </p>
         </div>
           </>
+        )}
+
+        {activeTab === 'schedules' && (
+          <ScheduleEditor deviceId={selectedDeviceId} />
         )}
 
         {activeTab === 'ec' && (

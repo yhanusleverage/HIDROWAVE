@@ -26,6 +26,26 @@ import { DEFAULT_MASTER_RELAYS, type MasterRelayOption } from '@/lib/master-rela
 import ConditionFields from './instruction-editors/ConditionFields';
 import { createNestedInstruction, ensureInstructionIds } from '@/lib/instruction-factory';
 import { CONDITION_SENSORS, isLevelSensor, normalizeCondition } from '@/lib/instruction-labels';
+import { isFixedFunctionMacroRule } from '@/lib/decision-rule-display-name';
+import { resolveDecisionRuleDisplayName } from '@/lib/decision-rule-display-name';
+import { useLanguage } from '@/contexts/LanguageContext';
+
+/** Flecha vertical entre bloques del flujo procedural (Condiciones → Ações → …). */
+function ProceduralFlowArrow({ label }: { label: string }) {
+  return (
+    <div
+      className="flex flex-col items-center gap-0.5 py-1 select-none"
+      aria-hidden="true"
+    >
+      <div className="h-3 w-px bg-gradient-to-b from-transparent via-aqua-500/50 to-aqua-400/80" />
+      <ArrowDownIcon className="w-6 h-6 text-aqua-400" />
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-aqua-400/90">
+        {label}
+      </span>
+    </div>
+  );
+}
+
 interface Relay {
   id: number;
   name: string;
@@ -153,6 +173,7 @@ export default function CreateRuleModal({
   editingRule,
 }: CreateRuleModalProps) {
   const { userProfile } = useAuth();
+  const { t } = useLanguage();
   const masterRelays = useMemo<MasterRelayOption[]>(() => {
     const fromRelays = relays
       .filter((r) => r.device !== 'slave')
@@ -429,13 +450,24 @@ export default function CreateRuleModal({
       try {
         const { data, error } = await supabase
           .from('decision_rules')
-          .select('rule_id, rule_name')
+          .select('rule_id, rule_name, rule_json')
           .eq('device_id', deviceId)
-          .eq('created_by', userProfile.email)
           .order('rule_name', { ascending: true });
 
         if (error) throw error;
-        setAvailableRules(data || []);
+        setAvailableRules(
+          (data || []).map((row) => ({
+            rule_id: String(row.rule_id),
+            rule_name: resolveDecisionRuleDisplayName(
+              {
+                rule_id: row.rule_id,
+                rule_name: row.rule_name,
+                rule_json: row.rule_json,
+              },
+              t
+            ),
+          }))
+        );
       } catch (error) {
         console.error('Erro ao carregar regras disponíveis:', error);
         setAvailableRules([]);
@@ -445,7 +477,7 @@ export default function CreateRuleModal({
     };
 
     loadAvailableRules();
-  }, [isOpen, deviceId, userProfile?.email]);
+  }, [isOpen, deviceId, userProfile?.email, t]);
 
   const loadSlaves = async () => {
     if (!deviceId || !userProfile?.email) {
@@ -495,14 +527,24 @@ export default function CreateRuleModal({
       toast.error('Digite um nome para a regra');
       return;
     }
-    // Validações: pode usar condições/ações OU instruções sequenciais
-    if (instructions.length === 0 && conditions.length === 0) {
-      toast.error('Adicione pelo menos uma condição ou uma instrução sequencial');
-      return;
-    }
-    if (instructions.length === 0 && actions.length === 0) {
-      toast.error('Adicione pelo menos uma ação ou uma instrução sequencial');
-      return;
+
+    const isTypedMacro =
+      !!editingRule &&
+      isFixedFunctionMacroRule({
+        rule_id: editingRule.rule_id as string | undefined,
+        rule_json: editingRule.rule_json,
+      });
+
+    // Macros da tipagem já têm condition/actions no rule_json (formato DE) — não exigir UI de condições.
+    if (!isTypedMacro) {
+      if (instructions.length === 0 && conditions.length === 0) {
+        toast.error('Adicione pelo menos uma condição ou uma instrução sequencial');
+        return;
+      }
+      if (instructions.length === 0 && actions.length === 0) {
+        toast.error('Adicione pelo menos uma ação ou uma instrução sequencial');
+        return;
+      }
     }
 
     const rule = {
@@ -545,6 +587,10 @@ export default function CreateRuleModal({
         cooldown,
         max_executions_per_hour: maxExecutionsPerHour,
       } : undefined,
+      // Preservar JSON tipado (condition singular + relay_on) ao ativar/editar no Motor
+      ...(isTypedMacro && editingRule?.rule_json
+        ? { preserve_rule_json: true as const, rule_json: editingRule.rule_json }
+        : {}),
     };
 
     onSave(rule);
@@ -587,11 +633,17 @@ export default function CreateRuleModal({
           {/* Fluxo Procedural - Descrição */}
           <div className="bg-aqua-500/10 border border-aqua-500/30 rounded-lg p-3 mb-4">
             <p className="text-sm text-aqua-300 font-medium mb-1 text-center">📋 Fluxo Procedural (de cima para baixo):</p>
-            <p className="text-sm text-dark-textSecondary leading-relaxed text-center">
-              <span className="text-aqua-400 font-semibold">1. Condições</span> → 
-              <span className="text-purple-400 font-semibold"> 2. Ações</span> → 
-              <span className="text-yellow-400 font-semibold"> 3. Eventos Encadeados</span> → 
-              <span className="text-dark-textSecondary font-semibold"> 4. Config Avançada</span>
+            <p className="text-sm text-dark-textSecondary leading-relaxed text-center flex flex-col sm:flex-row sm:flex-wrap items-center justify-center gap-1 sm:gap-0">
+              <span className="text-aqua-400 font-semibold">1. Condições</span>
+              <span className="hidden sm:inline text-dark-textSecondary/60 mx-1.5">↓</span>
+              <span className="sm:hidden text-aqua-400/70" aria-hidden>↓</span>
+              <span className="text-purple-400 font-semibold">2. Ações</span>
+              <span className="hidden sm:inline text-dark-textSecondary/60 mx-1.5">↓</span>
+              <span className="sm:hidden text-aqua-400/70" aria-hidden>↓</span>
+              <span className="text-yellow-400 font-semibold">3. Eventos Encadeados</span>
+              <span className="hidden sm:inline text-dark-textSecondary/60 mx-1.5">↓</span>
+              <span className="sm:hidden text-aqua-400/70" aria-hidden>↓</span>
+              <span className="text-dark-textSecondary font-semibold">4. Config Avançada</span>
             </p>
           </div>
 
@@ -698,6 +750,8 @@ export default function CreateRuleModal({
               </div>
             )}
           </div>
+
+          <ProceduralFlowArrow label="↓ 2. Ações" />
 
           {/* Passos do script — sempre visível (não esconder em Ações) */}
           <div className="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
@@ -941,6 +995,8 @@ export default function CreateRuleModal({
             </div>
           </div>
 
+          <ProceduralFlowArrow label="Ações simples" />
+
           {/* Ações simples (relés slave) — opcional se não usar script */}
           <div className="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
             <button
@@ -1046,6 +1102,8 @@ export default function CreateRuleModal({
               </div>
             )}
           </div>
+
+          <ProceduralFlowArrow label="↓ 3. Eventos" />
 
           {/* Eventos Encadeados - Colapsável (de Nova Função) */}
           <div className="border-t border-dark-border pt-4">
@@ -1199,6 +1257,7 @@ export default function CreateRuleModal({
             </div>
           </div>
 
+          <ProceduralFlowArrow label="↓ 4. Config" />
 
           {/* Configurações Avançadas - Colapsável (de Nova Função) */}
           <div className="border border-dark-border rounded-lg overflow-hidden">

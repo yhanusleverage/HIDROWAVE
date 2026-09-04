@@ -82,6 +82,44 @@ export async function POST(request: Request) {
 
     console.log(`Regra de automação criada: ${rule_name} (${rule_id}) para dispositivo ${device_id}`);
 
+    const { notifyDeviceRuleUpsert, notifyDeviceRulesManifest, hashRulePayload } =
+      await import('@/lib/mqtt-rules-publish');
+    await notifyDeviceRuleUpsert(device_id, {
+      rule_id,
+      rule_name,
+      rule_description,
+      rule_json,
+      enabled,
+      priority,
+    });
+    try {
+      const { getSupabaseServerClient } = await import('@/lib/supabase-server');
+      const sb = getSupabaseServerClient();
+      const { data: all } = await sb
+        .from('decision_rules')
+        .select('rule_id, rule_name, rule_description, rule_json, enabled, priority')
+        .eq('device_id', device_id);
+      if (all) {
+        await notifyDeviceRulesManifest(
+          device_id,
+          all.map((r) => ({
+            rule_id: String(r.rule_id),
+            hash: hashRulePayload({
+              rule_id: r.rule_id,
+              rule_name: r.rule_name,
+              rule_description: r.rule_description,
+              enabled: Boolean(r.enabled),
+              priority: r.priority ?? 50,
+              rule_json: r.rule_json ?? {},
+            }),
+            enabled: Boolean(r.enabled),
+          }))
+        );
+      }
+    } catch (e) {
+      console.warn('[rules API] manifest:', e);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Regra de automação criada com sucesso',

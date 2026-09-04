@@ -1,9 +1,8 @@
 /**
  * Subcomponentes do painel de controle por dispositivo.
- * O conteúdo de cada aba permanece em DeviceControlPanel.tsx;
- * use estes ids ao navegar por teclado / testes e2e.
+ * O modal exibe apenas a vista Status.
  */
-export const DEVICE_CONTROL_TABS = ['status', 'rules', 'local', 'slaves'] as const;
+export const DEVICE_CONTROL_TABS = ['status'] as const;
 export type DeviceControlTab = (typeof DEVICE_CONTROL_TABS)[number];
 
 export function deviceTabPanelId(tab: DeviceControlTab): string {

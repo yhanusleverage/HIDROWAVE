@@ -13,6 +13,7 @@ import type { RuleProcedure } from '@/lib/rule-procedure/types';
 import { validateProcedure } from '@/lib/rule-procedure/validate-procedure';
 import { compileProcedureToPayload } from '@/lib/rule-procedure/compile-procedure';
 import type { HydraulicRolesMap } from '@/lib/hydraulic-relay-roles';
+import { FN_RULE_IDS, FN_RULE_NAME_PT } from '@/lib/fixed-function-rule-from-hydraulic';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -59,6 +60,21 @@ export function ProcedureBuilderPanel({
     setProcedure((p) => ({
       ...p,
       steps: p.steps.map((s, i) => (i === index ? step : s)),
+    }));
+  };
+
+  const addInvokeMacro = (targetRuleId: string) => {
+    setProcedure((prev) => ({
+      ...prev,
+      steps: [
+        ...prev.steps,
+        {
+          type: 'invoke_rule',
+          id: `invoke_${targetRuleId}_${Date.now()}`,
+          targetRuleId,
+          on: 'success' as const,
+        },
+      ],
     }));
   };
 
@@ -181,6 +197,25 @@ export function ProcedureBuilderPanel({
 
       <div className="space-y-3">
         <SectionHeader title={p.steps} subtitle={p.stepsSub} accent="brand" />
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ['circulation_pump', FN_RULE_IDS.circulation_pump],
+              ['fill_valve', FN_RULE_IDS.fill_valve],
+              ['drain_valve', FN_RULE_IDS.drain_valve],
+              ['recharge_pump', FN_RULE_IDS.recharge_pump],
+            ] as const
+          ).map(([roleId, ruleId]) => (
+            <button
+              key={ruleId}
+              type="button"
+              onClick={() => addInvokeMacro(ruleId)}
+              className="text-xs px-2.5 py-1 rounded-lg border border-dark-border bg-dark-surface hover:bg-aqua-500/10 text-dark-text"
+            >
+              + {p.stepInvokeRule}: {FN_RULE_NAME_PT[roleId]}
+            </button>
+          ))}
+        </div>
         <div className="grid md:grid-cols-2 gap-3">
           {procedure.steps.map((step, index) => (
             <ProcedureStepEditor

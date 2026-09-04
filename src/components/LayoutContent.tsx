@@ -1,13 +1,15 @@
 'use client';
 
-import React from 'react';
+import React, { Suspense } from 'react';
 import { usePathname } from 'next/navigation';
 import ControlToaster from '@/components/ControlToaster';
 import Sidebar from '@/components/Sidebar';
 import CropAlarmsNotifier from '@/components/CropAlarmsNotifier';
 import PageNavOverlay from '@/components/PageNavOverlay';
+import { OnboardingTour } from '@/components/onboarding/OnboardingTour';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { NavigationPendingProvider, useNavigationPending } from '@/contexts/NavigationPendingContext';
+import { OnboardingTourProvider } from '@/contexts/OnboardingTourContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 function MainContent({ children }: { children: React.ReactNode }) {
@@ -27,6 +29,7 @@ function MainContent({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+      <OnboardingTour />
     </div>
   );
 }
@@ -44,9 +47,13 @@ export default function LayoutContent({ children }: { children: React.ReactNode 
   return (
     <ProtectedRoute>
       <NavigationPendingProvider>
-        <CropAlarmsNotifier />
-        <ControlToaster />
-        <MainContent>{children}</MainContent>
+        <Suspense fallback={null}>
+          <OnboardingTourProvider>
+            <CropAlarmsNotifier />
+            <ControlToaster />
+            <MainContent>{children}</MainContent>
+          </OnboardingTourProvider>
+        </Suspense>
       </NavigationPendingProvider>
     </ProtectedRoute>
   );

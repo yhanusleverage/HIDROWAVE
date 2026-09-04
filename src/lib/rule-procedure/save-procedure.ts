@@ -1,4 +1,5 @@
 import { createDecisionRule, getDecisionRules, updateDecisionRule } from '@/lib/automation';
+import { requestDecisionRuleMqttSync } from '@/lib/decision-rules-mqtt-client';
 import type { RuleProcedure } from './types';
 import { validateProcedure } from './validate-procedure';
 import { compileProcedureToPayload } from './compile-procedure';
@@ -43,9 +44,20 @@ export async function saveProcedureToDecisionRules(
         enabled: procedure.enabled,
         priority: procedure.priority,
       });
-      return ok
-        ? { ok: true, ruleDbId: match.id, created: false }
-        : { ok: false, error: 'Falha ao atualizar regra', created: false };
+      if (!ok) {
+        return { ok: false, error: 'Falha ao atualizar regra', created: false };
+      }
+      await requestDecisionRuleMqttSync({
+        device_id: deviceId,
+        rule_id: procedure.id,
+        rule_name: procedure.name,
+        rule_description: procedure.description,
+        rule_json: ruleJson,
+        enabled: procedure.enabled,
+        priority: procedure.priority,
+        op: procedure.enabled ? 'upsert' : 'disable',
+      });
+      return { ok: true, ruleDbId: match.id, created: false };
     }
 
     const created = await createDecisionRule({
@@ -62,6 +74,18 @@ export async function saveProcedureToDecisionRules(
     if (!created?.id) {
       return { ok: false, error: 'Falha ao criar regra', created: false };
     }
+
+    await requestDecisionRuleMqttSync({
+      device_id: deviceId,
+      rule_id: procedure.id,
+      rule_name: procedure.name,
+      rule_description: procedure.description,
+      rule_json: ruleJson,
+      enabled: procedure.enabled,
+      priority: procedure.priority,
+      op: procedure.enabled ? 'upsert' : 'disable',
+    });
+
     return { ok: true, ruleDbId: created.id, created: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido';

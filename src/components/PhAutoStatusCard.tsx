@@ -9,6 +9,8 @@ import { AutoControlStatusMetrics } from '@/components/AutoControlStatusMetrics'
 import { usePhConfig } from '@/hooks/usePhConfig';
 import { usePhOperationState } from '@/hooks/usePhOperationState';
 import { useHydroEcReading } from '@/hooks/useHydroEcReading';
+import { useLevelSensors } from '@/hooks/useLevelSensors';
+import { MixInterlockBadge } from '@/components/MixInterlockBadge';
 import { phErrorAbs } from '@/lib/ph-control-display';
 import { formatSensorValue } from '@/lib/format-sensor-value';
 import { supabase } from '@/lib/supabase';
@@ -44,6 +46,7 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
   });
 
   const { ph: phAtual } = useHydroEcReading(deviceId, active, { liveOnly: true });
+  const levels = useLevelSensors(deviceId, active);
   const phError =
     phAtual != null && phConfig.ph_setpoint > 0
       ? phErrorAbs(phConfig.ph_setpoint, phAtual)
@@ -159,6 +162,9 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
           accent="violet"
           operationInterrupted={operationInterrupted}
         />
+        <div className="mt-2">
+          <MixInterlockBadge levels={levels} />
+        </div>
 
         <AutoControlStatusMetrics
           accent="ph"

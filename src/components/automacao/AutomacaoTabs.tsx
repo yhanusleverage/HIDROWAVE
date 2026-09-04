@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-export type AutomacaoTabId = 'timeline' | 'procedures' | 'rules' | 'ec' | 'ph';
+export type AutomacaoTabId = 'timeline' | 'procedures' | 'rules' | 'schedules' | 'ec' | 'ph';
 
-const TAB_IDS: AutomacaoTabId[] = ['procedures', 'ec', 'ph', 'rules', 'timeline'];
+const TAB_IDS: AutomacaoTabId[] = ['procedures', 'ec', 'ph', 'rules', 'schedules', 'timeline'];
 
 function parseTab(value: string | null): AutomacaoTabId {
   if (
@@ -14,11 +14,12 @@ function parseTab(value: string | null): AutomacaoTabId {
     value === 'procedures' ||
     value === 'ec' ||
     value === 'ph' ||
-    value === 'rules'
+    value === 'rules' ||
+    value === 'schedules'
   ) {
     return value;
   }
-  return 'rules';
+  return 'procedures';
 }
 
 interface AutomacaoTabsProps {
@@ -41,13 +42,16 @@ export function AutomacaoTabs({ activeTab, onTabChange }: AutomacaoTabsProps) {
     if (id === 'rules') {
       return { id, label: t.automacao.tabs.rules, subtitle: t.automacao.tabs.rulesSub };
     }
+    if (id === 'schedules') {
+      return { id, label: 'Schedules', subtitle: 'Cronogramas' };
+    }
     return { id, label: t.automacao.tabs.timeline, subtitle: t.automacao.tabs.timelineSub };
   });
 
   return (
     <div className="mb-6 border-b border-dark-border w-full">
       <nav
-        className="grid grid-cols-5 w-full -mb-px"
+        className="grid grid-cols-6 w-full -mb-px"
         aria-label={t.automacao.tabs.procedures}
       >
         {tabs.map((tab) => {

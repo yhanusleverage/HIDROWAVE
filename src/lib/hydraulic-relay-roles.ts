@@ -15,6 +15,15 @@ export interface HydraulicRoleBinding {
 
 export type HydraulicRolesMap = Partial<Record<HydraulicRoleId, HydraulicRoleBinding>>;
 
+/** MAC tipagem: upper, '-'→':', colapsa '::' residual. */
+export function sanitizeSlaveMac(mac: string | null | undefined): string {
+  let s = (mac ?? '').trim().toUpperCase().replace(/-/g, ':');
+  while (s.includes('::')) {
+    s = s.replace(/::/g, ':');
+  }
+  return s;
+}
+
 export interface HydraulicRoleDefinition {
   id: HydraulicRoleId;
   label: string;
@@ -172,7 +181,7 @@ export function normalizeHydraulicRolesJson(raw: unknown): HydraulicRolesMap {
     const entry = (raw as Record<string, unknown>)[def.id];
     if (!entry || typeof entry !== 'object') continue;
     const e = entry as Record<string, unknown>;
-    const slaveMac = String(e.slaveMac ?? e.slave_mac ?? '').trim().toUpperCase();
+    const slaveMac = sanitizeSlaveMac(String(e.slaveMac ?? e.slave_mac ?? ''));
     const relayIndex = Number(e.relayIndex ?? e.relay_index);
     if (slaveMac && Number.isFinite(relayIndex) && relayIndex >= 0 && relayIndex <= 7) {
       out[def.id] = { target: 'slave', slaveMac, relayIndex };

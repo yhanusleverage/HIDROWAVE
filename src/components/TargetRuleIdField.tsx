@@ -56,7 +56,7 @@ export default function TargetRuleIdField({
           )}
           {filteredRules.map((rule) => (
             <option key={rule.rule_id} value={rule.rule_id}>
-              {rule.rule_name} ({rule.rule_id})
+              {rule.rule_name} — {rule.rule_id}
             </option>
           ))}
         </select>

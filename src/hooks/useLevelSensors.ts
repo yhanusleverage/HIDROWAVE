@@ -24,6 +24,8 @@ export interface LevelSensorsState {
   waterLevelOk: boolean | null;
   levelInterlockMode: LevelInterlockMode;
   levelsSimulated: boolean;
+  circulationTyped: boolean | null;
+  circulationMixOk: boolean | null;
   lastTelemetryAt: string | null;
   isLoading: boolean;
 }
@@ -39,6 +41,8 @@ const EMPTY: LevelSensorsState = {
   waterLevelOk: null,
   levelInterlockMode: null,
   levelsSimulated: false,
+  circulationTyped: null,
+  circulationMixOk: null,
   lastTelemetryAt: null,
   isLoading: false,
 };
@@ -75,6 +79,10 @@ function parseRow(row: LevelSensorRow | Record<string, unknown> | null): LevelSe
     waterLevelOk: typeof row.water_level_ok === 'boolean' ? row.water_level_ok : null,
     levelInterlockMode: parseInterlockMode(row.level_interlock_mode),
     levelsSimulated: row.levels_simulated === true,
+    circulationTyped:
+      typeof row.circulation_typed === 'boolean' ? row.circulation_typed : null,
+    circulationMixOk:
+      typeof row.circulation_mix_ok === 'boolean' ? row.circulation_mix_ok : null,
     lastTelemetryAt: updatedAt ?? lastSeen,
     isLoading: false,
   };
@@ -91,7 +99,7 @@ export function useLevelSensors(deviceId: string, enabled = true): LevelSensorsS
     const { data, error } = await supabase
       .from('device_status')
       .select(
-        'level_1, level_2, level_3, level_4, water_level, water_level_ok, level_interlock_mode, levels_simulated, updated_at, last_seen'
+        'level_1, level_2, level_3, level_4, water_level, water_level_ok, level_interlock_mode, levels_simulated, circulation_typed, circulation_mix_ok, updated_at, last_seen'
       )
       .eq('device_id', id)
       .maybeSingle();

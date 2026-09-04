@@ -143,6 +143,17 @@ export const appEs: AppTranslations = {
       timeline: 'Ciclo de cultivo',
       timelineSub: 'Receta — semanas S0…Sn',
     },
+    mixInterlock: {
+      ok: 'Mezcla OK',
+      inactive: 'Pausado — recirculación inactiva',
+      notTyped: 'Pausado — bomba no tipada',
+    },
+    fixedRules: {
+      fnCirculation: 'Recirculación continua',
+      fnFill: 'Llenado hasta alto',
+      fnDrain: 'Drenaje hasta vacío',
+      fnRecharge: 'Recarga hasta alto',
+    },
     procedures: {
       banner:
         'P1 — tipado fijo de relés hidráulicos + constructor. Las reglas se compilan a decision_rules (MAC + relé resueltos).',
@@ -165,7 +176,15 @@ export const appEs: AppTranslations = {
       fixedRole: 'Función fija',
       emptyAtlasRelays: 'No hay relés Atlas. Revise HydroWave Atlas en la pestaña Reglas.',
       saveType: 'Guardar tipado',
+      saveTypeRole: 'Guardar tipado',
       typeSaved: 'Tipado hidráulico guardado',
+      typeRoleSaved: 'Tipado guardado',
+      ruleInactive: 'regla inactiva en el Motor',
+      typePerRoleHint:
+        'En cada función: elija el relé Atlas y Guardar tipado — crea la regla en el Motor (acción simple, inactiva hasta activar).',
+      fixedFunctionKind: 'Procedimiento tipado',
+      sequentialScriptKind: 'Script secuencial',
+      selectRelayFirst: 'Seleccione un relé Atlas antes de guardar',
       typeSaveError: 'Error al guardar el tipado',
       typeNetworkError: 'Error de red al guardar el tipado',
       builderTitle: 'Constructor de procedimiento',
@@ -227,6 +246,41 @@ export const appEs: AppTranslations = {
       stepWait: 'Esperar',
       stepHoldChemical: 'Pausar Auto EC/pH',
       stepInvokeRule: 'Regla encadenada',
+      advancedToggle: 'Avanzado — drenaje, llenado y builder',
+      advancedHint:
+        'Solo si cambias solución o armas una secuencia. Lo esencial es la bomba de circulación arriba.',
+    },
+  },
+  onboarding: {
+    stepOf: 'Paso {current} de {total}',
+    next: 'Siguiente',
+    back: 'Atrás',
+    skip: 'Saltar guía',
+    finish: 'Terminar',
+    restartGuide: 'Ver guía de nuevo',
+    toastLabel: 'SISTEMA',
+    toastStep: 'Paso {n}',
+    toastDone: 'Configuración inicial lista. ¡Buen cultivo!',
+    toastSkipped: 'Guía cerrada. Puedes abrirla otra vez desde el menú.',
+    steps: {
+      welcomeTitle: 'Bienvenido a HydroWave',
+      welcomeBody:
+        'En pocos pasos dejas el sistema midiendo y dosificando solo. Lenguaje simple — sin jerga técnica.',
+      devicesTitle: '¿Tu Core está online?',
+      devicesBody:
+        'Comprueba que el HydroWave Core aparezca online. Si tienes Atlas (relés), también debe salir en la lista.',
+      circulationTitle: 'Configura la bomba de circulación',
+      circulationBody:
+        'En Procedimientos, elige el relé de la bomba de circulación y guarda. Sin eso Auto EC/pH no mezcla bien la solución.',
+      calibrateTitle: 'Calibra las bombas',
+      calibrateBody:
+        'Mide cuántos ml entrega cada bomba. Así la dosis queda bien — no inventes el valor.',
+      autoEcTitle: 'Ajusta el EC y enciende Auto EC',
+      autoEcBody:
+        'Define el objetivo de EC, guarda y activa Auto EC. El sistema corrige solo.',
+      doneTitle: 'Listo',
+      doneBody:
+        'Sigue el cultivo en el Dashboard. Si hace falta, abre la guía otra vez desde el menú lateral.',
     },
   },
 };

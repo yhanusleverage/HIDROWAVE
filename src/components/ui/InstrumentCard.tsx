@@ -21,7 +21,7 @@ export function InstrumentCard({
   tinted = false,
   ariaLive,
 }: InstrumentCardProps) {
-  const surface = tinted ? HW_BG_SUBTLE[accent] : 'bg-dark-surface border-dark-border';
+  const surface = tinted ? HW_BG_SUBTLE[accent] : 'bg-dark-card border-dark-border';
 
   return (
     <div

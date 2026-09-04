@@ -1,5 +1,6 @@
 'use client';
 
+import { FN_RULE_IDS, FN_RULE_NAME_PT } from '@/lib/fixed-function-rule-from-hydraulic';
 import type { HydraulicRoleId, ProcedureStep } from '@/lib/rule-procedure/types';
 import { HwBadge } from '@/components/ui/HwBadge';
 import ConditionFields from '@/components/instruction-editors/ConditionFields';
@@ -10,6 +11,12 @@ import { hydraulicRoleCopy } from '@/lib/translations/app/procedure-roles';
 
 const VALVE_ROLE_IDS: HydraulicRoleId[] = ['fill_valve', 'drain_valve', 'recharge_pump'];
 const RELAY_ROLE_IDS: HydraulicRoleId[] = ['circulation_pump', 'recharge_pump'];
+const INVOKE_FN_OPTIONS: Array<{ roleId: HydraulicRoleId; ruleId: string }> = [
+  { roleId: 'circulation_pump', ruleId: FN_RULE_IDS.circulation_pump },
+  { roleId: 'fill_valve', ruleId: FN_RULE_IDS.fill_valve },
+  { roleId: 'drain_valve', ruleId: FN_RULE_IDS.drain_valve },
+  { roleId: 'recharge_pump', ruleId: FN_RULE_IDS.recharge_pump },
+];
 
 interface ProcedureStepEditorProps {
   step: ProcedureStep;
@@ -288,6 +295,48 @@ export function ProcedureStepEditor({
             className="mt-1 w-full p-2 bg-dark-surface border border-dark-border rounded"
           />
         </label>
+      )}
+
+      {step.type === 'invoke_rule' && (
+        <div className="space-y-2 text-xs">
+          <label className="block">
+            <span className="text-dark-textSecondary">{p.stepInvokeRule}</span>
+            <select
+              value={step.targetRuleId}
+              onChange={(e) => update({ targetRuleId: e.target.value })}
+              className="mt-1 w-full p-2 bg-dark-surface border border-dark-border rounded-lg"
+            >
+              {INVOKE_FN_OPTIONS.map(({ roleId, ruleId }) => (
+                <option key={ruleId} value={ruleId}>
+                  {hydraulicRoleCopy(p, roleId).label} ({ruleId})
+                </option>
+              ))}
+              <option value={step.targetRuleId}>
+                {step.targetRuleId || '— custom —'}
+              </option>
+            </select>
+          </label>
+          <p className="text-[11px] text-dark-textSecondary/90">
+            {FN_RULE_NAME_PT[
+              (Object.entries(FN_RULE_IDS).find(([, id]) => id === step.targetRuleId)?.[0] as
+                | HydraulicRoleId
+                | undefined) ?? 'circulation_pump'
+            ] ?? step.targetRuleId}
+          </p>
+          <label className="block">
+            <span className="text-dark-textSecondary">on</span>
+            <select
+              value={step.on}
+              onChange={(e) =>
+                update({ on: e.target.value as 'success' | 'failure' })
+              }
+              className="mt-1 w-full p-2 bg-dark-surface border border-dark-border rounded"
+            >
+              <option value="success">success</option>
+              <option value="failure">failure</option>
+            </select>
+          </label>
+        </div>
       )}
     </article>
   );

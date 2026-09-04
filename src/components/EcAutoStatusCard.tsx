@@ -11,6 +11,8 @@ import { useEcOperationState } from '@/hooks/useEcOperationState';
 import { useEcDilutionState } from '@/hooks/useEcDilutionState';
 import { useEcConfig } from '@/hooks/useEcConfig';
 import { useHydroEcReading } from '@/hooks/useHydroEcReading';
+import { useLevelSensors } from '@/hooks/useLevelSensors';
+import { MixInterlockBadge } from '@/components/MixInterlockBadge';
 import { ecErrorAbs } from '@/lib/ec-control-display';
 import { formatSensorValue } from '@/lib/format-sensor-value';
 
@@ -49,6 +51,7 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
   const dilutionState = useEcDilutionState(deviceId, active, {
     mirrorFirmware: true,
   });
+  const levels = useLevelSensors(deviceId, active);
 
   if (!active) {
     return null;
@@ -95,6 +98,9 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
           accent="emerald"
           operationInterrupted={operationInterrupted}
         />
+        <div className="mt-2">
+          <MixInterlockBadge levels={levels} />
+        </div>
 
         {dilutionState.isDraining && dilutionState.targetL > 0 && (
           <div className="mt-4 mb-2 space-y-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2.5">

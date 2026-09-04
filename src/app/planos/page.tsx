@@ -25,16 +25,16 @@ const TIERS = [
   {
     id: 'free' as PlanId,
     name: 'Operação Inicial',
-    audience: '1 estufa piloto',
+    audience: 'Kit + cloud — quantos Cores você comprar',
     price: 'Incluído na compra do kit',
-    priceNote: 'Ideal para validar o sistema na sua operação',
+    priceNote: 'N devices e multi-site no mesmo dashboard — sem teto artificial',
     cta: 'Já estou usando',
     ctaHref: '/dashboard',
     ctaStyle: 'secondary' as const,
     highlighted: false,
     features: [
-      '1 HydroWave Core + dashboard em tempo real',
-      'Auto EC e Auto pH básicos',
+      'N HydroWave Core + Atlas no mesmo dashboard (multi-site)',
+      'Auto EC e Auto pH + tipagem da bomba de circulação',
       'Histórico de sensores: 30 dias',
       'Suporte por email (resposta em até 48h)',
     ],
@@ -42,16 +42,16 @@ const TIERS = [
   {
     id: 'premium' as PlanId,
     name: 'Pro Comercial',
-    audience: 'Estufa em produção',
+    audience: 'Operação que precisa de retenção e alertas',
     price: 'Sob consulta',
-    priceNote: 'A partir de R$ 299/mês por site',
+    priceNote: 'A partir de R$ 299/mês por conta — não por Core',
     cta: 'Solicitar upgrade Pro',
     ctaHref:
       'mailto:suporte@hydrowave.com?subject=Upgrade%20HydroWave%20Pro%20Comercial&body=Olá,%20gostaria%20de%20informações%20sobre%20o%20plano%20Pro%20Comercial.',
     ctaStyle: 'primary' as const,
     highlighted: true,
     features: [
-      'Até vários dispositivos por conta (conforme contrato)',
+      'Tudo do plano Inicial (flota incluída)',
       'Histórico completo: 12 meses',
       'Alertas SMS e email prioritários',
       'Calibragem de bombas assistida remotamente',
@@ -61,7 +61,7 @@ const TIERS = [
   {
     id: 'enterprise' as PlanId,
     name: 'Enterprise Estufa',
-    audience: 'Multi-site / integrador',
+    audience: 'Integrador / operação com SLA e API',
     price: 'Falar com vendas',
     priceNote: 'Contrato anual personalizado',
     cta: 'Falar com vendas',
@@ -70,7 +70,7 @@ const TIERS = [
     ctaStyle: 'secondary' as const,
     highlighted: false,
     features: [
-      'Multi-site e multi-usuário',
+      'Tudo do Pro + multi-usuário avançado',
       'API e exportação de relatórios',
       'SLA de suporte 4h em horário comercial',
       'Onboarding presencial ou remoto dedicado',
@@ -103,9 +103,9 @@ const ADDON_SERVICES = [
 ];
 
 const COMPARISON_ROWS = [
-  { feature: 'Dispositivos', free: '1 Core', premium: 'Conforme contrato', enterprise: 'Ilimitado*' },
-  { feature: 'Histórico de dados', free: '30 dias', premium: '12 meses', enterprise: 'Ilimitado' },
-  { feature: 'Auto EC / Auto pH', free: 'Sim', premium: 'Sim + prioridade', enterprise: 'Sim + SLA' },
+  { feature: 'Dispositivos / multi-site', free: 'N Cores (kit)', premium: 'Incluído', enterprise: 'Incluído' },
+  { feature: 'Histórico de dados', free: '30 dias', premium: '12 meses', enterprise: 'Ilimitado*' },
+  { feature: 'Auto EC / Auto pH + circulação', free: 'Sim', premium: 'Sim', enterprise: 'Sim + SLA' },
   { feature: 'Alertas SMS', free: '—', premium: 'Sim', enterprise: 'Sim' },
   { feature: 'API / exportação', free: '—', premium: 'Básico', enterprise: 'Completo' },
   { feature: 'Suporte', free: 'Email 48h', premium: 'Estendido', enterprise: 'SLA 4h' },
@@ -143,7 +143,7 @@ export default function PlanosPage() {
                   Planos e Serviços
                 </h1>
                 <p className="text-dark-textSecondary mt-1 text-sm max-w-xl">
-                  Automação hidropônica para operações que não podem parar
+                  Flota de Cores no cloud com o kit. Assinatura = retenção, alertas e suporte — não o direito de ver o segundo device.
                 </p>
               </div>
             </div>
@@ -276,8 +276,9 @@ export default function PlanosPage() {
             </table>
           </div>
           <p className="text-xs text-dark-textSecondary p-4 border-t border-dark-border">
-            * Limites de Enterprise definidos em contrato. Pagamento recorrente (cartão, Pix ou boleto) será
-            disponibilizado em versão futura via portal de assinatura.
+            * Retenção Enterprise e SLA definidos em contrato. Quantidade de Cores acompanha o hardware
+            comprado em todos os planos. Pagamento recorrente (cartão, Pix ou boleto) será disponibilizado
+            em versão futura via portal de assinatura.
           </p>
         </section>
 

@@ -19,6 +19,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import TargetRuleIdField from '@/components/TargetRuleIdField';
 import { DEFAULT_MASTER_RELAYS } from '@/lib/master-relay-options';
 import { createNestedInstruction, ensureInstructionIds } from '@/lib/instruction-factory';
+import { resolveDecisionRuleDisplayName } from '@/lib/decision-rule-display-name';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface Instruction {
   id?: string;
@@ -66,6 +68,7 @@ export default function SequentialScriptEditor({
   onClose,
 }: SequentialScriptEditorProps) {
   const { userProfile } = useAuth();
+  const { t } = useLanguage();
   const [ruleName, setRuleName] = useState('');
   const [ruleDescription, setRuleDescription] = useState('');
   const [priority, setPriority] = useState(50);
@@ -92,13 +95,24 @@ export default function SequentialScriptEditor({
       try {
         const { data, error } = await supabase
           .from('decision_rules')
-          .select('rule_id, rule_name')
+          .select('rule_id, rule_name, rule_json')
           .eq('device_id', deviceId)
-          .eq('created_by', userProfile.email)
           .order('rule_name', { ascending: true });
 
         if (error) throw error;
-        setAvailableRules(data || []);
+        setAvailableRules(
+          (data || []).map((row) => ({
+            rule_id: String(row.rule_id),
+            rule_name: resolveDecisionRuleDisplayName(
+              {
+                rule_id: row.rule_id,
+                rule_name: row.rule_name,
+                rule_json: row.rule_json,
+              },
+              t
+            ),
+          }))
+        );
       } catch (error) {
         console.error('Erro ao carregar regras disponíveis:', error);
         setAvailableRules([]);
@@ -108,7 +122,7 @@ export default function SequentialScriptEditor({
     };
 
     loadAvailableRules();
-  }, [deviceId, userProfile?.email]);
+  }, [deviceId, userProfile?.email, t]);
 
   // ✅ Funções auxiliares para conversão de tempo
   const msToTime = (ms: number): string => {

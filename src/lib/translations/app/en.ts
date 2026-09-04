@@ -142,6 +142,17 @@ export const appEn: AppTranslations = {
       timeline: 'Grow cycle',
       timelineSub: 'Recipe — weeks S0…Sn',
     },
+    mixInterlock: {
+      ok: 'Mix OK',
+      inactive: 'Paused — recirculation inactive',
+      notTyped: 'Paused — circulation pump not typed',
+    },
+    fixedRules: {
+      fnCirculation: 'Continuous recirculation',
+      fnFill: 'Fill until high',
+      fnDrain: 'Drain until empty',
+      fnRecharge: 'Recharge until high',
+    },
     procedures: {
       banner:
         'P1 — fixed hydraulic relay roles + procedure builder. Rules compile to decision_rules (MAC + relay resolved).',
@@ -163,7 +174,15 @@ export const appEn: AppTranslations = {
       fixedRole: 'Fixed role',
       emptyAtlasRelays: 'No Atlas relays available. Check HydroWave Atlas on the Rules tab.',
       saveType: 'Save roles',
+      saveTypeRole: 'Save typing',
       typeSaved: 'Hydraulic roles saved',
+      typeRoleSaved: 'Role typing saved',
+      ruleInactive: 'inactive rule in Rules engine',
+      typePerRoleHint:
+        'Per function: pick the Atlas relay and Save typing — creates a simple-action rule in the Rules engine (inactive until you enable it).',
+      fixedFunctionKind: 'Typed procedure',
+      sequentialScriptKind: 'Sequential script',
+      selectRelayFirst: 'Select an Atlas relay before saving',
       typeSaveError: 'Error saving roles',
       typeNetworkError: 'Network error saving roles',
       builderTitle: 'Procedure builder',
@@ -224,6 +243,41 @@ export const appEn: AppTranslations = {
       stepWait: 'Wait',
       stepHoldChemical: 'Pause Auto EC/pH',
       stepInvokeRule: 'Chained rule',
+      advancedToggle: 'Advanced — drain, fill and builder',
+      advancedHint:
+        'Only if you change solution or build a sequence. The essential step is the circulation pump above.',
+    },
+  },
+  onboarding: {
+    stepOf: 'Step {current} of {total}',
+    next: 'Next',
+    back: 'Back',
+    skip: 'Skip guide',
+    finish: 'Finish',
+    restartGuide: 'Show guide again',
+    toastLabel: 'SISTEMA',
+    toastStep: 'Step {n}',
+    toastDone: 'Initial setup done. Happy growing!',
+    toastSkipped: 'Guide closed. You can open it again from the menu.',
+    steps: {
+      welcomeTitle: 'Welcome to HydroWave',
+      welcomeBody:
+        'In a few steps you get the system measuring and dosing on its own. Plain language — no jargon.',
+      devicesTitle: 'Is your Core online?',
+      devicesBody:
+        'Check that the HydroWave Core shows online. If you have an Atlas (relays), it should appear in the list too.',
+      circulationTitle: 'Set the circulation pump',
+      circulationBody:
+        'In Procedures, pick the circulation pump relay and save. Without it, Auto EC/pH cannot mix the solution well.',
+      calibrateTitle: 'Calibrate the pumps',
+      calibrateBody:
+        'Measure how many ml each pump delivers. That keeps doses accurate — do not guess.',
+      autoEcTitle: 'Set EC and turn on Auto EC',
+      autoEcBody:
+        'Set the EC target, save, and enable Auto EC. The system will correct on its own.',
+      doneTitle: 'You are set',
+      doneBody:
+        'Follow along on the Dashboard. Open the guide again anytime from the side menu.',
     },
   },
 };

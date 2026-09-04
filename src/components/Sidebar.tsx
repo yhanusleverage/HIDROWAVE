@@ -5,6 +5,7 @@ import NavLink from '@/components/NavLink';
 import { usePathname } from 'next/navigation';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useOnboardingTour } from '@/contexts/OnboardingTourContext';
 import BrandLogo from '@/components/BrandLogo';
 import { hwNavActiveClasses, hwNavIconClasses } from '@/lib/design-tokens';
 import type { AppTranslations } from '@/lib/translations/app/types';
@@ -246,18 +247,33 @@ export default function Sidebar() {
         </ul>
       </nav>
 
-      {/* Footer — in flow (no absolute) to avoid overlapping nav items */}
+      {/* Footer */}
       <div
-        className={`shrink-0 border-t border-dark-border px-4 py-3 transition-opacity ${
+        className={`shrink-0 border-t border-dark-border px-3 py-3 space-y-2 transition-opacity ${
           isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
+        <RestartGuideButton />
         <p className="text-xs text-dark-textSecondary text-center">
           © {new Date().getFullYear()} HydroWave
         </p>
       </div>
     </aside>
     </>
+  );
+}
+
+function RestartGuideButton() {
+  const { t } = useLanguage();
+  const { startTour } = useOnboardingTour();
+  return (
+    <button
+      type="button"
+      onClick={() => startTour({ fromBeginning: true })}
+      className="w-full text-left text-xs font-medium text-aqua-300 hover:text-aqua-200 px-2 py-2 rounded-lg hover:bg-dark-card/60 transition-colors"
+    >
+      {t.onboarding.restartGuide}
+    </button>
   );
 }
 

@@ -5,6 +5,10 @@ export type PendingRelayCommand = {
   durationSeconds?: number;
   successToast?: string;
   cycle?: { onDuration: number; offDuration: number } | 'stop';
+  /** Contexto para toasts amigáveis */
+  slaveMac?: string;
+  slaveName?: string;
+  relayLabel?: string;
 };
 
 /** Espera ACK (command_ack o relay_slaves). 8s era corto para ESP-NOW + bridge. */
@@ -54,7 +58,12 @@ export function applyRelayCommandAck(
   status: string,
   handlers: {
     onCompleted: (relayKey: string, action?: string, pending?: PendingRelayCommand) => void;
-    onFailed: (relayKey: string, previousState: boolean, relayNumber?: number) => void;
+    onFailed: (
+      relayKey: string,
+      previousState: boolean,
+      relayNumber?: number,
+      pending?: PendingRelayCommand
+    ) => void;
   },
   action?: string,
   relayNumber?: number
@@ -71,7 +80,7 @@ export function applyRelayCommandAck(
     return true;
   }
   if (normalized === 'failed') {
-    handlers.onFailed(pending.relayKey, pending.previousState, relayNumber);
+    handlers.onFailed(pending.relayKey, pending.previousState, relayNumber, pending);
     pendingMap.delete(key);
     pendingMap.delete(commandId);
     return true;

@@ -11,6 +11,8 @@ import {
 
 import type { AutomationRule } from '@/app/automacao/AutomacaoPageClient';
 import { HW_ACCENT_TOP, HW_BADGE } from '@/lib/design-tokens';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { resolveDecisionRuleDisplayName } from '@/lib/decision-rule-display-name';
 
 interface RuleCardProps {
   rule: AutomationRule;
@@ -21,6 +23,15 @@ interface RuleCardProps {
 
 export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardProps) {
   const [showJsonPreview, setShowJsonPreview] = useState(false);
+  const { t } = useLanguage();
+  const displayName = resolveDecisionRuleDisplayName(
+    {
+      rule_id: rule.rule_id,
+      rule_name: rule.rule_name || rule.name,
+      rule_json: rule.rule_json,
+    },
+    t
+  );
   
   // ✅ Construir objeto completo como se envía al Supabase
   const getFullRuleJson = () => {
@@ -54,11 +65,25 @@ export default function RuleCard({ rule, onToggle, onEdit, onDelete }: RuleCardP
           <div className="flex items-center space-x-3 flex-1 min-w-0">
             <div className="flex-1 min-w-0">
               <div className="flex items-center space-x-2 mb-1">
-                <h3 className="text-base font-semibold text-dark-text truncate">{rule.name}</h3>
+                <h3 className="text-base font-semibold text-dark-text truncate">{displayName}</h3>
                 <span
-                  className={`px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 ${
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggle(rule.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onToggle(rule.id);
+                    }
+                  }}
+                  className={`px-2 py-0.5 rounded-full text-xs font-medium border flex-shrink-0 cursor-pointer ${
                     rule.enabled ? HW_BADGE.brand : HW_BADGE.neutral
                   }`}
+                  title={rule.enabled ? 'Desativar regra' : 'Ativar regra'}
                 >
                   {rule.enabled ? (
                     <span className="flex items-center">

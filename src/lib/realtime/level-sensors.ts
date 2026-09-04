@@ -10,6 +10,8 @@ export type LevelSensorRow = {
   water_level_ok?: boolean | null;
   level_interlock_mode?: string | null;
   levels_simulated?: boolean | null;
+  circulation_typed?: boolean | null;
+  circulation_mix_ok?: boolean | null;
   updated_at?: string | null;
   last_seen?: string | null;
 };

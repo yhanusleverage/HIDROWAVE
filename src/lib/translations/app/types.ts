@@ -97,6 +97,32 @@ export interface AppTranslations {
     noDevicesHint: string;
     noActiveRule: string;
   };
+  onboarding: {
+    stepOf: string;
+    next: string;
+    back: string;
+    skip: string;
+    finish: string;
+    restartGuide: string;
+    toastLabel: string;
+    toastStep: string;
+    toastDone: string;
+    toastSkipped: string;
+    steps: {
+      welcomeTitle: string;
+      welcomeBody: string;
+      devicesTitle: string;
+      devicesBody: string;
+      circulationTitle: string;
+      circulationBody: string;
+      calibrateTitle: string;
+      calibrateBody: string;
+      autoEcTitle: string;
+      autoEcBody: string;
+      doneTitle: string;
+      doneBody: string;
+    };
+  };
   pages: {
     dashboardTitle: string;
     dashboardSubtitle: string;
@@ -140,6 +166,17 @@ export interface AppTranslations {
       timeline: string;
       timelineSub: string;
     };
+    mixInterlock: {
+      ok: string;
+      inactive: string;
+      notTyped: string;
+    };
+    fixedRules: {
+      fnCirculation: string;
+      fnFill: string;
+      fnDrain: string;
+      fnRecharge: string;
+    };
     procedures: {
       banner: string;
       atlasTitle: string;
@@ -159,7 +196,14 @@ export interface AppTranslations {
       fixedRole: string;
       emptyAtlasRelays: string;
       saveType: string;
+      saveTypeRole: string;
       typeSaved: string;
+      typeRoleSaved: string;
+      ruleInactive: string;
+      typePerRoleHint: string;
+      fixedFunctionKind: string;
+      sequentialScriptKind: string;
+      selectRelayFirst: string;
       typeSaveError: string;
       typeNetworkError: string;
       builderTitle: string;
@@ -220,6 +264,8 @@ export interface AppTranslations {
       stepWait: string;
       stepHoldChemical: string;
       stepInvokeRule: string;
+      advancedToggle: string;
+      advancedHint: string;
     };
   };
 }
