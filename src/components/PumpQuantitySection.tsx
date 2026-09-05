@@ -8,6 +8,8 @@ import {
   subscribePumpQuantity,
   type PumpQuantityRow,
 } from '@/lib/realtime/pump-quantity';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { toBcp47 } from '@/lib/locale';
 
 export type { PumpQuantityRow };
 
@@ -24,23 +26,21 @@ function formatMl(v: number): string {
 }
 
 function LiveBadge({ status }: { status: RealtimeChannelStatus | 'connecting' }) {
+  const { t } = useLanguage();
+  const q = t.calibragem.qty;
   const live = status === 'SUBSCRIBED';
   const label =
     status === 'SUBSCRIBED'
-      ? 'Ao vivo'
+      ? q.live
       : status === 'connecting'
-        ? 'Conectando…'
+        ? q.connecting
         : status === 'CHANNEL_ERROR'
-          ? 'Realtime off'
-          : 'Offline';
+          ? q.realtimeOff
+          : q.offline;
 
   return (
     <span
-      title={
-        live
-          ? 'Supabase Realtime ativo — ml atualizam sem F5'
-          : 'Sem WebSocket — rode ENABLE_PUMP_QUANTITY_REALTIME.sql ou recarregue a aba'
-      }
+      title={live ? q.liveHintOn : q.liveHintOff}
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${
         live
           ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
@@ -60,6 +60,8 @@ function LiveBadge({ status }: { status: RealtimeChannelStatus | 'connecting' })
 }
 
 export function PumpQuantitySection({ deviceId, relayOptions }: Props) {
+  const { t, locale } = useLanguage();
+  const q = t.calibragem.qty;
   const [rows, setRows] = useState<PumpQuantityRow[]>([]);
   const [resetting, setResetting] = useState<number | null>(null);
   const [rtStatus, setRtStatus] = useState<RealtimeChannelStatus | 'connecting'>(
@@ -80,9 +82,9 @@ export function PumpQuantitySection({ deviceId, relayOptions }: Props) {
       setRows((data as PumpQuantityRow[]) || []);
     } catch (e) {
       console.error(e);
-      toast.error('Erro ao carregar quantidade das bombas');
+      toast.error(q.toastLoadError);
     }
-  }, [deviceId]);
+  }, [deviceId, q.toastLoadError]);
 
   useEffect(() => {
     void load();
@@ -128,12 +130,12 @@ export function PumpQuantitySection({ deviceId, relayOptions }: Props) {
         p_reset_by: 'web',
       });
       if (error) throw error;
-      toast.success(`Relé ${relay} zerado`);
+      toast.success(q.toastResetOk.replace('{n}', String(relay)));
       // Realtime atualiza; load() cobre se o evento chegar atrasado
       void load();
     } catch (e) {
       console.error(e);
-      toast.error('Falha ao zerar quantidade');
+      toast.error(q.toastResetFail);
     } finally {
       setResetting(null);
     }
@@ -142,16 +144,11 @@ export function PumpQuantitySection({ deviceId, relayOptions }: Props) {
   return (
     <section className="space-y-4">
       <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/5 border border-emerald-500/30 rounded-xl p-5">
-        <p className="text-sm text-dark-textSecondary">
-          <strong className="text-dark-text">Quantidade (ml).</strong> Total
-          acumulado por bomba desde o último Zerar. Relés{' '}
-          <strong className="text-dark-text">0–7</strong> (mesmo índice da
-          Automação / BD — não usar numeração 1–8 do Serial antigo).
-        </p>
+        <p className="text-sm text-dark-textSecondary">{q.intro}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-lg font-semibold text-dark-text">Bombas (relés 0–7)</h2>
+        <h2 className="text-lg font-semibold text-dark-text">{q.title}</h2>
         <LiveBadge status={rtStatus} />
       </div>
 
@@ -174,10 +171,13 @@ export function PumpQuantitySection({ deviceId, relayOptions }: Props) {
                 </div>
                 {inc ? (
                   <div className="text-xs text-dark-textSecondary mt-1">
-                    Último incremento: {new Date(inc).toLocaleString()}
+                    {q.lastIncrement.replace(
+                      '{when}',
+                      new Date(inc).toLocaleString(toBcp47(locale))
+                    )}
                   </div>
                 ) : (
-                  <div className="text-xs text-dark-textSecondary mt-1">Sem doses ainda</div>
+                  <div className="text-xs text-dark-textSecondary mt-1">{q.noDoses}</div>
                 )}
               </div>
               <button
@@ -186,7 +186,7 @@ export function PumpQuantitySection({ deviceId, relayOptions }: Props) {
                 disabled={resetting === opt.number || ml <= 0}
                 className="px-4 py-2 text-sm font-medium rounded-lg border border-amber-500/40 text-amber-400 hover:bg-amber-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {resetting === opt.number ? 'Zerando…' : 'Zerar'}
+                {resetting === opt.number ? q.resetting : q.reset}
               </button>
             </li>
           );

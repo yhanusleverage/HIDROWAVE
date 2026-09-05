@@ -1,5 +1,14 @@
 export type GrowPhase = 'establishment' | 'vegetative' | 'flip' | 'flower' | 'flush';
 
+/** Ordem canónica (UI select / presets). `flip` = pré-flor / transition. */
+export const GROW_PHASES: GrowPhase[] = [
+  'establishment',
+  'vegetative',
+  'flip',
+  'flower',
+  'flush',
+];
+
 export type TankEventKind = 'initial_fill' | 'changeout' | 'drain_full';
 
 export type ProcessLayer = 'P1' | 'P2' | 'P3' | 'P4';
@@ -57,9 +66,18 @@ export interface SimulatedLogEntry {
 export const PHASE_LABELS: Record<GrowPhase, string> = {
   establishment: 'Estabelecimento',
   vegetative: 'Vegetativo',
-  flip: 'Flip',
+  flip: 'Pré-flor',
   flower: 'Floração',
   flush: 'Flush',
+};
+
+/** Ribbon do canopy (3 chars). */
+export const PHASE_RIBBON_SHORT: Record<GrowPhase, string> = {
+  establishment: 'Est',
+  vegetative: 'Veg',
+  flip: 'Pré',
+  flower: 'Flo',
+  flush: 'Flu',
 };
 
 export const PHASE_COLORS: Record<GrowPhase, string> = {
@@ -69,3 +87,7 @@ export const PHASE_COLORS: Record<GrowPhase, string> = {
   flower: 'bg-violet-500/20 border-violet-500/40',
   flush: 'bg-cyan-500/20 border-cyan-500/40',
 };
+
+export function isGrowPhase(value: string): value is GrowPhase {
+  return (GROW_PHASES as string[]).includes(value);
+}

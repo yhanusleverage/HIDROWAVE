@@ -4,9 +4,9 @@ export const TIMELINE_MARGIN = { top: 48, right: 16, bottom: 36, left: 52 } as c
 
 export const LANE_LABEL_COL_W = 52;
 
-export const DEFAULT_WEEK_SLOT_W = 56;
+export const DEFAULT_WEEK_SLOT_W = 72;
 
-export const MIN_WEEK_SLOT_W = 44;
+export const MIN_WEEK_SLOT_W = 56;
 
 export const MAX_WEEK_SLOT_W = 96;
 

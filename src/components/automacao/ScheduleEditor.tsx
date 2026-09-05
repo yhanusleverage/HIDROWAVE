@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   PlusIcon,
   TrashIcon,
@@ -8,6 +8,7 @@ import {
   CalendarIcon,
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface RuleSchedule {
   id: string;
@@ -35,9 +36,25 @@ interface ScheduleEditorProps {
   deviceId: string;
 }
 
-const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-
 export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
+  const { t } = useLanguage();
+  const sch = t.automacao.schedule;
+  const ac = t.automacao.common;
+
+  const dayLabels = useMemo(
+    () => [sch.days.sun, sch.days.mon, sch.days.tue, sch.days.wed, sch.days.thu, sch.days.fri, sch.days.sat],
+    [sch.days]
+  );
+
+  const scheduleTypeLabel = useCallback(
+    (type: RuleSchedule['schedule_type']) => {
+      if (type === 'daily') return sch.typeDaily;
+      if (type === 'weekly') return sch.typeWeekly;
+      return sch.typeGrowWeek;
+    },
+    [sch.typeDaily, sch.typeWeekly, sch.typeGrowWeek]
+  );
+
   const [schedules, setSchedules] = useState<RuleSchedule[]>([]);
   const [rules, setRules] = useState<DecisionRuleOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,7 +124,7 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
         await fetchSchedules();
       } else {
         const err = await res.json();
-        alert(err.error || 'Error creating schedule');
+        alert(err.error || sch.errorCreate);
       }
     } finally {
       setSaving(false);
@@ -124,7 +141,7 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar este schedule?')) return;
+    if (!confirm(sch.confirmDelete)) return;
     await fetch(`/api/automation/schedules?id=${id}`, { method: 'DELETE' });
     await fetchSchedules();
   };
@@ -151,10 +168,8 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
           <div className="flex items-center gap-3">
             <CalendarIcon className="w-6 h-6 text-aqua-400" />
             <div>
-              <h2 className="text-lg font-semibold text-dark-text">Cronogramas</h2>
-              <p className="text-sm text-dark-textSecondary">
-                Programe regras por horário, dia da semana ou semana de cultivo
-              </p>
+              <h2 className="text-lg font-semibold text-dark-text">{sch.title}</h2>
+              <p className="text-sm text-dark-textSecondary">{sch.subtitle}</p>
             </div>
           </div>
           <button
@@ -162,7 +177,7 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
             className="flex items-center gap-1 px-3 py-2 bg-aqua-600 hover:bg-aqua-500 text-white rounded-lg text-sm font-medium transition-colors"
           >
             <PlusIcon className="w-4 h-4" />
-            Novo
+            {sch.newButton}
           </button>
         </div>
       </div>
@@ -170,17 +185,17 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
       {/* Form */}
       {showForm && (
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-4 sm:p-6 space-y-4">
-          <h3 className="text-base font-semibold text-dark-text">Criar Schedule</h3>
+          <h3 className="text-base font-semibold text-dark-text">{sch.createTitle}</h3>
 
           {/* Regla */}
           <div>
-            <label className="block text-sm text-dark-textSecondary mb-1">Regra</label>
+            <label className="block text-sm text-dark-textSecondary mb-1">{sch.selectRule}</label>
             <select
               value={formRuleId}
               onChange={(e) => setFormRuleId(e.target.value)}
               className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text text-sm"
             >
-              <option value="">Selecionar regra...</option>
+              <option value="">{sch.selectRulePlaceholder}</option>
               {rules.map((r) => (
                 <option key={r.rule_id} value={r.rule_id}>
                   {r.rule_name} ({r.rule_id})
@@ -191,19 +206,19 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
 
           {/* Tipo */}
           <div>
-            <label className="block text-sm text-dark-textSecondary mb-1">Tipo</label>
+            <label className="block text-sm text-dark-textSecondary mb-1">{sch.typeLabel}</label>
             <div className="flex gap-2">
-              {(['daily', 'weekly', 'grow_week'] as const).map((t) => (
+              {(['daily', 'weekly', 'grow_week'] as const).map((typeId) => (
                 <button
-                  key={t}
-                  onClick={() => setFormType(t)}
+                  key={typeId}
+                  onClick={() => setFormType(typeId)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    formType === t
+                    formType === typeId
                       ? 'bg-aqua-600 text-white'
                       : 'bg-dark-surface border border-dark-border text-dark-textSecondary hover:text-dark-text'
                   }`}
                 >
-                  {t === 'daily' ? 'Diario' : t === 'weekly' ? 'Semanal' : 'Semana Cultivo'}
+                  {scheduleTypeLabel(typeId)}
                 </button>
               ))}
             </div>
@@ -212,7 +227,7 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
           {/* Hora */}
           <div className="flex gap-4">
             <div className="flex-1">
-              <label className="block text-sm text-dark-textSecondary mb-1">Hora inicio</label>
+              <label className="block text-sm text-dark-textSecondary mb-1">{sch.timeStart}</label>
               <input
                 type="time"
                 value={formTimeStart}
@@ -221,7 +236,7 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
               />
             </div>
             <div className="flex-1">
-              <label className="block text-sm text-dark-textSecondary mb-1">Hora fin (opcional)</label>
+              <label className="block text-sm text-dark-textSecondary mb-1">{sch.timeEnd}</label>
               <input
                 type="time"
                 value={formTimeEnd}
@@ -234,9 +249,9 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
           {/* Dias de la semana */}
           {formType === 'weekly' && (
             <div>
-              <label className="block text-sm text-dark-textSecondary mb-2">Días de la semana</label>
+              <label className="block text-sm text-dark-textSecondary mb-2">{sch.daysOfWeek}</label>
               <div className="flex gap-1">
-                {DAY_LABELS.map((label, idx) => (
+                {dayLabels.map((label, idx) => (
                   <button
                     key={idx}
                     onClick={() => toggleDay(idx)}
@@ -256,9 +271,7 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
           {/* Semana cultivo */}
           {formType === 'grow_week' && (
             <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">
-                Semana del ciclo (0 = primera)
-              </label>
+              <label className="block text-sm text-dark-textSecondary mb-1">{sch.growWeek}</label>
               <input
                 type="number"
                 min={0}
@@ -277,13 +290,13 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
               disabled={saving || !formRuleId}
               className="px-4 py-2 bg-aqua-600 hover:bg-aqua-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
             >
-              {saving ? 'Salvando...' : 'Criar Schedule'}
+              {saving ? sch.saving : sch.createAction}
             </button>
             <button
               onClick={() => setShowForm(false)}
               className="px-4 py-2 bg-dark-surface border border-dark-border text-dark-textSecondary hover:text-dark-text rounded-lg text-sm transition-colors"
             >
-              Cancelar
+              {ac.cancel}
             </button>
           </div>
         </div>
@@ -293,10 +306,8 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
       {schedules.length === 0 ? (
         <div className="bg-dark-card border border-dark-border rounded-lg p-8 text-center">
           <ClockIcon className="w-12 h-12 text-dark-textSecondary/50 mx-auto mb-3" />
-          <p className="text-dark-textSecondary">Nenhum schedule configurado ainda.</p>
-          <p className="text-xs text-dark-textSecondary/70 mt-1">
-            Crie um schedule para executar regras automaticamente por horário.
-          </p>
+          <p className="text-dark-textSecondary">{sch.empty}</p>
+          <p className="text-xs text-dark-textSecondary/70 mt-1">{sch.emptyHint}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -313,7 +324,7 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-medium text-dark-text truncate">{ruleName}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-dark-surface border border-dark-border text-dark-textSecondary">
-                      {sched.schedule_type}
+                      {scheduleTypeLabel(sched.schedule_type)}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-dark-textSecondary">
@@ -323,14 +334,17 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
                       {sched.time_end ? ` – ${sched.time_end.slice(0, 5)}` : ''}
                     </span>
                     {sched.days_of_week && sched.days_of_week.length > 0 && (
-                      <span>{sched.days_of_week.map((d) => DAY_LABELS[d]).join(', ')}</span>
+                      <span>{sched.days_of_week.map((d) => dayLabels[d]).join(', ')}</span>
                     )}
                     {sched.grow_week_index != null && (
-                      <span>Semana {sched.grow_week_index}</span>
+                      <span>{sch.weekLabel.replace('{n}', String(sched.grow_week_index))}</span>
                     )}
                     {sched.last_triggered_at && (
                       <span className="text-aqua-400/70">
-                        Último: {new Date(sched.last_triggered_at).toLocaleString()}
+                        {sch.lastTriggered.replace(
+                          '{when}',
+                          new Date(sched.last_triggered_at).toLocaleString()
+                        )}
                       </span>
                     )}
                   </div>

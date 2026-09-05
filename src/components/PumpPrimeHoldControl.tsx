@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { hwToast } from '@/lib/control-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const SAFETY_HOLD_SEC = 120;
 
@@ -48,6 +49,8 @@ export function PumpPrimeHoldControl({
   autoBlocked: boolean;
   accent?: 'ec' | 'ph';
 }) {
+  const { t } = useLanguage();
+  const p = t.calibragem.prime;
   const [holding, setHolding] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const holdingRef = useRef(false);
@@ -74,26 +77,26 @@ export function PumpPrimeHoldControl({
           action: 'off',
         });
         if (!silent) {
-          hwToast.info('Cebado parado', 'CALIBRAGEM');
+          hwToast.info(p.toastStopped, 'CALIBRAGEM');
         }
       } catch (e) {
         hwToast.error(
-          e instanceof Error ? e.message : 'Falha ao parar bomba',
+          e instanceof Error ? e.message : p.toastStopFail,
           'CALIBRAGEM'
         );
       }
     },
-    [deviceId, relayNumber]
+    [deviceId, relayNumber, p.toastStopped, p.toastStopFail]
   );
 
   const startPrime = useCallback(async () => {
     if (holdingRef.current) return;
     if (!isOnline) {
-      hwToast.error('Core offline — cebar precisa de MQTT', 'CALIBRAGEM');
+      hwToast.error(p.toastOffline, 'CALIBRAGEM');
       return;
     }
     if (autoBlocked) {
-      hwToast.error('Desative o Auto para cebar', 'CALIBRAGEM');
+      hwToast.error(p.toastDisableAuto, 'CALIBRAGEM');
       return;
     }
     const seq = ++seqRef.current;
@@ -121,11 +124,11 @@ export function PumpPrimeHoldControl({
         setHolding(false);
       }
       hwToast.error(
-        e instanceof Error ? e.message : 'Falha ao cebar',
+        e instanceof Error ? e.message : p.toastPrimeFail,
         'CALIBRAGEM'
       );
     }
-  }, [autoBlocked, deviceId, isOnline, relayNumber]);
+  }, [autoBlocked, deviceId, isOnline, relayNumber, p.toastOffline, p.toastDisableAuto, p.toastPrimeFail]);
 
   useEffect(() => {
     if (!holding) return;
@@ -171,25 +174,23 @@ export function PumpPrimeHoldControl({
   };
 
   const title = autoBlocked
-    ? 'Desative o Auto para cebar'
+    ? p.titleAuto
     : !isOnline
-      ? 'Core offline'
-      : 'Mantenha apertado para cebar; solte para parar';
+      ? p.titleOffline
+      : p.titleHold;
 
   return (
     <div className="rounded-lg border border-dark-border bg-dark-surface/60 p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium text-dark-text">Cebar / purgar</p>
+        <p className="text-sm font-medium text-dark-text">{p.title}</p>
         <span className={`text-xs font-mono ${holding ? accentLive : 'text-dark-textSecondary'}`}>
-          {holding ? `CEBANDO ${elapsedSec}s` : 'PARADA'}
+          {holding ? p.priming.replace('{n}', String(elapsedSec)) : p.stopped}
         </span>
       </div>
       {relayLabel ? (
         <p className="text-xs text-dark-textSecondary">{relayLabel}</p>
       ) : null}
-      <p className="text-xs text-dark-textSecondary">
-        Mantenha o botão: bomba ON. Solte: para por completo. MQTT (quase tempo real).
-      </p>
+      <p className="text-xs text-dark-textSecondary">{p.hint}</p>
       <button
         type="button"
         disabled={disabled}
@@ -202,13 +203,13 @@ export function PumpPrimeHoldControl({
           holding ? 'ring-2 ring-offset-0 ring-white/20 ' : ''
         } ${accentBtn}`}
       >
-        {holding ? 'Solte para parar' : 'Manter para cebar'}
+        {holding ? p.release : p.hold}
       </button>
       {autoBlocked ? (
-        <p className="text-xs text-amber-400">Auto ligado — desative em Automação para cebar.</p>
+        <p className="text-xs text-amber-400">{p.autoBanner}</p>
       ) : null}
       {!isOnline ? (
-        <p className="text-xs text-amber-400">Core offline — cebar precisa de MQTT.</p>
+        <p className="text-xs text-amber-400">{p.toastOffline}</p>
       ) : null}
     </div>
   );

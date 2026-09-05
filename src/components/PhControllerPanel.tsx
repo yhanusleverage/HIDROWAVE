@@ -60,6 +60,8 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { MetricRow } from '@/components/ui/MetricRow';
 import ControllerMetricsPanel from '@/components/ControllerMetricsPanel';
 import { PhGrowerSummaryCard } from '@/components/GrowerSummaryCards';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { toBcp47 } from '@/lib/locale';
 
 export interface RelayAllocationBridge {
   buildRegistry: (
@@ -142,6 +144,8 @@ export default function PhControllerPanel({
   availableRelays = [],
   relayAllocation,
 }: PhControllerPanelProps) {
+  const { t, locale } = useLanguage();
+  const ph = t.automacao.ph;
   const [expanded, setExpanded] = useState(true);
   const [showPhConfigPreview, setShowPhConfigPreview] = useState(false);
   const [locked, setLocked] = useState(() => process.env.NODE_ENV !== 'development');
@@ -469,7 +473,7 @@ export default function PhControllerPanel({
       ecNutrientsForRelayCheck
     );
     if (!phRelayCheck.ok) {
-      hwToast.error(phRelayCheck.error || 'Conflito de relés pH/EC', 'AUTO PH');
+      hwToast.error(phRelayCheck.error || ph.toastConflict, 'AUTO PH');
       return false;
     }
 
@@ -507,22 +511,22 @@ export default function PhControllerPanel({
         await relayAllocation?.refresh?.();
       }
       markConfigSynced();
-      if (!silent) hwToast.success('Parâmetros pH salvos', 'AUTO PH');
+      if (!silent) hwToast.success(ph.toastSaved, 'AUTO PH');
       return true;
     } catch (err) {
-      hwToast.error(err instanceof Error ? err.message : 'Erro ao salvar pH', 'AUTO PH');
+      hwToast.error(err instanceof Error ? err.message : ph.toastSaveError, 'AUTO PH');
       return false;
     }
   }, [
     deviceId, phSetpoint, phTolerance, flowRatePhUp, flowRatePhDown, volume,
     mlPerPhUnitAcid, mlPerPhUnitBase, relayPhUp, relayPhDown, intervaloAutoPh,
     tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, ecNutrientsForRelayCheck,
-    relayAllocation, markConfigSynced,
+    relayAllocation, markConfigSynced, ph,
   ]);
 
   const saveVolumeOnly = useCallback(async () => {
     if (!deviceId || !Number.isFinite(volume) || volume <= 0) {
-      hwToast.error('Informe um volume válido (L > 0)', 'AUTO PH');
+      hwToast.error(ph.toastVolumeInvalid, 'AUTO PH');
       return;
     }
     setSavingVolume(true);
@@ -548,7 +552,7 @@ export default function PhControllerPanel({
     } finally {
       setSavingVolume(false);
     }
-  }, [deviceId, volume, phConfigRaw, loadConfig]);
+  }, [deviceId, volume, phConfigRaw, loadConfig, ph]);
 
   const toggleAutoPh = async () => {
     if (!deviceId) return;
@@ -573,7 +577,7 @@ export default function PhControllerPanel({
           hwToast.error(`Erro ao ativar Auto pH: ${error.message}`, 'AUTO PH');
           return;
         }
-        hwToast.success('Auto pH ativado', 'AUTO PH');
+        hwToast.success(ph.toastActivated, 'AUTO PH');
       } else {
         const { error } = await supabase
           .from('ph_config_view')
@@ -592,7 +596,7 @@ export default function PhControllerPanel({
             ph_next_check_in_sec: 0,
           })
           .eq('device_id', deviceId);
-        hwToast.info('Auto pH desativado', 'AUTO PH');
+        hwToast.info(ph.toastDeactivated, 'AUTO PH');
       }
 
       const mqttPush = await fetch('/api/ph-controller/config', {
@@ -649,9 +653,9 @@ export default function PhControllerPanel({
 
   const phDirection = useMemo(() => {
     if (displayPh === null) return '--';
-    if (Math.abs(displayPh - phSetpoint) <= phTolerance) return 'Neutro';
-    return displayPh < phSetpoint ? 'pH+ (base)' : 'pH− (ácido)';
-  }, [displayPh, phSetpoint, phTolerance]);
+    if (Math.abs(displayPh - phSetpoint) <= phTolerance) return ph.directionNeutral;
+    return displayPh < phSetpoint ? ph.directionBase : ph.directionAcid;
+  }, [displayPh, phSetpoint, phTolerance, ph.directionNeutral, ph.directionBase, ph.directionAcid]);
 
   const phWithinTolerance = useMemo(() => {
     if (displayPh === null) return null;
@@ -659,13 +663,13 @@ export default function PhControllerPanel({
   }, [displayPh, phSetpoint, phTolerance]);
 
   const calibBaseLine = formatPhCalibrationLine(
-    'pH+ (base)',
+    ph.directionBase,
     mlPerPhUnitBase,
     volume,
     flowRatePhUp
   );
   const calibAcidLine = formatPhCalibrationLine(
-    'pH− (ácido)',
+    ph.directionAcid,
     mlPerPhUnitAcid,
     volume,
     flowRatePhDown
@@ -964,33 +968,34 @@ export default function PhControllerPanel({
             )}
             <h3 className="text-lg font-semibold text-dark-text flex items-center gap-2 min-w-0">
               <BeakerIcon className="w-5 h-5 text-violet-400 shrink-0" aria-hidden />
-              <span className="truncate">Controle Automático de pH</span>
+              <span className="truncate">{ph.title}</span>
             </h3>
           </div>
           <OperationStateBadges
             variant="header"
             autoEnabled={autoEnabled}
-            autoActiveLabel="Auto pH ativo"
-            autoInactiveLabel="Auto pH inativo"
+            autoActiveLabel={ph.autoActive}
+            autoInactiveLabel={ph.autoInactive}
             isDosando={phOp.isDosando}
             dosandoLabel={
               phOp.isDosando && phOp.operationRemainingSec > 0
-                ? `Dosando pH (${phOp.operationRemainingSec}s)`
-                : 'Dosando pH'
+                ? ph.dosingTimed.replace('{n}', String(phOp.operationRemainingSec))
+                : ph.dosing
             }
             isAguardandoRecirculacao={phOp.isAguardandoRecirculacao}
             operationRemainingSec={phOp.operationRemainingSec}
             showNextCheck={showNextCheck}
             nextCheckInSec={phOp.nextCheckInSec}
-            nextCheckLabel="Próxima verificação pH"
+            nextCheckLabel={ph.nextCheck}
             accent="violet"
           />
         </div>
         <button
           onClick={(e) => {
             e.stopPropagation();
-            showLockUnlockToast(locked, 'Controles pH', () => setLocked((p) => !p));
+            showLockUnlockToast(locked, ph.lockSection, () => setLocked((p) => !p));
           }}
+          title={locked ? ph.unlock : ph.lock}
           className={`p-1.5 rounded transition-colors ${
             locked
               ? 'bg-red-500/20 text-red-400 border border-red-500/30'
@@ -1004,24 +1009,24 @@ export default function PhControllerPanel({
       {expanded && (
         <div className="p-4 sm:p-6 border-t border-dark-border">
           <p className="text-xs sm:text-sm text-dark-textSecondary mb-4">
-            Calibre ácido e base em{' '}
+            {ph.calibIntroBefore}
             <NavLink href="/calibragem" className="text-violet-400 hover:underline">/calibragem</NavLink>
-            ; aqui regula setpoint, tolerância e agressividade A.
+            {ph.calibIntroAfter}
           </p>
 
           {pvDebugNote != null && (
             <p className="text-xs text-dark-textSecondary mb-4 rounded-md border border-dark-border bg-dark-surface/50 px-3 py-2 font-mono tabular-nums">
-              PV bruto (debug): {pvDebugNote}
+              {ph.pvDebug} {pvDebugNote}
             </p>
           )}
 
           {displayPh === null && stalePhFromDosage != null && (
             <p className="text-xs text-dark-textSecondary mb-4 rounded-md border border-dark-border bg-dark-surface px-3 py-2">
-              Última leitura (dosagem):{' '}
+              {ph.lastReading}{' '}
               <span className="font-medium text-dark-text tabular-nums">
                 pH {formatSensorValue(stalePhFromDosage, 2)}
               </span>
-              <span className="ml-2 text-amber-400/90">(desatualizada)</span>
+              <span className="ml-2 text-amber-400/90">{ph.lastReadingStale}</span>
             </p>
           )}
 
@@ -1032,67 +1037,67 @@ export default function PhControllerPanel({
           ) : null}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <InstrumentCard accent="ph" title="📊 Status do Controle" ariaLive="polite">
+            <InstrumentCard accent="ph" title={`📊 ${ph.statusCard}`} ariaLive="polite">
               <div className="space-y-2.5">
                 <OperationStateBanners
                   autoEnabled={autoEnabled}
                   isDosando={phOp.isDosando}
-                  dosandoLabel="Dosando pH"
+                  dosandoLabel={ph.dosing}
                   isAguardandoRecirculacao={phOp.isAguardandoRecirculacao}
                   operationRemainingSec={phOp.operationRemainingSec}
                   showNextCheck={showNextCheck}
                   nextCheckInSec={phOp.nextCheckInSec}
-                  nextCheckLabel="Próxima verificação pH"
+                  nextCheckLabel={ph.nextCheck}
                   formatCountdown={formatCountdown}
                 />
                 <MetricRow
-                  label="Status:"
-                  value={autoEnabled ? '✅ Ativado' : '❌ Desativado'}
+                  label={ph.statusLabel}
+                  value={autoEnabled ? ph.statusOn : ph.statusOff}
                   variant={autoEnabled ? 'ok' : 'danger'}
                 />
                 <MetricRow
-                  label="Setpoint:"
+                  label={ph.setpoint}
                   value={`pH ${formatSensorValue(phSetpoint, 1)}`}
                   variant="setpoint"
                 />
                 <MetricRow
-                  label="Banda morta:"
+                  label={ph.deadband}
                   value={`± ${formatSensorValue(phTolerance, 2)}`}
                 />
                 <MetricRow
-                  label="Erro (|pH − SP|):"
+                  label={ph.errorAbs}
                   value={phError !== null ? formatSensorValue(phError, 2) : '--'}
                   variant={phWithinTolerance === false ? 'alarm' : 'default'}
                 />
                 <MetricRow
-                  label="Zona de controle:"
+                  label={ph.controlZone}
                   value={
                     phWithinTolerance === null
                       ? '--'
                       : phWithinTolerance
-                        ? '✓ Sem dosagem (dentro da banda)'
-                        : `⚡ Ajuste A (${phDirection})`
+                        ? ph.noDoseInBand
+                        : ph.adjustA.replace('{direction}', phDirection)
                   }
                   variant={
                     phWithinTolerance === true ? 'ok' : phWithinTolerance === false ? 'alarm' : 'default'
                   }
                 />
                 <MetricRow
-                  label="Última dosagem registrada:"
+                  label={ph.lastDose}
                   value={
                     lastDosageMl != null
                       ? `${lastDosageMl.toFixed(2)} ml${
                           lastDosageAt
-                            ? ` · ${new Date(lastDosageAt).toLocaleString('pt-BR')}`
+                            ? ` · ${new Date(lastDosageAt).toLocaleString(toBcp47(locale))}`
                             : ''
                         }`
                       : '-- ml'
                   }
                   variant="preview"
-                  hint="Histórico ph_dosages — não muda ao editar V"
+                  hint={ph.lastDoseHint}
                 />
                 <MetricRow
-                  label="pH Atual:"
+                  label={ph.phActual}
                   value={
                     displayPh !== null
                       ? Math.abs(displayPh) < 0.01 || Math.abs(displayPh) >= 1000
@@ -1102,7 +1107,7 @@ export default function PhControllerPanel({
                   }
                   variant="live"
                 />
-                <MetricRow label="Direção:" value={phDirection} />
+                <MetricRow label={ph.direction} value={phDirection} />
               </div>
               <PhDosageDetail
                 deviceId={deviceId}
@@ -1131,10 +1136,10 @@ export default function PhControllerPanel({
             />
           </div>
 
-          <SectionHeader title="Objetivo" accent="ph" />
+          <SectionHeader title={ph.objective} accent="ph" />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">Setpoint pH</label>
+              <label className="block text-sm text-dark-textSecondary mb-1">{ph.setpointPh}</label>
               <input
                 type="number"
                 step="0.1"
@@ -1147,7 +1152,7 @@ export default function PhControllerPanel({
               />
             </div>
             <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">Tolerância (±)</label>
+              <label className="block text-sm text-dark-textSecondary mb-1">{ph.tolerance}</label>
               <input
                 type="number"
                 step="0.05"
@@ -1161,7 +1166,7 @@ export default function PhControllerPanel({
             </div>
             <div>
               <label className="block text-sm text-dark-textSecondary mb-1">
-                Agressividade A ({aggressiveness.toFixed(2)})
+                {ph.aggressivenessA.replace('{n}', aggressiveness.toFixed(2))}
               </label>
               <input
                 type="range"
@@ -1192,7 +1197,7 @@ export default function PhControllerPanel({
               </span>
             </label>
             <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">ml por pulso</label>
+              <label className="block text-sm text-dark-textSecondary mb-1">{ph.pulseMl}</label>
               <input
                 type="number"
                 min="0.05"
@@ -1231,10 +1236,10 @@ export default function PhControllerPanel({
             </div>
           </div>
 
-          <SectionHeader title="Actuação" accent="ph" />
+          <SectionHeader title={ph.actuation} accent="ph" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             <div className="sm:col-span-2 lg:col-span-3">
-              <label className="block text-sm text-dark-textSecondary mb-1">V (Volume, L)</label>
+              <label className="block text-sm text-dark-textSecondary mb-1">{ph.volumeL}</label>
               <div className="flex flex-wrap gap-2 items-center">
                 <input
                   type="number"
@@ -1251,7 +1256,7 @@ export default function PhControllerPanel({
                   onClick={() => void saveVolumeOnly()}
                   className="px-3 py-1.5 text-xs rounded-lg bg-violet-500/20 text-violet-300 border border-violet-500/30 hover:bg-violet-500/30 disabled:opacity-50"
                 >
-                  {savingVolume ? 'Salvando…' : 'Salvar volume'}
+                  {savingVolume ? ph.saving : ph.saveVolume}
                 </button>
                 {ecVolumeLiters != null && ecVolumeLiters > 0 && ecVolumeLiters !== volume && (
                   <button
@@ -1260,7 +1265,7 @@ export default function PhControllerPanel({
                     onClick={() => setVolume(ecVolumeLiters)}
                     className="px-3 py-1.5 text-xs rounded-lg text-dark-textSecondary border border-dark-border hover:bg-dark-surface disabled:opacity-50"
                   >
-                    Usar volume EC ({ecVolumeLiters} L)
+                    {ph.useEcVolume.replace('{n}', String(ecVolumeLiters))}
                   </button>
                 )}
               </div>
@@ -1269,7 +1274,7 @@ export default function PhControllerPanel({
               </p>
             </div>
             <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">Relé pH+</label>
+              <label className="block text-sm text-dark-textSecondary mb-1">{ph.relayPhUp}</label>
               <span title={phUpRelayControl.title || undefined}>
                 <DoserRelaySelect
                   registry={relayRegistry}
@@ -1281,7 +1286,7 @@ export default function PhControllerPanel({
               </span>
             </div>
             <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">Relé pH−</label>
+              <label className="block text-sm text-dark-textSecondary mb-1">{ph.relayPhDown}</label>
               <span title={phDownRelayControl.title || undefined}>
                 <DoserRelaySelect
                   registry={relayRegistry}
@@ -1293,7 +1298,7 @@ export default function PhControllerPanel({
               </span>
             </div>
             <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">Recirculação (s)</label>
+              <label className="block text-sm text-dark-textSecondary mb-1">{ph.recirculationSec}</label>
               <input
                 type="number"
                 min="1"
@@ -1305,10 +1310,10 @@ export default function PhControllerPanel({
             </div>
           </div>
 
-          <SectionHeader title="Cadência" accent="ph" />
+          <SectionHeader title={ph.cadence} accent="ph" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             <div>
-              <label className="block text-sm text-dark-textSecondary mb-1">Intervalo verificação (s)</label>
+              <label className="block text-sm text-dark-textSecondary mb-1">{ph.intervalSec}</label>
               <input
                 type="number"
                 min="60"
@@ -1340,7 +1345,7 @@ export default function PhControllerPanel({
                     : 'Nada a salvar — já está gravado'
               }
             >
-              💾 Salvar Parâmetros
+              {ph.saveParams}
             </button>
             <button
               disabled={disabled || autoTogglePending}
@@ -1354,10 +1359,10 @@ export default function PhControllerPanel({
               {autoTogglePending
                 ? '…'
                 : autoEnabled
-                  ? '⏹️ Desativar Auto pH'
-                  : '🤖 Ativar Auto pH'}
+                  ? ph.deactivate
+                  : ph.activate}
               {autoRtStatus === 'SUBSCRIBED' && !autoTogglePending ? (
-                <span className="ml-1.5 text-[10px] opacity-80">ao vivo</span>
+                <span className="ml-1.5 text-[10px] opacity-80">{ph.live}</span>
               ) : null}
             </button>
             <button
@@ -1366,9 +1371,9 @@ export default function PhControllerPanel({
               className={`px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-lg transition-all shadow-lg hover:shadow-purple-500/50 ${
                 disabled ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              title={disabled ? 'Controles bloqueados' : 'Ver preview da configuração pH'}
+              title={disabled ? 'Controles bloqueados' : ph.debugPreviewTitle}
             >
-              🔍 Debug Vista Previa
+              {ph.debugButton}
             </button>
           </div>
         </div>
@@ -1379,7 +1384,7 @@ export default function PhControllerPanel({
           <div className="bg-dark-card border border-dark-border rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-dark-border">
               <h2 className="text-xl font-bold text-dark-text">
-                🔍 Debug Vista Previa - pH Controller Config
+                {ph.debugTitle}
               </h2>
               <button
                 type="button"
@@ -1399,16 +1404,21 @@ export default function PhControllerPanel({
 
               <div className="mt-4 p-4 bg-violet-500/10 border border-violet-500/30 rounded-lg">
                 <p className="text-xs text-violet-300 mb-2">
-                  💡 JSON enviado/salvo em ph_config_view + preview de estado MQTT (_debug)
+                  {ph.debugIntro}
                 </p>
                 <div className="mt-3 space-y-1 text-xs text-dark-textSecondary">
-                  <p><strong className="text-violet-300">ph_setpoint / ph_tolerance:</strong> SP e banda morta (domínio pH)</p>
-                  <p><strong className="text-violet-300">s (ml/unid pH):</strong> Sensibilidade da calibragem; u = A × |e| × s</p>
-                  <p><strong className="text-violet-300">intervalo_auto_ph:</strong> Intervalo entre verificações (s)</p>
-                  <p><strong className="text-violet-300">aggressiveness:</strong> A na equação u(t) = A × |e_H| / k</p>
-                  <p><strong className="text-violet-300">pulse_ml:</strong> ml por pulso (HMI pulseMl)</p>
-                  <p><strong className="text-violet-300">pulse_gap_sec:</strong> Gap pulsos (s) (HMI pulseGapSec)</p>
-                  <p className="mt-2 text-violet-300"><strong>_debug:</strong> PV, erro, u(t) previsto, ph_operation_* em tempo real</p>
+                  {ph.debugLegend.split('\n').map((line) => {
+                    const idx = line.indexOf(':');
+                    if (idx < 0) return <p key={line}>{line}</p>;
+                    const key = line.slice(0, idx);
+                    const rest = line.slice(idx + 1);
+                    return (
+                      <p key={key} className={key === '_debug' ? 'mt-2 text-violet-300' : undefined}>
+                        <strong className="text-violet-300">{key}:</strong>
+                        {rest}
+                      </p>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1418,19 +1428,19 @@ export default function PhControllerPanel({
                 type="button"
                 onClick={() => {
                   navigator.clipboard.writeText(JSON.stringify(phConfigJson, null, 2));
-                  toast.success('JSON copiado para a área de transferência!');
+                  toast.success(t.automacao.common.toastJsonCopied);
                 }}
                 className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
               >
                 <ClipboardIcon className="w-4 h-4" />
-                Copiar JSON
+                {t.automacao.common.copyJson}
               </button>
               <button
                 type="button"
                 onClick={() => setShowPhConfigPreview(false)}
                 className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors"
               >
-                Fechar
+                {t.automacao.common.close}
               </button>
             </div>
           </div>

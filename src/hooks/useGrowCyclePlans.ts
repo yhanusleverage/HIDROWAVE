@@ -58,26 +58,56 @@ export function useGrowCyclePlans(deviceId: string | null) {
   const publishPlan = useCallback(
     async (plan: GrowCyclePlan, planRowId?: string, createdBy?: string) => {
       if (!deviceId?.trim()) return { ok: false as const, error: 'device_id ausente' };
-      const res = await fetch('/api/grow-cycle/publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          device_id: deviceId,
-          plan,
-          plan_id: planRowId,
-          created_by: createdBy,
-        }),
-      });
-      const data = await res.json();
+      let res: Response;
+      try {
+        res = await fetch('/api/grow-cycle/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            device_id: deviceId,
+            plan,
+            plan_id: planRowId,
+            created_by: createdBy,
+          }),
+        });
+      } catch (e) {
+        return {
+          ok: false as const,
+          error: e instanceof Error ? e.message : 'Falha de rede',
+        };
+      }
+
+      let data: Record<string, unknown> = {};
+      try {
+        data = (await res.json()) as Record<string, unknown>;
+      } catch {
+        return {
+          ok: false as const,
+          error: `Resposta inválida do servidor (${res.status})`,
+        };
+      }
+
       if (!res.ok) {
         return {
           ok: false as const,
-          error: data.error ?? 'Erro ao publicar',
-          details: data.details as string[] | undefined,
+          error: String(data.error ?? 'Erro ao publicar'),
+          details: Array.isArray(data.details)
+            ? (data.details as string[])
+            : Array.isArray(data.warnings)
+              ? (data.warnings as string[])
+              : undefined,
         };
       }
       await refresh();
-      return { ok: true as const, ...data };
+      return {
+        ok: true as const,
+        rules_created: data.rules_created as number | undefined,
+        rules_updated: data.rules_updated as number | undefined,
+        schedules_upserted: data.schedules_upserted as number | undefined,
+        instance_id: data.instance_id as string | undefined,
+        plan_id: data.plan_id as string | undefined,
+        warnings: Array.isArray(data.warnings) ? (data.warnings as string[]) : [],
+      };
     },
     [deviceId, refresh]
   );

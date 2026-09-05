@@ -10,6 +10,7 @@ import {
   ChevronUpIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { getMasterLocalRelayNames } from '@/lib/nutrition-plan';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import { PhCalibrationSection } from '@/components/PhCalibrationSection';
@@ -18,35 +19,8 @@ import { PumpQuantitySection } from '@/components/PumpQuantitySection';
 import { useEcConfig } from '@/hooks/useEcConfig';
 import { usePhConfig } from '@/hooks/usePhConfig';
 
-const STEPS = [
-  {
-    title: 'Prepare o circuito',
-    body:
-      'Instale a mangueira silicone correta no cabeçote da bomba. O líquido de calibragem (água ou nutriente diluído) deve estar na altura da bomba ou ligeiramente abaixo — evite sifão involuntário.',
-  },
-  {
-    title: 'Teste por ml',
-    body:
-      'Use Cebar (manter apertado) para encher a linha, ou Teste (ml) na card: o ESP liga a bomba pelo tempo ml/vazão. Auto EC/pH deve estar desligado.',
-  },
-  {
-    title: 'Colete uma amostra cronometrada',
-    body:
-      'Use proveta graduada ou balança (método gravimétrico: 1 ml ≈ 1 g para água). Deixe a bomba correr por um tempo fixo (30–60 s recomendado) e meça o volume coletado.',
-  },
-  {
-    title: 'Calcule a vazão',
-    body:
-      'Divida o volume (ml) pelo tempo (s). Exemplo: 6 ml em 60 s → 0,100 ml/s (≈ 6 ml/min). Use a calculadora da card.',
-  },
-  {
-    title: 'Salve e valide',
-    body:
-      'Salve nesta bomba. Faça um teste de dosagem curta (ex.: 5 ml) e confira na proveta se o volume real coincide. Repita para cada bomba EC.',
-  },
-];
-
 export default function CalibragemPage() {
+  const { t } = useLanguage();
   const { userProfile } = useAuth();
   const { masters: devices } = useDevicesWithRealtime(userProfile?.email);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -77,9 +51,9 @@ export default function CalibragemPage() {
       setRelayOptions(relays);
     } catch (e) {
       console.error(e);
-      toast.error('Erro ao carregar relés');
+      toast.error(t.calibragem.toastLoadRelays);
     }
-  }, [selectedDeviceId]);
+  }, [selectedDeviceId, t.calibragem.toastLoadRelays]);
 
   useEffect(() => {
     if (selectedDeviceId) void loadRelayNames();
@@ -93,10 +67,10 @@ export default function CalibragemPage() {
             <div>
               <h1 className="text-2xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent flex items-center gap-2">
                 <BeakerIcon className="w-7 h-7 text-aqua-400" />
-                Calibragem
+                {t.pages.calibragemTitle}
               </h1>
               <p className="text-dark-textSecondary mt-1 text-sm">
-                Vazão, mapa de ganhos e quantidade (ml) acumulada por bomba
+                {t.pages.calibragemSubtitle}
               </p>
             </div>
             {devices.length > 0 && (
@@ -127,7 +101,7 @@ export default function CalibragemPage() {
                 : 'text-dark-textSecondary hover:text-cyan-400/80'
             }`}
           >
-            Vazão EC / pH / bombas
+            {t.pages.calibragemTabFlow}
           </button>
           <button
             type="button"
@@ -138,7 +112,7 @@ export default function CalibragemPage() {
                 : 'text-dark-textSecondary hover:text-violet-400/80'
             }`}
           >
-            Mapa de ganhos
+            {t.pages.calibragemTabGains}
           </button>
           <button
             type="button"
@@ -149,7 +123,7 @@ export default function CalibragemPage() {
                 : 'text-dark-textSecondary hover:text-emerald-400/80'
             }`}
           >
-            Quantidade
+            {t.pages.calibragemTabQty}
           </button>
         </div>
 
@@ -162,7 +136,7 @@ export default function CalibragemPage() {
               autoBlocked={autoBlocked}
             />
           ) : (
-            <p className="text-dark-textSecondary text-sm">Selecione um dispositivo.</p>
+            <p className="text-dark-textSecondary text-sm">{t.calibragem.selectDevice}</p>
           )
         ) : activeTab === 'quantidade' ? (
           selectedDeviceId ? (
@@ -171,7 +145,7 @@ export default function CalibragemPage() {
               relayOptions={relayOptions}
             />
           ) : (
-            <p className="text-dark-textSecondary text-sm">Selecione um dispositivo.</p>
+            <p className="text-dark-textSecondary text-sm">{t.calibragem.selectDevice}</p>
           )
         ) : (
           <>
@@ -179,10 +153,7 @@ export default function CalibragemPage() {
               <div className="flex gap-3">
                 <InformationCircleIcon className="w-6 h-6 text-cyan-400 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-dark-textSecondary space-y-2">
-                  <p>
-                    <strong className="text-dark-text">Só bombas atribuídas.</strong> Toque para
-                    abrir: cebar, teste por tempo (medir vazão) e teste por ml.
-                  </p>
+                  <p>{t.calibragem.assignedOnly}</p>
                 </div>
               </div>
             </section>
@@ -196,11 +167,11 @@ export default function CalibragemPage() {
               >
                 <span>
                   <span className="block text-lg font-semibold text-dark-text">
-                    Procedimento passo a passo
+                    {t.calibragem.procedureTitle}
                   </span>
                   {!procedureOpen ? (
                     <span className="block text-xs text-dark-textSecondary mt-0.5">
-                      5 passos — toque para abrir
+                      {t.calibragem.procedureHint}
                     </span>
                   ) : null}
                 </span>
@@ -212,7 +183,7 @@ export default function CalibragemPage() {
               </button>
               {procedureOpen ? (
                 <ol className="space-y-3 px-4 pb-4 border-t border-dark-border pt-4">
-                  {STEPS.map((step, i) => (
+                  {t.calibragem.steps.map((step, i) => (
                     <li
                       key={step.title}
                       className="flex gap-4 bg-dark-surface border border-dark-border rounded-lg p-4"
@@ -238,24 +209,22 @@ export default function CalibragemPage() {
                 relayOptions={relayOptions}
               />
             ) : (
-              <p className="text-dark-textSecondary text-sm">Selecione um dispositivo.</p>
+              <p className="text-dark-textSecondary text-sm">{t.calibragem.selectDevice}</p>
             )}
 
             <section className="text-sm text-dark-textSecondary border border-dark-border rounded-xl p-5">
-              <h2 className="font-semibold text-dark-text mb-2">Quando recalibrar?</h2>
+              <h2 className="font-semibold text-dark-text mb-2">{t.calibragem.whenTitle}</h2>
               <ul className="list-disc list-inside space-y-1">
-                <li>Primeira instalação ou troca de mangueira / cabeçote</li>
-                <li>Troca de nutriente com viscosidade diferente</li>
-                <li>Após mais de 4 h de operação contínua (deriva térmica)</li>
-                <li>Desvio visível entre volume esperado e medido na proveta</li>
+                {t.calibragem.whenItems.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
               <p className="mt-4">
                 <NavLink href="/automacao" className="text-aqua-400 hover:underline">
-                  ← Voltar para Automação
+                  {t.calibragem.backAutomacao}
                 </NavLink>
                 {' · '}
-                Cada bomba guarda a vazão em Calibragem → Vazão. Quantidade (ml) em
-                Quantidade. Ganhos químicos (ml/unid pH, K) ficam em Mapa de ganhos.
+                {t.calibragem.footerHint}
               </p>
             </section>
           </>

@@ -26,6 +26,7 @@ import {
 } from '@/lib/pump-calibration';
 import { PumpPrimeHoldControl } from '@/components/PumpPrimeHoldControl';
 import { HW_TEXT } from '@/lib/design-tokens';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 type PumpKind = 'ec' | 'ph_up' | 'ph_down';
 
@@ -180,6 +181,8 @@ function PumpAccordionRow({
   onToggle: () => void;
   onSaved: (relay: number, kind: PumpKind, flowRate: number) => void;
 }) {
+  const { t } = useLanguage();
+  const flow = t.calibragem.flow;
   const stored = pump.flowRate;
   const isPh = pump.kind !== 'ec';
   const [measuredVolumeMl, setMeasuredVolumeMl] = useState(10);
@@ -194,7 +197,7 @@ function PumpAccordionRow({
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      setPumpClock((t) => t + 1);
+      setPumpClock((tick) => tick + 1);
       setPumpEndsAt((prev) => {
         if (prev > 0 && prev <= Date.now()) {
           setTimingTest(false);
@@ -221,11 +224,11 @@ function PumpAccordionRow({
 
   const applyCalculated = () => {
     if (calculatedRate == null) {
-      toast.error('Informe volume e tempo válidos');
+      toast.error(flow.toastInvalidVt);
       return;
     }
     setFlowRate(roundFlowRateMlPerSec(calculatedRate));
-    toast.success(`Vazão: ${formatFlowRate(calculatedRate)}`);
+    toast.success(formatFlowRate(calculatedRate));
   };
 
   const save = async () => {
@@ -235,7 +238,7 @@ function PumpAccordionRow({
         : 0;
     const q = fromMeasure > 0 ? fromMeasure : roundFlowRateMlPerSec(flowRate);
     if (!(q > 0)) {
-      toast.error('Informe volume/tempo ou uma vazão > 0');
+      toast.error(flow.toastInvalidFlow);
       return;
     }
     setFlowRate(q);
@@ -250,7 +253,7 @@ function PumpAccordionRow({
       hwToast.success(`${pump.name}: ${formatFlowRate(q)}`, 'CALIBRAGEM');
       toast.success(`${pump.name}: ${formatFlowRate(q)}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao salvar');
+      toast.error(e instanceof Error ? e.message : flow.toastSaveError);
     } finally {
       setSaving(false);
     }
@@ -260,15 +263,15 @@ function PumpAccordionRow({
   const runTimedCalibration = async () => {
     const sec = Math.floor(Number(measuredDurationSec));
     if (!Number.isFinite(sec) || sec < 1) {
-      toast.error('Informe um tempo válido (s)');
+      toast.error(flow.toastInvalidTime);
       return;
     }
     if (!isOnline) {
-      toast.error('Core offline');
+      toast.error(flow.toastCoreOffline);
       return;
     }
     if (autoBlocked) {
-      toast.error('Desative o Auto para testar');
+      toast.error(flow.toastDisableAuto);
       return;
     }
     setTimingTest(true);
@@ -290,13 +293,13 @@ function PumpAccordionRow({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(typeof err.error === 'string' ? err.error : 'Falha ao enviar teste');
+        throw new Error(typeof err.error === 'string' ? err.error : flow.toastTestFail);
       }
-      toast.success(`Bomba ON por ${sec}s — meça o volume e preencha Volume (ml)`);
+      toast.success(flow.toastTimedOn.replace('{n}', String(sec)));
     } catch (e) {
       setPumpEndsAt(0);
       setTimingTest(false);
-      toast.error(e instanceof Error ? e.message : 'Erro no teste por tempo');
+      toast.error(e instanceof Error ? e.message : flow.toastTestTimeError);
     }
   };
 
@@ -305,7 +308,7 @@ function PumpAccordionRow({
     if (flowRate <= 0) return;
     const duration = calculateDoseDurationSeconds(testVolumeMl, flowRate);
     if (duration == null || duration <= 0) {
-      toast.error('Volume ou vazão inválidos para teste');
+      toast.error(flow.toastInvalidTest);
       return;
     }
     const relaySeconds = doseDurationSecondsForRelay(duration);
@@ -329,13 +332,17 @@ function PumpAccordionRow({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(typeof err.error === 'string' ? err.error : 'Falha ao enviar teste');
+        throw new Error(typeof err.error === 'string' ? err.error : flow.toastTestFail);
       }
-      toast.success(`Teste: ~${testVolumeMl} ml por ${formatDoseDurationSeconds(duration)} s`);
+      toast.success(
+        flow.toastTestMl
+          .replace('{ml}', String(testVolumeMl))
+          .replace('{sec}', formatDoseDurationSeconds(duration))
+      );
     } catch (e) {
       setPumpEndsAt(0);
       setTesting(false);
-      toast.error(e instanceof Error ? e.message : 'Erro no teste');
+      toast.error(e instanceof Error ? e.message : flow.toastTestError);
     }
   };
 
@@ -349,11 +356,13 @@ function PumpAccordionRow({
       >
         <span>
           <span className={`block text-sm font-semibold ${titleColor}`}>{pump.name}</span>
-          <span className="block text-xs text-dark-textSecondary mt-0.5">Relé {pump.relay}</span>
+          <span className="block text-xs text-dark-textSecondary mt-0.5">
+            {flow.relayN.replace('{n}', String(pump.relay))}
+          </span>
         </span>
         <span className="flex items-center gap-2 shrink-0">
           <span className={`text-xs font-mono ${usingFallback ? 'text-amber-400' : titleColor}`}>
-            {stored != null ? formatFlowRate(stored) : 'sem calib'}
+            {stored != null ? formatFlowRate(stored) : flow.noCalib}
           </span>
           {open ? (
             <ChevronUpIcon className="w-4 h-4 text-dark-textSecondary" />
@@ -376,7 +385,7 @@ function PumpAccordionRow({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-dark-textSecondary mb-1">Volume (ml)</label>
+              <label className="block text-xs text-dark-textSecondary mb-1">{flow.volumeMl}</label>
               <input
                 type="number"
                 min={0.1}
@@ -387,7 +396,7 @@ function PumpAccordionRow({
               />
             </div>
             <div>
-              <label className="block text-xs text-dark-textSecondary mb-1">Tempo (s)</label>
+              <label className="block text-xs text-dark-textSecondary mb-1">{flow.timeSec}</label>
               <input
                 type="number"
                 min={1}
@@ -437,13 +446,16 @@ function PumpAccordionRow({
             {pumpRemainSec > 0
               ? `ON ${pumpRemainSec}s`
               : timingTest
-                ? 'Enviando…'
-                : `Teste por tempo (${Math.max(0, Math.floor(measuredDurationSec)) || '—'}s)`}
+                ? flow.sending
+                : flow.testByTime.replace(
+                    '{n}',
+                    String(Math.max(0, Math.floor(measuredDurationSec)) || '—')
+                  )}
           </button>
 
           <div className="flex items-center justify-between gap-3 bg-dark-surface rounded-lg p-3">
             <div>
-              <p className="text-xs text-dark-textSecondary">Resultado</p>
+              <p className="text-xs text-dark-textSecondary">{flow.result}</p>
               <p className={`text-lg font-bold ${titleColor}`}>
                 {calculatedRate != null ? formatFlowRate(calculatedRate) : '—'}
               </p>
@@ -458,12 +470,12 @@ function PumpAccordionRow({
                   : 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400'
               }`}
             >
-              Usar
+              {flow.use}
             </button>
           </div>
 
           <div>
-            <label className="block text-xs text-dark-textSecondary mb-1">Vazão (ml/s)</label>
+            <label className="block text-xs text-dark-textSecondary mb-1">{flow.flowRate}</label>
             <input
               type="number"
               min={0.001}
@@ -488,12 +500,12 @@ function PumpAccordionRow({
             }`}
           >
             {saving ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <CheckCircleIcon className="w-4 h-4" />}
-            Salvar vazão
+            {flow.saveFlow}
           </button>
 
           <div className="border-t border-dark-border pt-3 grid grid-cols-[1fr_auto] gap-2 items-end">
             <div>
-              <label className="block text-xs text-dark-textSecondary mb-1">Teste (ml)</label>
+              <label className="block text-xs text-dark-textSecondary mb-1">{flow.testMl}</label>
               <input
                 type="number"
                 min={1}
@@ -514,7 +526,7 @@ function PumpAccordionRow({
               }`}
             >
               <PlayIcon className="w-4 h-4" />
-              {testing ? '…' : 'Dosar'}
+              {testing ? '…' : flow.dose}
             </button>
           </div>
         </div>
@@ -534,6 +546,8 @@ export function EcPumpCalibrationSection({
   autoBlocked: boolean;
   relayOptions?: Array<{ number: number; name: string }>;
 }) {
+  const { t } = useLanguage();
+  const flow = t.calibragem.flow;
   const [loading, setLoading] = useState(true);
   const [pumps, setPumps] = useState<AvailablePump[]>([]);
   const [globalFlowRate, setGlobalFlowRate] = useState(1);
@@ -546,7 +560,7 @@ export function EcPumpCalibrationSection({
         fetch(`/api/ec-controller/config?device_id=${encodeURIComponent(deviceId)}`),
         fetch(`/api/ph-controller/config?device_id=${encodeURIComponent(deviceId)}`),
       ]);
-      if (!ecRes.ok) throw new Error('Erro ao carregar');
+      if (!ecRes.ok) throw new Error(flow.toastLoadError);
       const config = unwrapConfigRow(await ecRes.json());
       const ph = phRes.ok ? unwrapConfigRow(await phRes.json()) : {};
       const rows = parseNutrientsJson(config.nutrients);
@@ -590,11 +604,11 @@ export function EcPumpCalibrationSection({
       setGlobalFlowRate(1);
     } catch (e) {
       console.error(e);
-      toast.error('Erro ao carregar bombas');
+      toast.error(flow.toastLoadError);
     } finally {
       setLoading(false);
     }
-  }, [deviceId, relayOptions]);
+  }, [deviceId, relayOptions, flow.toastLoadError]);
 
   useEffect(() => {
     void load();
@@ -611,18 +625,20 @@ export function EcPumpCalibrationSection({
   };
 
   if (loading) {
-    return <p className="text-dark-textSecondary text-sm">Carregando bombas…</p>;
+    return (
+      <p className="text-dark-textSecondary text-sm">
+        {t.common.loadingPumps ?? flow.loading}
+      </p>
+    );
   }
 
   if (pumps.length === 0) {
     return (
       <section className="bg-dark-card border border-dark-border rounded-xl p-5">
-        <h2 className="text-lg font-semibold text-cyan-400 mb-2">Bombas disponíveis</h2>
-        <p className="text-sm text-dark-textSecondary">
-          Nenhuma bomba atribuída. Cadastre nutrientes ou pH+ / pH− em Automação.
-        </p>
+        <h2 className="text-lg font-semibold text-cyan-400 mb-2">{flow.availablePumps}</h2>
+        <p className="text-sm text-dark-textSecondary">{flow.emptyAssigned}</p>
         <NavLink href="/automacao" className="inline-block mt-3 text-aqua-400 hover:underline text-sm">
-          Ir para Automação →
+          {flow.goAutomacao}
         </NavLink>
       </section>
     );
@@ -631,11 +647,8 @@ export function EcPumpCalibrationSection({
   return (
     <section className="space-y-2">
       <div className="mb-3">
-        <h2 className="text-lg font-semibold text-cyan-400">Bombas disponíveis</h2>
-        <p className="text-sm text-dark-textSecondary mt-1">
-          Toque para abrir. Cebar, medir e salvar a vazão. Ganhos químicos do pH ficam na aba Mapa
-          de ganhos.
-        </p>
+        <h2 className="text-lg font-semibold text-cyan-400">{flow.availablePumps}</h2>
+        <p className="text-sm text-dark-textSecondary mt-1">{flow.sectionHint}</p>
       </div>
       {pumps.map((p) => {
         const key = `${p.kind}-${p.relay}`;

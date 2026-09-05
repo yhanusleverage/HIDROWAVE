@@ -32,6 +32,8 @@ import {
   type SlaveRelayRef,
 } from '@/lib/slave-relay-allocation';
 import { HW_TEXT } from '@/lib/design-tokens';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { toBcp47 } from '@/lib/locale';
 
 interface EcDilutionSectionProps {
   deviceId: string;
@@ -57,6 +59,9 @@ export function EcDilutionSection({
   locked = false,
   onToggleLock,
 }: EcDilutionSectionProps) {
+  const { t, locale } = useLanguage();
+  const dil = t.automacao.dilution;
+
   const [expanded, setExpanded] = useState(false);
   const [manualVolume, setManualVolume] = useState<string>('');
   const [confirmManual, setConfirmManual] = useState(false);
@@ -132,37 +137,37 @@ export function EcDilutionSection({
     });
 
     if (!result.ok) {
-      toast.error(result.error || 'Erro ao salvar diluição');
+      toast.error(result.error || dil.toastSaveError);
       return;
     }
-    hwToast.success('Configuração de diluição salva (Atlas)', 'DILUIÇÃO EC');
-  }, [config, espnowSlaves]);
+    hwToast.success(dil.toastSaved, 'DILUIÇÃO EC');
+  }, [config, espnowSlaves, dil]);
 
   const handleToggleAuto = useCallback(async () => {
     const next = !config.dilution_auto_enabled;
     const result = await config.save({ dilution_auto_enabled: next });
     if (!result.ok) {
-      toast.error(result.error || 'Erro ao alterar auto diluição');
+      toast.error(result.error || dil.toastToggleError);
       return;
     }
     hwToast.info(
       next ? 'Auto diluição ativada' : 'Auto diluição desativada',
       'DILUIÇÃO EC'
     );
-  }, [config]);
+  }, [config, dil]);
 
   const handleStartManual = useCallback(async () => {
     const vol = parseFloat(manualVolume.replace(',', '.'));
     if (!Number.isFinite(vol) || vol < 0.1) {
-      toast.error('Volume inválido (mín. 0,1 L)');
+      toast.error(dil.toastInvalidVolume);
       return;
     }
     if (!drainRef || !fillRef) {
-      toast.error('Configure e salve os relés slave antes de iniciar');
+      toast.error(dil.toastNeedRelays);
       return;
     }
     if (dilutionState.isDiluting) {
-      toast.error('Diluição já em andamento');
+      toast.error(dil.toastAlreadyRunning);
       return;
     }
 
@@ -181,14 +186,14 @@ export function EcDilutionSection({
         toast.error(parsed.message);
         return;
       }
-      hwToast.success(`Diluição manual iniciada (~${vol.toFixed(1)} L)`, 'DILUIÇÃO EC');
+      hwToast.success(dil.toastStarted.replace('{n}', vol.toFixed(1)), 'DILUIÇÃO EC');
       setConfirmManual(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao iniciar diluição');
+      toast.error(e instanceof Error ? e.message : dil.toastStartError);
     } finally {
       setStarting(false);
     }
-  }, [manualVolume, config, dilutionState.isDiluting, deviceId, drainRef, fillRef]);
+  }, [manualVolume, config, dilutionState.isDiluting, deviceId, drainRef, fillRef, dil]);
 
   const controlsDisabled = locked || config.isSaving;
 
@@ -221,19 +226,19 @@ export function EcDilutionSection({
             )}
             <h3 className="text-lg font-semibold text-dark-text flex items-center gap-2 min-w-0">
               <BeakerIcon className={`w-5 h-5 shrink-0 ${HW_TEXT.wait}`} aria-hidden />
-              <span className="truncate">Diluição automática da solução</span>
+              <span className="truncate">{dil.title}</span>
             </h3>
           </div>
           <OperationStateBadges
             variant="header"
             autoEnabled={config.dilution_auto_enabled}
-            autoActiveLabel="Auto diluição ativo"
-            autoInactiveLabel="Auto diluição inativo"
+            autoActiveLabel={dil.autoActive}
+            autoInactiveLabel={dil.autoInactive}
             isLoading={config.isLoading}
             isDosando={dilutionState.isDraining}
-            dosandoLabel="Drenando"
+            dosandoLabel={dil.draining}
             isReplacing={dilutionState.isFilling}
-            replacingLabel="Reponendo"
+            replacingLabel={dil.filling}
             isAguardandoRecirculacao={
               dilutionState.state === 'recirculating' &&
               dilutionState.operationRemainingSec > 0
@@ -254,7 +259,7 @@ export function EcDilutionSection({
                 ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
                 : 'bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 border border-cyan-500/30'
             }`}
-            title={locked ? 'Desbloquear diluição' : 'Bloquear diluição'}
+            title={locked ? dil.unlock : dil.lock}
           >
             {locked ? (
               <LockClosedIcon className="w-4 h-4" />
@@ -267,18 +272,16 @@ export function EcDilutionSection({
 
       {expanded && (
         <div className="p-4 sm:p-6 border-t border-dark-border space-y-6">
-          <p className="text-xs sm:text-sm text-dark-textSecondary">
-            Se a solução estiver com EC alta (acima do desejado + tolerância), o sistema drena um
-            volume medido, repõe água e recircula. Válvulas no HydroWave Atlas — não use os relés
-            dosificadores do Core (0–7).
-          </p>
+          <p className="text-xs sm:text-sm text-dark-textSecondary">{dil.hint}</p>
 
           <div className="flex items-center gap-2 text-xs text-dark-textSecondary rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2">
             <SignalIcon className="w-4 h-4 text-violet-400 shrink-0" />
             <span>
               {espnowSlaves.length === 0
-                ? 'Nenhum HydroWave Atlas ligado — sincronize o Core na bancada.'
-                : `${espnowSlaves.length} Atlas · ${onlineSlaves} online`}
+                ? dil.noAtlas
+                : dil.atlasCount
+                    .replace('{n}', String(espnowSlaves.length))
+                    .replace('{online}', String(onlineSlaves))}
             </span>
           </div>
 
@@ -292,7 +295,7 @@ export function EcDilutionSection({
           {dilutionState.isDraining && dilutionState.targetL > 0 && (
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-cyan-300">
-                <span>Diluição · drenando</span>
+                <span>{dil.stateDraining}</span>
                 <span>
                   {dilutionState.progressL.toFixed(1)} / {dilutionState.targetL.toFixed(1)} L
                 </span>
@@ -305,7 +308,7 @@ export function EcDilutionSection({
               </div>
               {dilutionState.operationRemainingSec > 0 && (
                 <p className="text-xs text-dark-textSecondary">
-                  Tempo restante estimado: {formatCountdown(dilutionState.operationRemainingSec)}
+                  {dil.remaining} {formatCountdown(dilutionState.operationRemainingSec)}
                 </p>
               )}
             </div>
@@ -313,31 +316,29 @@ export function EcDilutionSection({
 
           {dilutionState.isFilling && (
             <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2.5">
-              <p className="text-xs text-cyan-300">
-                Diluição · repondo — aguardando nível alto
-              </p>
+              <p className="text-xs text-cyan-300">{dil.stateFilling}</p>
             </div>
           )}
 
           <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.04] p-4 space-y-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-violet-300/90">
-              Relés Atlas (dreno + reposição)
+              {dil.relaysTitle}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <SlaveRelaySelect
                 slaves={espnowSlaves}
-                label="Relé dreno"
+                label={dil.drainRelay}
                 value={drainRef}
                 reserved={reservedRelays.filter(
                   (r) => !(fillRef && r.slaveMac === fillRef.slaveMac && r.relayId === fillRef.relayId)
                 )}
                 onChange={setDrainRef}
                 disabled={controlsDisabled}
-                emptyMessage="Todos os relés slave estão reservados ou indisponíveis."
+                emptyMessage={dil.emptyRelays}
               />
               <SlaveRelaySelect
                 slaves={espnowSlaves}
-                label="Relé reposição (água)"
+                label={dil.fillRelay}
                 value={fillRef}
                 reserved={reservedRelays.filter(
                   (r) =>
@@ -345,7 +346,7 @@ export function EcDilutionSection({
                 )}
                 onChange={setFillRef}
                 disabled={controlsDisabled}
-                emptyMessage="Todos os relés slave estão reservados ou indisponíveis."
+                emptyMessage={dil.emptyRelays}
               />
             </div>
           </div>
@@ -357,7 +358,7 @@ export function EcDilutionSection({
               disabled={controlsDisabled}
               className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg disabled:opacity-50"
             >
-              {config.isSaving ? 'Salvando…' : 'Salvar diluição'}
+              {config.isSaving ? dil.saving : dil.save}
             </button>
             <button
               type="button"
@@ -369,16 +370,16 @@ export function EcDilutionSection({
                   : 'bg-cyan-700 hover:bg-cyan-800'
               }`}
             >
-              {config.dilution_auto_enabled ? 'Desativar auto diluição' : 'Ativar auto diluição'}
+              {config.dilution_auto_enabled ? dil.toggleOff : dil.toggleOn}
             </button>
           </div>
 
           <div className="border-t border-dark-border pt-4">
-            <h4 className="text-sm font-semibold text-dark-text mb-3">Diluição manual</h4>
+            <h4 className="text-sm font-semibold text-dark-text mb-3">{dil.manualTitle}</h4>
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
               <div className="flex-1 w-full">
                 <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                  Volume (L)
+                  {dil.volumeL}
                 </label>
                 <input
                   type="number"
@@ -397,7 +398,7 @@ export function EcDilutionSection({
                   disabled={controlsDisabled || dilutionState.isDiluting || !manualVolume}
                   className="px-4 py-2 bg-cyan-800 hover:bg-cyan-900 text-white rounded-lg disabled:opacity-50 whitespace-nowrap"
                 >
-                  Iniciar diluição
+                  {dil.start}
                 </button>
               ) : (
                 <div className="flex gap-2">
@@ -407,14 +408,14 @@ export function EcDilutionSection({
                     disabled={starting}
                     className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg disabled:opacity-50"
                   >
-                    {starting ? 'Enviando…' : 'Confirmar'}
+                    {starting ? dil.sending : dil.confirm}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmManual(false)}
                     className="px-4 py-2 bg-dark-surface border border-dark-border rounded-lg"
                   >
-                    Cancelar
+                    {t.automacao.common.cancel}
                   </button>
                 </div>
               )}
@@ -423,18 +424,22 @@ export function EcDilutionSection({
               config.ec_setpoint > 0 &&
               needsDilution(config.ec_setpoint, ecActual, config.tolerance) && (
                 <p className="mt-2 text-xs text-cyan-300/80">
-                  Overshoot detectado — volume sugerido pré-preenchido.
+                  {dil.overshootHint}
                 </p>
               )}
           </div>
 
           {lastDilution.available && lastDilution.volumeMeasuredL != null && (
             <p className="text-xs text-dark-textSecondary">
-              Última diluição: {lastDilution.volumeMeasuredL.toFixed(1)} L (
-              {lastDilution.source || 'auto'}) —{' '}
-              {lastDilution.completedAt
-                ? new Date(lastDilution.completedAt).toLocaleString('pt-BR')
-                : '--'}
+              {dil.lastDilution
+                .replace('{vol}', lastDilution.volumeMeasuredL.toFixed(1))
+                .replace('{source}', lastDilution.source || 'auto')
+                .replace(
+                  '{when}',
+                  lastDilution.completedAt
+                    ? new Date(lastDilution.completedAt).toLocaleString(toBcp47(locale))
+                    : '--'
+                )}
             </p>
           )}
         </div>

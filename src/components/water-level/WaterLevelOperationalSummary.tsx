@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { MetricRow } from '@/components/ui/MetricRow';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { toBcp47 } from '@/lib/locale';
 import { HW_BADGE } from '@/lib/design-tokens';
 import type { LevelInterlockMode, LevelSensorsState } from '@/hooks/useLevelSensors';
 import {
@@ -30,14 +32,17 @@ export function WaterLevelOperationalSummary({
   deviceId,
   className = '',
 }: WaterLevelOperationalSummaryProps) {
+  const { t, locale } = useLanguage();
+  const w = t.automacao.water;
+  const [levelsLabelPrefix, levelsLabelSuffix] = w.levelsReached.split('{n}');
   const simulated = levels.levelsSimulated;
   const probes = [levels.level1, levels.level2, levels.level3, levels.level4];
   const wetCount = countWetProbes(probes);
   const knownCount = countKnownProbes(probes);
   const hasData = hasLevelTelemetry(probes, levels.waterLevel, simulated);
-  const aggregateLabel = getAggregateLabel(levels.waterLevel, levels.isLoading, simulated);
+  const aggregateLabel = getAggregateLabel(levels.waterLevel, levels.isLoading, simulated, w);
   const aggregateAccent = getAggregateBadgeAccent(levels.waterLevel, simulated);
-  const interlock = getInterlockLabel(levels.waterLevelOk, simulated);
+  const interlock = getInterlockLabel(levels.waterLevelOk, simulated, w);
   const mode: LevelInterlockMode = levels.levelInterlockMode ?? 'normal';
 
   const [modeOpen, setModeOpen] = useState(false);
@@ -61,7 +66,7 @@ export function WaterLevelOperationalSummary({
         );
       }
     } catch (e) {
-      setModeError(e instanceof Error ? e.message : 'Erro de rede');
+      setModeError(e instanceof Error ? e.message : w.networkError);
     } finally {
       setPending(false);
     }
@@ -71,36 +76,35 @@ export function WaterLevelOperationalSummary({
     <div className={`flex flex-col ${className}`}>
       <SectionHeader
         accent="wait"
-        title="Resumo operacional"
-        subtitle="Interlock hidráulico compartilhado por Auto EC e Auto pH"
+        title={w.summaryTitle}
+        subtitle={w.summarySubtitle}
       />
 
       {simulated && (
         <p className="mb-3 text-xs leading-relaxed text-amber-400/90 border border-amber-500/30 rounded-lg px-3 py-2 bg-amber-500/5">
-          Níveis simulados no firmware (<code className="text-[10px]">HIDRO_SIMULATE_WATER_LEVELS=1</code>).
-          Valores abaixo não refletem sondas L1–L4 instaladas.
+          {w.simulatedBanner}
         </p>
       )}
 
       <div className="flex flex-wrap gap-2 mb-4">
         <span className={`${badgeBase} ${HW_BADGE[aggregateAccent]}`}>
-          <span className="text-[10px] uppercase tracking-wide opacity-80 mr-1">Nível</span>
+          <span className="text-[10px] uppercase tracking-wide opacity-80 mr-1">{w.badgeLevel}</span>
           {aggregateLabel}
         </span>
         <span className={`${badgeBase} ${HW_BADGE[interlock.accent]}`}>
-          <span className="text-[10px] uppercase tracking-wide opacity-80 mr-1">Auto EC/pH</span>
+          <span className="text-[10px] uppercase tracking-wide opacity-80 mr-1">{w.badgeAutoEcPh}</span>
           {interlock.text}
         </span>
       </div>
 
       <div className="space-y-2 rounded-lg border border-dark-border/50 bg-dark-bg/30 px-3 py-3">
         <MetricRow
-          label="Níveis alcançados:"
+          label={levelsLabelPrefix.trimEnd()}
           value={
             simulated
               ? '--'
               : knownCount > 0
-                ? `${wetCount} / ${PROBE_COUNT}`
+                ? `${wetCount}${levelsLabelSuffix}`
                 : levels.isLoading
                   ? '…'
                   : '--'
@@ -116,24 +120,24 @@ export function WaterLevelOperationalSummary({
           }
         />
         <MetricRow
-          label="Interlock dosagem:"
+          label={w.interlockDosageLabel}
           value={
             simulated
-              ? '-- (simulado)'
+              ? '--'
               : levels.waterLevelOk === null
                 ? '--'
                 : levels.waterLevelOk
-                  ? 'Volume adequado para dosagem'
-                  : 'Dosagem bloqueada — verificar nível'
+                  ? w.interlockOk
+                  : w.interlockBlocked
           }
           variant={interlock.variant}
         />
         <MetricRow
-          label="Última telemetria:"
+          label={w.lastTelemetry}
           value={
             levels.isLoading
               ? '…'
-              : formatTelemetryTime(levels.lastTelemetryAt)
+              : formatTelemetryTime(levels.lastTelemetryAt, toBcp47(locale))
           }
         />
       </div>
@@ -145,16 +149,16 @@ export function WaterLevelOperationalSummary({
           onClick={() => setModeOpen((o) => !o)}
           aria-expanded={modeOpen}
         >
-          <span className="font-medium">Modo Auto EC/pH</span>
+          <span className="font-medium">{w.modeTitle}</span>
           <span className="text-xs text-dark-textSecondary tabular-nums">
-            {mode === 'carrera' ? 'Carrera' : 'Normal'}
+            {mode === 'carrera' ? w.modeCarrera : w.modeNormal}
             <span className="ml-2 opacity-60">{modeOpen ? '▾' : '▸'}</span>
           </span>
         </button>
         {modeOpen && (
           <div className="border-t border-dark-border/40 px-3 pb-3 pt-2 space-y-2">
             <p className="text-[11px] leading-relaxed text-dark-textSecondary">
-              Define quando a dosagem automática fica liberada.
+              {w.modeHint}
             </p>
             <label className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 hover:bg-dark-bg/40">
               <input
@@ -166,9 +170,9 @@ export function WaterLevelOperationalSummary({
                 onChange={() => setInterlockMode('normal')}
               />
               <span className="text-xs leading-snug">
-                <span className="font-semibold text-dark-text">Normal</span>
+                <span className="font-semibold text-dark-text">{w.modeNormal}</span>
                 <span className="block text-dark-textSecondary">
-                  Libera com qualquer nível ≠ 0/4.
+                  {w.modeNormalHint}
                 </span>
               </span>
             </label>
@@ -182,14 +186,14 @@ export function WaterLevelOperationalSummary({
                 onChange={() => setInterlockMode('carrera')}
               />
               <span className="text-xs leading-snug">
-                <span className="font-semibold text-dark-text">Carrera</span>
+                <span className="font-semibold text-dark-text">{w.modeCarrera}</span>
                 <span className="block text-dark-textSecondary">
-                  Só libera no topo (4/4).
+                  {w.modeCarreraHint}
                 </span>
               </span>
             </label>
             {pending && (
-              <p className="text-[11px] text-dark-textSecondary">Aplicando…</p>
+              <p className="text-[11px] text-dark-textSecondary">{w.applying}</p>
             )}
             {modeError && (
               <p className="text-[11px] text-red-400/90">{modeError}</p>
@@ -200,8 +204,7 @@ export function WaterLevelOperationalSummary({
 
       {!hasData && !levels.isLoading && !simulated && (
         <p className="mt-3 text-xs leading-relaxed text-dark-textSecondary">
-          Aguardando telemetria — execute ADD_LEVEL_SENSORS_COLUMNS.sql e flasheie o firmware com
-          leitura level_1–level_4.
+          {w.emptyTelemetry}
         </p>
       )}
     </div>

@@ -18,6 +18,8 @@ import {
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import BrandLoading from '@/components/BrandLoading';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { toBcp47 } from '@/lib/locale';
 import {
   getCropTasks,
   updateCropTask,
@@ -81,6 +83,8 @@ export default function CropCalendar({
   deviceId = '',
   userEmail = ''
 }: CropCalendarProps) {
+  const { t, locale } = useLanguage();
+  const crop = t.dashboard.crop;
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'week' | 'month'>('month');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -560,11 +564,9 @@ export default function CropCalendar({
   };
 
   const days = getDaysInView();
-  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-  const monthNames = [
-    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-  ];
+  const weekDays = crop.weekdays;
+  const monthNames = crop.months;
+  const bcp47 = toBcp47(locale);
 
   return (
     <div className="bg-dark-card border border-dark-border rounded-lg shadow-xl overflow-hidden">
@@ -577,7 +579,7 @@ export default function CropCalendar({
           <div className="flex items-center gap-3">
             <h2 className="text-xl sm:text-2xl font-bold text-dark-text flex items-center gap-2">
               <span className="text-2xl">📅</span>
-              Calendário de Cultivo
+              {crop.title}
             </h2>
           </div>
           <button
@@ -610,7 +612,7 @@ export default function CropCalendar({
                     : 'text-dark-textSecondary hover:text-dark-text'
                 }`}
               >
-                Semana
+                {crop.week}
               </button>
               <button
                 onClick={(e) => {
@@ -623,7 +625,7 @@ export default function CropCalendar({
                     : 'text-dark-textSecondary hover:text-dark-text'
                 }`}
               >
-                Mês
+                {crop.month}
               </button>
             </div>
             
@@ -645,7 +647,7 @@ export default function CropCalendar({
                 }}
                 className="px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm font-medium"
               >
-                Hoje
+                {crop.today}
               </button>
               <button
                 onClick={(e) => {
@@ -668,7 +670,7 @@ export default function CropCalendar({
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg transition-all shadow-lg hover:shadow-green-500/50 text-sm font-medium"
             >
               <PlusIcon className="h-5 w-5" />
-              <span className="hidden sm:inline">Nova Tarefa</span>
+              <span className="hidden sm:inline">{crop.newTask}</span>
             </button>
           </div>
         )}
@@ -696,16 +698,26 @@ export default function CropCalendar({
         <h3 className="text-lg sm:text-xl font-semibold text-dark-text">
           {viewMode === 'month' 
             ? `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`
-            : `Semana de ${days[0].toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })} a ${days[6].toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' })}`
+            : crop.weekOf
+                .replace(
+                  '{start}',
+                  days[0].toLocaleDateString(bcp47, { day: 'numeric', month: 'short' })
+                )
+                .replace(
+                  '{end}',
+                  days[6].toLocaleDateString(bcp47, {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  })
+                )
           }
         </h3>
       </div>
 
       {tablesUnavailable && (
         <div className="mb-4 p-3 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200 text-sm">
-          Calendário indisponível — execute{' '}
-          <code className="text-xs bg-dark-surface px-1 py-0.5 rounded">scripts/CRIAR_TABELAS_CROP_CALENDAR.sql</code>{' '}
-          no Supabase SQL Editor.
+          {crop.unavailable}
           {loadError && <span className="block mt-1 text-amber-300/80">{loadError}</span>}
         </div>
       )}
@@ -717,7 +729,7 @@ export default function CropCalendar({
       )}
 
       {isLoading && (
-        <BrandLoading message="Carregando calendário…" size={32} className="mb-4 py-4" />
+        <BrandLoading message={crop.loading} size={32} className="mb-4 py-4" />
       )}
 
       {/* Calendário */}
@@ -802,7 +814,7 @@ export default function CropCalendar({
                       ))}
                       {dayTasks.length > 2 && (
                         <div className="text-xs text-dark-textSecondary px-1.5">
-                          +{dayTasks.length - 2} mais
+                          {crop.moreTasks.replace('{n}', String(dayTasks.length - 2))}
                         </div>
                       )}
                     </div>
@@ -843,7 +855,7 @@ export default function CropCalendar({
                     <div className={`text-xs mb-3 ${
                       isTodayDay ? 'text-aqua-300' : 'text-dark-textSecondary'
                     }`}>
-                      {day.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
+                      {day.toLocaleDateString(bcp47, { day: 'numeric', month: 'short' })}
                     </div>
                     
                     <div className="space-y-2">
@@ -895,7 +907,7 @@ export default function CropCalendar({
                       ))}
                       {dayTasks.length === 0 && (
                         <div className="text-xs text-dark-textSecondary text-center py-4">
-                          Sem tarefas
+                          {crop.noTasks}
                         </div>
                       )}
                     </div>
@@ -910,26 +922,26 @@ export default function CropCalendar({
       {/* Legenda */}
       <div className="mt-6 pt-4 border-t border-dark-border">
         <div className="flex flex-wrap items-center gap-4 text-xs">
-          <span className="text-dark-textSecondary font-medium">Legenda:</span>
+          <span className="text-dark-textSecondary font-medium">{crop.legend}</span>
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded bg-aqua-500/15 border border-aqua-500/40"></div>
-            <span className="text-dark-textSecondary">Dosagem</span>
+            <span className="text-dark-textSecondary">{crop.typeDosagem}</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded bg-orange-500/20 border border-orange-500/30"></div>
-            <span className="text-dark-textSecondary">Manutenção</span>
+            <span className="text-dark-textSecondary">{crop.typeManutencao}</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded bg-green-500/20 border border-green-500/30"></div>
-            <span className="text-dark-textSecondary">Monitoramento</span>
+            <span className="text-dark-textSecondary">{crop.typeMonitoramento}</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded bg-purple-500/20 border border-purple-500/30"></div>
-            <span className="text-dark-textSecondary">Colheita</span>
+            <span className="text-dark-textSecondary">{crop.typeColheita}</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded bg-aqua-500/20 border border-aqua-500/30"></div>
-            <span className="text-dark-textSecondary">Plantio</span>
+            <span className="text-dark-textSecondary">{crop.typePlantio}</span>
           </div>
         </div>
       </div>

@@ -4,7 +4,7 @@ import { useLayoutEffect, useState, type RefObject } from 'react';
 import {
   DEFAULT_WEEK_SLOT_W,
   LANE_LABEL_COL_W,
-  MIN_WEEK_SLOT_W,
+  MAX_WEEK_SLOT_W,
   TIMELINE_MARGIN,
 } from '@/lib/grow-cycle-timeline/layout-constants';
 
@@ -24,19 +24,20 @@ function computeLayout(containerWidth: number, weekCount: number): GrowCycleTime
   const innerW = Math.max(0, containerWidth - TIMELINE_MARGIN.left - TIMELINE_MARGIN.right);
   const idealSlotW = innerW / safeWeekCount;
 
-  let weekSlotW: number;
-  if (idealSlotW < MIN_WEEK_SLOT_W) {
-    weekSlotW = MIN_WEEK_SLOT_W;
-  } else {
-    weekSlotW = idealSlotW;
-  }
+  // Nunca esmagar: mínimo DEFAULT; se content > viewport → scroll.
+  // Com poucas semanas, pode crescer até MAX para preencher a caixa.
+  const weekSlotW = Math.min(
+    MAX_WEEK_SLOT_W,
+    Math.max(DEFAULT_WEEK_SLOT_W, idealSlotW)
+  );
 
   const contentW =
     TIMELINE_MARGIN.left + safeWeekCount * weekSlotW + TIMELINE_MARGIN.right;
   const scrollMode = contentW > containerWidth + 0.5;
-  const chartW = scrollMode ? contentW : containerWidth;
+  // Em scroll: largura = conteúdo. Sem scroll: preenche a caixa fixa.
+  const chartW = scrollMode ? contentW : Math.max(containerWidth, contentW);
 
-  const barW = Math.min(16, Math.max(8, weekSlotW * 0.28));
+  const barW = Math.min(22, Math.max(10, weekSlotW * 0.32));
 
   return {
     weekSlotW,
@@ -105,4 +106,4 @@ export function useGrowCycleTimelineLayout(
   return layout;
 }
 
-export { DEFAULT_WEEK_SLOT_W, MIN_WEEK_SLOT_W, TIMELINE_MARGIN };
+export { DEFAULT_WEEK_SLOT_W, TIMELINE_MARGIN };

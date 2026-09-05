@@ -19,6 +19,7 @@ import {
   formatDoseDurationSeconds,
 } from '@/lib/pump-calibration';
 import { PlayIcon } from '@heroicons/react/24/outline';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface RelayOption {
   number: number;
@@ -61,6 +62,8 @@ function PumpCalibrationCard({
   isOnline: boolean;
   autoBlocked: boolean;
 }) {
+  const { t } = useLanguage();
+  const g = t.calibragem.gains;
   const [phBefore, setPhBefore] = useState(6.0);
   const [phAfter, setPhAfter] = useState(side === 'base' ? 6.2 : 5.8);
   const [mlDosed, setMlDosed] = useState(1.0);
@@ -74,7 +77,7 @@ function PumpCalibrationCard({
 
   const handleSave = async () => {
     if (!chemical) {
-      toast.error('Informe pH antes/depois e ml com ΔpH ≥ 0.05');
+      toast.error(g.toastNeedDelta);
       return;
     }
     await onSave(chemical.mlPerPhUnit, flowRate > 0 ? flowRate : 1);
@@ -82,24 +85,24 @@ function PumpCalibrationCard({
 
   const runMlTest = async () => {
     if (mlDosed <= 0) {
-      toast.error('Informe ml dosados');
+      toast.error(g.toastNeedMl);
       return;
     }
     if (!(flowRate > 0)) {
-      toast.error('Calibre a vazão desta bomba na aba Vazão');
+      toast.error(g.toastNeedFlow);
       return;
     }
     if (!isOnline) {
-      toast.error('Core offline');
+      toast.error(g.toastCoreOffline);
       return;
     }
     if (autoBlocked) {
-      toast.error('Desative o Auto para testar');
+      toast.error(g.toastDisableAuto);
       return;
     }
     const duration = calculateDoseDurationSeconds(mlDosed, flowRate);
     if (duration == null || duration <= 0) {
-      toast.error('Vazão ou ml inválidos');
+      toast.error(g.toastInvalidFlowMl);
       return;
     }
     const relaySeconds = doseDurationSecondsForRelay(duration);
@@ -122,13 +125,15 @@ function PumpCalibrationCard({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(typeof err.error === 'string' ? err.error : 'Falha ao enviar teste');
+        throw new Error(typeof err.error === 'string' ? err.error : g.toastTestFail);
       }
       toast.success(
-        `Teste ${mlDosed} ml · ${formatDoseDurationSeconds(duration)} s — anote pH depois e salve o ganho`
+        g.toastTestOk
+          .replace('{ml}', String(mlDosed))
+          .replace('{sec}', formatDoseDurationSeconds(duration))
       );
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro no teste');
+      toast.error(e instanceof Error ? e.message : g.toastTestError);
     } finally {
       setTesting(false);
     }
@@ -139,18 +144,18 @@ function PumpCalibrationCard({
       <div>
         <h3 className={`text-lg font-semibold ${HW_TEXT.ph}`}>{title}</h3>
         <p className="text-xs text-dark-textSecondary mt-1">
-          Relé {relayNumber}: {relayName}
+          {g.relayLine.replace('{n}', String(relayNumber)).replace('{name}', relayName)}
         </p>
         {mlPerPhUnitStored != null && mlPerPhUnitStored > 0 && (
           <p className="text-xs text-violet-400 mt-1">
-            Guardado: {formatMlPerPhUnit(mlPerPhUnitStored)} ml/unid pH
+            {g.storedGain.replace('{n}', formatMlPerPhUnit(mlPerPhUnitStored))}
           </p>
         )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs text-dark-textSecondary mb-1">pH antes</label>
+          <label className="block text-xs text-dark-textSecondary mb-1">{g.phBefore}</label>
           <input
             type="number"
             step="0.01"
@@ -162,7 +167,7 @@ function PumpCalibrationCard({
           />
         </div>
         <div>
-          <label className="block text-xs text-dark-textSecondary mb-1">pH depois</label>
+          <label className="block text-xs text-dark-textSecondary mb-1">{g.phAfter}</label>
           <input
             type="number"
             step="0.01"
@@ -174,7 +179,7 @@ function PumpCalibrationCard({
           />
         </div>
         <div>
-          <label className="block text-xs text-dark-textSecondary mb-1">ml dosados</label>
+          <label className="block text-xs text-dark-textSecondary mb-1">{g.mlDosed}</label>
           <input
             type="number"
             step="0.1"
@@ -187,28 +192,30 @@ function PumpCalibrationCard({
       </div>
 
       <div className="bg-dark-surface rounded-lg p-3 text-sm">
-        <p className="text-xs text-dark-textSecondary uppercase tracking-wide mb-1">Resultado químico</p>
+        <p className="text-xs text-dark-textSecondary uppercase tracking-wide mb-1">{g.chemResult}</p>
         {chemical ? (
           <>
             <p className="text-violet-400 font-semibold">
               {formatMlPerPhUnit(chemical.mlPerPhUnit)} ml/unid pH
             </p>
             <p className="text-dark-textSecondary text-xs mt-1">
-              {formatMlPerLiterPerPhUnit(chemical.mlPerLiterPerPhUnit)} ml/L/unid pH
-              {' '}(tanque {volumeLiters} L)
+              {formatMlPerLiterPerPhUnit(chemical.mlPerLiterPerPhUnit)} ml/L/unid pH{' '}
+              {g.tankRef.replace('{n}', String(volumeLiters))}
             </p>
             <p className="text-xs text-dark-textSecondary mt-1">
               ΔpH = {chemical.deltaPh.toFixed(2)}
             </p>
           </>
         ) : (
-          <p className="text-amber-400 text-xs">ΔpH inválido — use medições distintas (mín. 0.05)</p>
+          <p className="text-amber-400 text-xs">{g.deltaInvalid}</p>
         )}
       </div>
 
       <p className="text-xs text-dark-textSecondary">
-        Anote pH antes, dispare o teste, espere misturar, leia pH depois e salve.
-        Vazão: {flowRate > 0 ? `${flowRate.toFixed(3)} ml/s` : 'não calibrada (aba Vazão)'}.
+        {g.howTo}{' '}
+        {flowRate > 0
+          ? g.flowCalibrated.replace('{n}', flowRate.toFixed(3))
+          : g.flowNotCalibrated}
       </p>
       <button
         type="button"
@@ -217,7 +224,7 @@ function PumpCalibrationCard({
         className="w-full py-2.5 rounded-lg text-sm font-medium border border-violet-500/50 bg-violet-500/15 text-violet-200 hover:bg-violet-500/25 disabled:opacity-40 flex items-center justify-center gap-2"
       >
         <PlayIcon className="w-4 h-4" />
-        {testing ? 'Enviando…' : `Teste ${mlDosed} ml`}
+        {testing ? g.sending : g.testMl.replace('{n}', String(mlDosed))}
       </button>
 
       <button
@@ -226,7 +233,7 @@ function PumpCalibrationCard({
         disabled={saving || !chemical}
         className="w-full py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
       >
-        {saving ? 'Salvando…' : `Salvar ganho ${side === 'base' ? 'pH+' : 'pH−'}`}
+        {saving ? g.saving : side === 'base' ? g.saveGainBase : g.saveGainAcid}
       </button>
     </InstrumentCard>
   );
@@ -238,6 +245,8 @@ export function PhCalibrationSection({
   isOnline = false,
   autoBlocked = false,
 }: PhCalibrationSectionProps) {
+  const { t } = useLanguage();
+  const g = t.calibragem.gains;
   const [loading, setLoading] = useState(true);
   const [savingSide, setSavingSide] = useState<PumpSide | null>(null);
   const [savingVolume, setSavingVolume] = useState(false);
@@ -348,11 +357,11 @@ export function PhCalibrationSection({
       }
     } catch (e) {
       console.error(e);
-      toast.error('Erro ao carregar config pH');
+      toast.error(g.toastLoadError);
     } finally {
       setLoading(false);
     }
-  }, [deviceId]);
+  }, [deviceId, g.toastLoadError]);
 
   useEffect(() => {
     loadAll();
@@ -366,7 +375,7 @@ export function PhCalibrationSection({
   const saveVolumeLiters = async () => {
     if (!deviceId) return;
     if (!Number.isFinite(volumeLiters) || volumeLiters <= 0) {
-      toast.error('Informe um volume de tanque válido (L > 0)');
+      toast.error(g.toastVolumeInvalid);
       return;
     }
     setSavingVolume(true);
@@ -383,13 +392,13 @@ export function PhCalibrationSection({
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Erro ao salvar volume');
+        throw new Error(err.error || g.toastVolumeSaveError);
       }
       setSavedVolumeLiters(volumeLiters);
       setPhConfigRaw((prev) => ({ ...prev, volume: volumeLiters }));
-      hwToast.success(`Volume pH salvo (${volumeLiters} L)`, 'CALIBRAGEM');
+      hwToast.success(g.toastVolumeSaved.replace('{n}', String(volumeLiters)), 'CALIBRAGEM');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao salvar volume');
+      toast.error(e instanceof Error ? e.message : g.toastVolumeSaveError);
     } finally {
       setSavingVolume(false);
     }
@@ -398,7 +407,7 @@ export function PhCalibrationSection({
   const savePump = async (side: PumpSide, mlPerPhUnit: number, flow: number) => {
     if (!deviceId) return;
     if (!Number.isFinite(volumeLiters) || volumeLiters <= 0) {
-      toast.error('Informe um volume de tanque válido (L > 0)');
+      toast.error(g.toastVolumeInvalid);
       return;
     }
     setSavingSide(side);
@@ -420,7 +429,7 @@ export function PhCalibrationSection({
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Erro ao salvar');
+        throw new Error(err.error || g.toastSaveError);
       }
       if (side === 'base') {
         setMlPerPhUnitBase(mlPerPhUnit);
@@ -430,38 +439,41 @@ export function PhCalibrationSection({
         setFlowRatePhDown(flow);
       }
       setSavedVolumeLiters(volumeLiters);
-      hwToast.success(`Calibragem ${side === 'base' ? 'pH+' : 'pH−'} salva`, 'CALIBRAGEM');
+      hwToast.success(
+        g.toastGainSaved.replace('{side}', side === 'base' ? 'pH+' : 'pH−'),
+        'CALIBRAGEM'
+      );
       await loadAll();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao salvar');
+      toast.error(e instanceof Error ? e.message : g.toastSaveError);
     } finally {
       setSavingSide(null);
     }
   };
 
   if (loading) {
-    return <p className="text-dark-textSecondary text-sm">Carregando calibragem pH…</p>;
+    return <p className="text-dark-textSecondary text-sm">{g.loading}</p>;
   }
 
   return (
     <div className="space-y-6">
       {/* Mapa de ganhos — EC (azul) vs pH (roxo) */}
       <section className={`rounded-xl border p-4 text-sm ${HW_BG_SUBTLE.ph}`}>
-        <h3 className={`text-sm font-semibold mb-3 ${HW_TEXT.ph}`}>Mapa de ganhos guardados</h3>
+        <h3 className={`text-sm font-semibold mb-3 ${HW_TEXT.ph}`}>{g.mapTitle}</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-dark-textSecondary border-b border-dark-border">
-                <th className="text-left py-1.5 pr-3 font-medium">Controle</th>
-                <th className="text-left py-1.5 pr-3 font-medium">Parâmetro</th>
-                <th className="text-left py-1.5 pr-3 font-medium">Valor</th>
-                <th className="text-left py-1.5 font-medium">Onde</th>
+                <th className="text-left py-1.5 pr-3 font-medium">{g.colControl}</th>
+                <th className="text-left py-1.5 pr-3 font-medium">{g.colParam}</th>
+                <th className="text-left py-1.5 pr-3 font-medium">{g.colValue}</th>
+                <th className="text-left py-1.5 font-medium">{g.colWhere}</th>
               </tr>
             </thead>
             <tbody className="text-dark-text">
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-cyan-400 font-medium">Auto EC</td>
-                <td className="py-2 pr-3">Vazão bombas</td>
+                <td className="py-2 pr-3">{g.paramPumpFlow}</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">
                   {ecFlowRate != null ? `${ecFlowRate} ml/s` : '—'}
                 </td>
@@ -469,7 +481,7 @@ export function PhCalibrationSection({
               </tr>
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-cyan-400 font-medium">Auto EC</td>
-                <td className="py-2 pr-3">Volume reservatório</td>
+                <td className="py-2 pr-3">{g.paramTankVolume}</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">
                   {ecVolumeLiters != null ? `${ecVolumeLiters} L` : '—'}
                 </td>
@@ -477,7 +489,7 @@ export function PhCalibrationSection({
               </tr>
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-cyan-400 font-medium">Auto EC</td>
-                <td className="py-2 pr-3">k receita (fixo)</td>
+                <td className="py-2 pr-3">{g.paramKRecipe}</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">
                   {ecKRecipe != null ? (
                     <>
@@ -495,15 +507,17 @@ export function PhCalibrationSection({
               </tr>
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-cyan-400 font-medium">Auto EC</td>
-                <td className="py-2 pr-3">k atual (malha)</td>
+                <td className="py-2 pr-3">{g.paramKLive}</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">
-                  {ecKInUse != null ? `${ecKInUse.toFixed(4)} adaptativo` : '—'}
+                  {ecKInUse != null
+                    ? `${ecKInUse.toFixed(4)} ${g.kAdaptiveSuffix}`
+                    : '—'}
                 </td>
                 <td className="py-2 text-dark-textSecondary">ec_config.k_value (firmware)</td>
               </tr>
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-cyan-400 font-medium">Auto EC</td>
-                <td className="py-2 pr-3">A · Kp</td>
+                <td className="py-2 pr-3">{g.paramAKp}</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">
                   {ecAggressiveness != null ? ecAggressiveness.toFixed(2) : '—'} ·{' '}
                   {ecKp != null ? ecKp.toFixed(2) : '—'}
@@ -512,18 +526,20 @@ export function PhCalibrationSection({
               </tr>
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-violet-400 font-medium">Auto pH</td>
-                <td className="py-2 pr-3">Volume calibragem</td>
+                <td className="py-2 pr-3">{g.paramCalVolume}</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">
                   {savedVolumeLiters > 0 ? `${savedVolumeLiters} L` : '—'}
                   {volumeDirty && (
-                    <span className="text-amber-400 ml-1">(não salvo: {volumeLiters} L)</span>
+                    <span className="text-amber-400 ml-1">
+                      {g.unsavedVolume.replace('{n}', String(volumeLiters))}
+                    </span>
                   )}
                 </td>
                 <td className="py-2 text-dark-textSecondary">ph_config.volume</td>
               </tr>
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-violet-400 font-medium">pH+ (base)</td>
-                <td className="py-2 pr-3">ml/unid pH · ml/L/unid</td>
+                <td className="py-2 pr-3">{g.paramMlPerUnit}</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">
                   {mlPerPhUnitBase != null
                     ? `${formatMlPerPhUnit(mlPerPhUnitBase)} · ${formatMlPerLiterPerPhUnit(
@@ -535,13 +551,13 @@ export function PhCalibrationSection({
               </tr>
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-violet-400 font-medium">pH+ (base)</td>
-                <td className="py-2 pr-3">Vazão bomba</td>
+                <td className="py-2 pr-3">{g.paramPumpFlowPh}</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">{flowRatePhUp.toFixed(3)} ml/s</td>
                 <td className="py-2 text-dark-textSecondary">flow_rate_ph_up</td>
               </tr>
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-violet-400 font-medium">pH− (ácido)</td>
-                <td className="py-2 pr-3">ml/unid pH · ml/L/unid</td>
+                <td className="py-2 pr-3">{g.paramMlPerUnit}</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">
                   {mlPerPhUnitAcid != null
                     ? `${formatMlPerPhUnit(mlPerPhUnitAcid)} · ${formatMlPerLiterPerPhUnit(
@@ -553,13 +569,13 @@ export function PhCalibrationSection({
               </tr>
               <tr className="border-b border-dark-border/60">
                 <td className="py-2 pr-3 text-violet-400 font-medium">pH− (ácido)</td>
-                <td className="py-2 pr-3">Vazão bomba</td>
+                <td className="py-2 pr-3">{g.paramPumpFlowPh}</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">{flowRatePhDown.toFixed(3)} ml/s</td>
                 <td className="py-2 text-dark-textSecondary">flow_rate_ph_down</td>
               </tr>
               <tr>
-                <td className="py-2 pr-3 text-violet-400 font-medium">Adaptativo</td>
-                <td className="py-2 pr-3">K base · K ácido (H/ml)</td>
+                <td className="py-2 pr-3 text-violet-400 font-medium">{g.adaptive}</td>
+                <td className="py-2 pr-3">{g.paramKAdaptive}</td>
                 <td className="py-2 pr-3 font-mono tabular-nums">
                   {kBase != null ? kBase.toExponential(2) : '—'} ·{' '}
                   {kAcid != null ? kAcid.toExponential(2) : '—'}
@@ -572,18 +588,13 @@ export function PhCalibrationSection({
       </section>
 
       <section className="bg-gradient-to-br from-violet-500/10 to-violet-600/5 border border-violet-500/30 rounded-xl p-5 text-sm text-dark-textSecondary space-y-4">
-        <p>
-          Ganho químico do Auto pH: informe pH antes/depois e ml dosados. O sistema calcula{' '}
-          <strong className="text-dark-text">ml/unid pH</strong> e{' '}
-          <strong className="text-dark-text">ml/L/unid pH</strong> com o volume do tanque. A vazão
-          das bombas (ml/s) fica na aba Vazão / bombas.
-        </p>
+        <p>{g.intro}</p>
         <div className="max-w-xs">
           <label
             htmlFor="ph-cal-volume-liters"
             className="block text-xs font-medium text-dark-textSecondary mb-1"
           >
-            Volume do tanque de calibragem (L)
+            {g.tankVolume}
           </label>
           <input
             id="ph-cal-volume-liters"
@@ -598,7 +609,7 @@ export function PhCalibrationSection({
             className="w-full p-2 bg-dark-surface border border-violet-500/30 rounded-md text-dark-text text-sm font-mono focus:ring-2 focus:ring-violet-500/40"
           />
           <p className="text-xs text-dark-textSecondary mt-1">
-            ml/unid pH não depende do volume; ml/L/unid pH sim (tanque {volumeLiters || '—'} L).
+            {g.tankHint.replace('{n}', String(volumeLiters || '—'))}
           </p>
           <div className="flex flex-wrap gap-2 mt-3">
             <button
@@ -607,7 +618,7 @@ export function PhCalibrationSection({
               disabled={savingVolume || !volumeDirty || volumeLiters <= 0}
               className="text-xs px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {savingVolume ? 'Salvando…' : 'Salvar volume (L)'}
+              {savingVolume ? g.saving : g.saveVolume}
             </button>
             {ecVolumeLiters != null && ecVolumeLiters > 0 && ecVolumeLiters !== volumeLiters && (
               <button
@@ -615,7 +626,7 @@ export function PhCalibrationSection({
                 onClick={() => setVolumeLiters(ecVolumeLiters)}
                 className="text-xs px-3 py-2 border border-violet-500/40 text-violet-400 rounded-lg hover:bg-violet-500/10"
               >
-                Usar volume do EC ({ecVolumeLiters} L)
+                {g.useEcVolume.replace('{n}', String(ecVolumeLiters))}
               </button>
             )}
           </div>
@@ -625,13 +636,13 @@ export function PhCalibrationSection({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <PumpCalibrationCard
           side="base"
-          title="Ganho pH+ (base)"
+          title={g.titleBase}
           relayNumber={relayPhUp}
           relayName={relayUpName}
           volumeLiters={volumeLiters}
           flowRate={flowRatePhUp}
           mlPerPhUnitStored={mlPerPhUnitBase}
-          onSave={(ml, flow) => savePump('base', ml, flow)}
+          onSave={(ml, flowRate) => savePump('base', ml, flowRate)}
           saving={savingSide === 'base'}
           deviceId={deviceId}
           isOnline={isOnline}
@@ -639,13 +650,13 @@ export function PhCalibrationSection({
         />
         <PumpCalibrationCard
           side="acid"
-          title="Ganho pH− (ácido)"
+          title={g.titleAcid}
           relayNumber={relayPhDown}
           relayName={relayDownName}
           volumeLiters={volumeLiters}
           flowRate={flowRatePhDown}
           mlPerPhUnitStored={mlPerPhUnitAcid}
-          onSave={(ml, flow) => savePump('acid', ml, flow)}
+          onSave={(ml, flowRate) => savePump('acid', ml, flowRate)}
           saving={savingSide === 'acid'}
           deviceId={deviceId}
           isOnline={isOnline}

@@ -20,6 +20,7 @@
 | S01 | [S01_GROW_CYCLE_RULES_17JUN2026.md](S01_GROW_CYCLE_RULES_17JUN2026.md) | Schedules + Rules P1 + convivencia Auto EC/pH | 30–45 min lectura |
 | S02 | [S02_DECISION_ENGINE_F0_F1_HANDOFF.md](S02_DECISION_ENGINE_F0_F1_HANDOFF.md) | Timeline + Rule Builder + ScriptRunner estado | 15 min lectura |
 | S03 | [GROW_CYCLE_WEEK_HOVER_SUMMARY_HANDOFF.md](GROW_CYCLE_WEEK_HOVER_SUMMARY_HANDOFF.md) | Hover S0–Sn: resumo da semana (Δ, ml, ajustes) | 10 min |
+| S04 | [HANDOFF_SCHEDULES_CICLO_LOTE_CONFIG.md](HANDOFF_SCHEDULES_CICLO_LOTE_CONFIG.md) | Schedules live no ciclo + presets lote/recirc (config roadmap) | 10–15 min |
 
 ```mermaid
 flowchart LR

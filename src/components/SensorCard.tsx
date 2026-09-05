@@ -1,6 +1,9 @@
+'use client';
+
 import React from 'react';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { HW_BADGE, HW_TEXT, type HwAccent } from '@/lib/design-tokens';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 type SensorCardProps = {
   title: string;
@@ -15,12 +18,6 @@ const statusAccent: Record<NonNullable<SensorCardProps['status']>, HwAccent> = {
   normal: 'brand',
   warning: 'warn',
   danger: 'danger',
-};
-
-const statusText = {
-  normal: 'Normal',
-  warning: 'Aviso',
-  danger: 'Perigo',
 };
 
 function resolveAccent(
@@ -50,6 +47,12 @@ export default function SensorCard({
   status = 'normal',
   domain = 'brand',
 }: SensorCardProps) {
+  const { t } = useLanguage();
+  const statusText = {
+    normal: t.common.statusNormal,
+    warning: t.common.statusWarning,
+    danger: t.common.statusDanger,
+  };
   const accent = resolveAccent(status, domain);
 
   return (

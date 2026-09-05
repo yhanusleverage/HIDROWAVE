@@ -10,10 +10,10 @@
 | Header / tabs procedures·ec·ph·rules·timeline | OK | `t.pages.*`, `t.automacao.tabs.*` |
 | Tipagem / Atlas names / Procedure builder | OK | `t.automacao.procedures.*` |
 | Tab Schedules | GAP | Hardcoded EN/PT |
-| CreateRuleModal | GAP | Casi 100% PT hardcodeado |
-| SequentialScriptEditor | GAP | Duplica copy del modal |
-| RuleCard | GAP | |
-| AutomacaoPageClient (motor, Atlas manual, toasts) | GAP parcial | Mezcla `t.common` + PT |
+| CreateRuleModal | OK (2a) | `t.automacao.ruleModal` / `common` / `instr` |
+| SequentialScriptEditor | OK (2b) | `scriptEditor` + reusa `ruleModal`/`instr` |
+| RuleCard | OK (2c) | `t.automacao.ruleCard` |
+| AutomacaoPageClient (motor, Atlas, toasts) | OK parcial (2d) | Headers/toasts/listas; timer panel profundo pendiente |
 | HydraulicRelaySetupPanel | Casi OK | 1 string hardcodeado conflicto de relé |
 | ScheduleEditor | GAP | |
 

@@ -3,15 +3,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon, Cog6ToothIcon, PaperClipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
-import { hwToast } from '@/lib/control-toast';
 import {
   formatInstructionType,
-  SWITCH_LABEL,
-  SWITCH_MODE_CYCLE,
-  SWITCH_MODE_TIMER,
+  getConditionSensors,
+  isLevelSensor,
+  normalizeCondition,
 } from '@/lib/instruction-labels';
 import NavLink from '@/components/NavLink';
 import { InstructionAddButtons } from './instruction-editors/InstructionAddButtons';
+import { BlockAutoProcedureToggle } from './instruction-editors/BlockAutoProcedureToggle';
 import WhileInstructionEditor from './instruction-editors/WhileInstructionEditor';
 import IfInstructionEditor from './instruction-editors/IfInstructionEditor';
 import RelayActionEditor from './instruction-editors/RelayActionEditor';
@@ -25,10 +25,10 @@ import { HwButton } from '@/components/ui/HwButton';
 import { DEFAULT_MASTER_RELAYS, type MasterRelayOption } from '@/lib/master-relay-options';
 import ConditionFields from './instruction-editors/ConditionFields';
 import { createNestedInstruction, ensureInstructionIds } from '@/lib/instruction-factory';
-import { CONDITION_SENSORS, isLevelSensor, normalizeCondition } from '@/lib/instruction-labels';
 import { isFixedFunctionMacroRule } from '@/lib/decision-rule-display-name';
 import { resolveDecisionRuleDisplayName } from '@/lib/decision-rule-display-name';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { hwToast } from '@/lib/control-toast';
 
 /** Flecha vertical entre bloques del flujo procedural (Condiciones → Ações → …). */
 function ProceduralFlowArrow({ label }: { label: string }) {
@@ -156,7 +156,7 @@ interface AutomationRule {
 interface CreateRuleModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (rule: RuleData) => void;
+  onSave: (rule: RuleData) => void | Promise<boolean | void>;
   relays: Relay[];
   onUpdateRelay: (id: number, name: string) => void;
   deviceId?: string;
@@ -174,6 +174,14 @@ export default function CreateRuleModal({
 }: CreateRuleModalProps) {
   const { userProfile } = useAuth();
   const { t } = useLanguage();
+  const ac = t.automacao.common;
+  const rm = t.automacao.ruleModal;
+  const instrT = t.automacao.instr;
+  const relayLabel = (relay: { id: number; name?: string }, slave?: { name?: string; device_id?: string }) => {
+    const name = relay.name || ac.relayFallback.replace('{id}', String(relay.id));
+    if (!slave) return name;
+    return `${slave.name || slave.device_id || 'HydroWave Atlas'}: ${relay.id} - ${name}`;
+  };
   const masterRelays = useMemo<MasterRelayOption[]>(() => {
     const fromRelays = relays
       .filter((r) => r.device !== 'slave')
@@ -211,7 +219,7 @@ export default function CreateRuleModal({
   const [availableRules, setAvailableRules] = useState<Array<{ rule_id: string; rule_name: string }>>([]);
   const [loadingAvailableRules, setLoadingAvailableRules] = useState(false);
 
-  const sensors = [...CONDITION_SENSORS];
+  const sensors = getConditionSensors(instrT);
 
   const addCondition = () => {
     setConditions((prev) => [
@@ -256,7 +264,7 @@ export default function CreateRuleModal({
       slave.relays.forEach((relay) => {
         relayOptions.push({
           value: `slave_${slave.macAddress}_${relay.id}`,
-          label: `${slave.name || slave.device_id || 'HydroWave Atlas'}: ${relay.id} - ${relay.name || `Relé ${relay.id}`}`,
+          label: relayLabel(relay, slave),
           slaveMac: slave.macAddress,
           relayId: relay.id,
         });
@@ -264,7 +272,7 @@ export default function CreateRuleModal({
     });
 
     if (relayOptions.length === 0) {
-      toast.error('Nenhum relé Atlas disponível. Carregue os Atlas primeiro.');
+      toast.error(rm.toast.noAtlasRelays);
       return;
     }
 
@@ -496,7 +504,13 @@ export default function CreateRuleModal({
     if (type === 'relay_action') {
       newInstr.relay_number = 5;
     }
-    setInstructions((prev) => [...prev, newInstr]);
+    setInstructions((prev) => {
+      if (type === 'block_auto') {
+        const without = prev.filter((i) => i.type !== 'block_auto');
+        return [newInstr, ...without];
+      }
+      return [...prev, newInstr];
+    });
   };
 
   const removeInstruction = (index: number) => {
@@ -522,9 +536,9 @@ export default function CreateRuleModal({
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!ruleName.trim()) {
-      toast.error('Digite um nome para a regra');
+      toast.error(rm.error.nameRequired);
       return;
     }
 
@@ -538,11 +552,11 @@ export default function CreateRuleModal({
     // Macros da tipagem já têm condition/actions no rule_json (formato DE) — não exigir UI de condições.
     if (!isTypedMacro) {
       if (instructions.length === 0 && conditions.length === 0) {
-        toast.error('Adicione pelo menos uma condição ou uma instrução sequencial');
+        toast.error(rm.error.needConditionOrInstr);
         return;
       }
       if (instructions.length === 0 && actions.length === 0) {
-        toast.error('Adicione pelo menos uma ação ou uma instrução sequencial');
+        toast.error(rm.error.needActionOrInstr);
         return;
       }
     }
@@ -593,10 +607,10 @@ export default function CreateRuleModal({
         : {}),
     };
 
-    onSave(rule);
-    hwToast.success(editingRule ? 'Regra atualizada com sucesso!' : 'Regra criada com sucesso!', 'REGRA');
-    
-    // Reset form
+    const ok = await Promise.resolve(onSave(rule));
+    if (ok === false) return;
+
+    // Toast de sucesso vem do parent (após DB); aqui só fecha se salvou
     setRuleName('');
     setDescription('');
     setPriority(50);
@@ -606,7 +620,6 @@ export default function CreateRuleModal({
     setChainedEvents([]);
     setCooldown(60);
     setMaxExecutionsPerHour(10);
-    // ✅ Reset funcionalidades de Nova Função
     setInstructions([]);
     setLoopInterval(5000);
     setMaxIterations(0);
@@ -618,32 +631,32 @@ export default function CreateRuleModal({
     <HwModal
       open={isOpen}
       onClose={onClose}
-      title={editingRule ? 'Editar Regra - Motor de Decisão' : 'Nova Regra - Motor de Decisão'}
+      title={editingRule ? rm.title.edit : rm.title.create}
       size="xl"
       footer={
         <div className="flex justify-end gap-3">
           <HwButton variant="secondary" onClick={onClose}>
-            Cancelar
+            {ac.cancel}
           </HwButton>
-          <HwButton onClick={handleSave}>Salvar Regra</HwButton>
+          <HwButton onClick={handleSave}>{rm.action.save}</HwButton>
         </div>
       }
     >
         <div className="space-y-4">
           {/* Fluxo Procedural - Descrição */}
           <div className="bg-aqua-500/10 border border-aqua-500/30 rounded-lg p-3 mb-4">
-            <p className="text-sm text-aqua-300 font-medium mb-1 text-center">📋 Fluxo Procedural (de cima para baixo):</p>
+            <p className="text-sm text-aqua-300 font-medium mb-1 text-center">{rm.flow.title}</p>
             <p className="text-sm text-dark-textSecondary leading-relaxed text-center flex flex-col sm:flex-row sm:flex-wrap items-center justify-center gap-1 sm:gap-0">
-              <span className="text-aqua-400 font-semibold">1. Condições</span>
+              <span className="text-aqua-400 font-semibold">{rm.flow.step1}</span>
               <span className="hidden sm:inline text-dark-textSecondary/60 mx-1.5">↓</span>
               <span className="sm:hidden text-aqua-400/70" aria-hidden>↓</span>
-              <span className="text-purple-400 font-semibold">2. Ações</span>
+              <span className="text-purple-400 font-semibold">{rm.flow.step2}</span>
               <span className="hidden sm:inline text-dark-textSecondary/60 mx-1.5">↓</span>
               <span className="sm:hidden text-aqua-400/70" aria-hidden>↓</span>
-              <span className="text-yellow-400 font-semibold">3. Eventos Encadeados</span>
+              <span className="text-yellow-400 font-semibold">{rm.flow.step3}</span>
               <span className="hidden sm:inline text-dark-textSecondary/60 mx-1.5">↓</span>
               <span className="sm:hidden text-aqua-400/70" aria-hidden>↓</span>
-              <span className="text-dark-textSecondary font-semibold">4. Config Avançada</span>
+              <span className="text-dark-textSecondary font-semibold">{rm.flow.step4}</span>
             </p>
           </div>
 
@@ -651,34 +664,34 @@ export default function CreateRuleModal({
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-dark-textSecondary mb-2">
-                Nome da Função *
+                {rm.label.functionName}
               </label>
               <input
                 type="text"
                 value={ruleName}
                 onChange={(e) => setRuleName(e.target.value)}
                 className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
-                placeholder="Ex: Dreno Automático"
+                placeholder={rm.placeholder.functionName}
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-dark-textSecondary mb-2">
-                Descrição
+                {ac.description}
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
                 rows={2}
-                placeholder="Descrição opcional"
+                placeholder={ac.placeholderDescription}
               />
             </div>
           </div>
 
           <p className="text-xs text-dark-textSecondary rounded-lg border border-dark-border bg-dark-surface/50 px-3 py-2">
-            Prefere passos guiados (enchimento, dreno, changeout)?{' '}
+            {rm.hint.openProcedureBuilder}{' '}
             <NavLink href="/automacao/procedimento" className="text-aqua-400 hover:underline">
-              Abrir Rule Builder procedural
+              {rm.hint.openProcedureBuilderLink}
             </NavLink>
           </p>
 
@@ -695,20 +708,20 @@ export default function CreateRuleModal({
                 ) : (
                   <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
                 )}
-                <h3 className="text-lg font-semibold text-dark-text">🔍 Condição Principal</h3>
+                <h3 className="text-lg font-semibold text-dark-text">{rm.section.mainCondition}</h3>
               </div>
             </button>
 
             {expandedConditions && (
               <div className="p-4 border-t border-dark-border space-y-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-dark-textSecondary">Quando:</p>
+                  <p className="text-sm text-dark-textSecondary">{rm.label.when}</p>
                   <button
                     type="button"
                     onClick={addCondition}
                     className="px-3 py-1.5 bg-aqua-500/20 text-aqua-400 border border-aqua-500/30 rounded text-sm hover:bg-aqua-500/30 transition-colors"
                   >
-                    + Adicionar Condição
+                    {rm.action.addCondition}
                   </button>
                 </div>
                 <div className="space-y-3">
@@ -721,8 +734,8 @@ export default function CreateRuleModal({
                             onChange={(e) => updateCondition(index, 'logic', e.target.value)}
                             className="px-3 py-1.5 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
                           >
-                            <option value="AND">E (AND)</option>
-                            <option value="OR">OU (OR)</option>
+                            <option value="AND">{rm.logic.and}</option>
+                            <option value="OR">{rm.logic.or}</option>
                           </select>
                         </div>
                       )}
@@ -741,7 +754,7 @@ export default function CreateRuleModal({
                           onClick={() => removeCondition(index)}
                           className="px-3 py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-sm hover:bg-red-500/30 transition-colors"
                         >
-                          Remover
+                          {ac.remove}
                         </button>
                       )}
                     </div>
@@ -751,37 +764,45 @@ export default function CreateRuleModal({
             )}
           </div>
 
-          <ProceduralFlowArrow label="↓ 2. Ações" />
+          <ProceduralFlowArrow label={rm.flow.arrowActions} />
 
           {/* Passos do script — sempre visível (não esconder em Ações) */}
           <div className="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
             <div className="p-4 border-b border-dark-border">
-              <h3 className="text-lg font-semibold text-dark-text">Passos do script</h3>
+              <h3 className="text-lg font-semibold text-dark-text">{rm.section.scriptSteps}</h3>
               <p className="text-xs text-dark-textSecondary mt-1">
-                Ordem de execução no ESP32. Ex.: dreno automático ={' '}
-                <strong className="text-aqua-300">LOOP</strong> +{' '}
-                <strong className="text-aqua-300">Relé</strong>.
+                {rm.hint.scriptOrder}
               </p>
             </div>
             <div className="p-4 space-y-4">
+              <BlockAutoProcedureToggle
+                instructions={instructions}
+                onChange={setInstructions}
+              />
               <InstructionAddButtons onAdd={addInstruction} />
 
               <div className="space-y-3">
                 {instructions.map((instr, index) => (
                 <div
                   key={instr.id ?? index}
-                  className="border border-dark-border rounded-lg p-3 bg-dark-surface/50"
+                  className={`border rounded-lg p-3 ${
+                    instr.type === 'block_auto'
+                      ? 'border-amber-500/30 bg-amber-500/5'
+                      : 'border-dark-border bg-dark-surface/50'
+                  }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-mono text-sm font-semibold text-aqua-400">
-                      {index + 1}. {formatInstructionType(instr.type)}
+                      {index + 1}. {formatInstructionType(instr.type, instrT)}
                     </span>
                     <div className="flex gap-1">
+                      {instr.type !== 'block_auto' && (
+                        <>
                       <button
                         onClick={() => moveInstruction(index, 'up')}
-                        disabled={index === 0}
+                        disabled={index === 0 || instructions[index - 1]?.type === 'block_auto'}
                         className="p-1 hover:bg-dark-surface rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Mover para cima"
+                        title={ac.moveUp}
                       >
                         <ArrowUpIcon className="w-4 h-4 text-dark-textSecondary" />
                       </button>
@@ -789,14 +810,16 @@ export default function CreateRuleModal({
                         onClick={() => moveInstruction(index, 'down')}
                         disabled={index === instructions.length - 1}
                         className="p-1 hover:bg-dark-surface rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Mover para baixo"
+                        title={ac.moveDown}
                       >
                         <ArrowDownIcon className="w-4 h-4 text-dark-textSecondary" />
                       </button>
+                        </>
+                      )}
                       <button
                         onClick={() => removeInstruction(index)}
                         className="p-1 hover:bg-dark-surface rounded"
-                        title="Remover"
+                        title={ac.remove}
                       >
                         <XMarkIcon className="w-4 h-4 text-red-400" />
                       </button>
@@ -834,11 +857,11 @@ export default function CreateRuleModal({
                   {instr.type === 'switch' && (
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-xs text-dark-textSecondary mb-2">{SWITCH_LABEL}</label>
+                        <label className="block text-xs text-dark-textSecondary mb-2">{instrT.switchLabel}</label>
                         
                         {/* Seleção de Modo: Ciclo ou Timer */}
                         <div className="mb-3">
-                          <label className="block text-xs text-dark-textSecondary mb-1">Modo</label>
+                          <label className="block text-xs text-dark-textSecondary mb-1">{instrT.switchMode}</label>
                           <select
                             value={instr.switch_mode || 'timer'}
                             onChange={(e) => {
@@ -854,15 +877,15 @@ export default function CreateRuleModal({
                             }}
                             className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                           >
-                            <option value="timer">{SWITCH_MODE_TIMER}</option>
-                            <option value="cycle">{SWITCH_MODE_CYCLE}</option>
+                            <option value="timer">{instrT.modeTimer}</option>
+                            <option value="cycle">{instrT.modeCycle}</option>
                           </select>
                         </div>
 
                         {/* Configuração de Timer */}
                         {instr.switch_mode === 'timer' && (
                           <div>
-                            <label className="block text-xs text-dark-textSecondary mb-1">Duração (ms)</label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">{instrT.durationMs}</label>
                             <input
                               type="number"
                               min="0"
@@ -876,7 +899,7 @@ export default function CreateRuleModal({
                               className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                               placeholder="1000"
                             />
-                            <p className="text-xs text-dark-textSecondary/80 mt-1">Tempo que o switch ficará ativo</p>
+                            <p className="text-xs text-dark-textSecondary/80 mt-1">{instrT.switchDurationHint}</p>
                           </div>
                         )}
 
@@ -885,7 +908,7 @@ export default function CreateRuleModal({
                           <div className="space-y-2">
                             <div className="grid grid-cols-3 gap-2 items-end">
                               <div>
-                                <label className="block text-xs text-dark-textSecondary mb-1">ON ⏰</label>
+                                <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cycleOn}</label>
                                 <input
                                   type="text"
                                   value={instr.cycle_on_time || msToTime(instr.cycle_on_ms || 5000)}
@@ -926,7 +949,7 @@ export default function CreateRuleModal({
                                 <ArrowPathIcon className="w-8 h-8 text-aqua-400 animate-spin-slow" />
                               </div>
                               <div>
-                                <label className="block text-xs text-dark-textSecondary mb-1">OFF ⏰</label>
+                                <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cycleOff}</label>
                                 <input
                                   type="text"
                                   value={instr.cycle_off_time || msToTime(instr.cycle_off_ms || 5000)}
@@ -965,7 +988,7 @@ export default function CreateRuleModal({
                               </div>
                             </div>
                             <div>
-                              <label className="block text-xs text-dark-textSecondary mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
+                              <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cyclesLabel} <span className="text-aqua-400">{instrT.cyclesPerpetual}</span></label>
                               <input
                                 type="number"
                                 min="0"
@@ -987,7 +1010,17 @@ export default function CreateRuleModal({
                   )}
 
                   {instr.type === 'return' && (
-                    <div className="text-sm text-dark-textSecondary italic">Retornar do loop</div>
+                    <div className="text-sm text-dark-textSecondary italic">{instrT.returnFromLoop}</div>
+                  )}
+                  {instr.type === 'block_auto' && (
+                    <div className="text-sm text-amber-200/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                      {instrT.blockAutoHelp}
+                    </div>
+                  )}
+                  {instr.type === 'unblock_auto' && (
+                    <div className="text-sm text-green-300/90 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2">
+                      {instrT.unblockAutoHelp}
+                    </div>
                   )}
                     </div>
                     ))}
@@ -995,7 +1028,7 @@ export default function CreateRuleModal({
             </div>
           </div>
 
-          <ProceduralFlowArrow label="Ações simples" />
+          <ProceduralFlowArrow label={rm.flow.arrowSimpleActions} />
 
           {/* Ações simples (relés slave) — opcional se não usar script */}
           <div className="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
@@ -1010,24 +1043,23 @@ export default function CreateRuleModal({
                 ) : (
                   <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
                 )}
-                <h3 className="text-lg font-semibold text-dark-text">Ações simples (opcional)</h3>
+                <h3 className="text-lg font-semibold text-dark-text">{rm.section.simpleActions}</h3>
               </div>
             </button>
 
             {expandedActions && (
               <div className="p-4 border-t border-dark-border space-y-4">
                 <p className="text-xs text-dark-textSecondary">
-                  Use apenas se a regra não tiver passos de script acima. Para dreno/fill, prefira{' '}
-                  <strong>LOOP</strong> + <strong>Relé</strong>.
+                  {rm.hint.preferScript}
                 </p>
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-dark-textSecondary">Então:</p>
+                  <p className="text-sm text-dark-textSecondary">{rm.label.then}</p>
                   <button
                     type="button"
                     onClick={addAction}
                     className="px-3 py-1.5 bg-primary-500/20 text-primary-400 border border-primary-500/30 rounded text-sm hover:bg-primary-500/30 transition-colors"
                   >
-                    + Adicionar Ação
+                    {rm.action.addAction}
                   </button>
                 </div>
                 <div className="space-y-3">
@@ -1038,7 +1070,7 @@ export default function CreateRuleModal({
                       slave.relays.forEach((relay) => {
                         relayOptions.push({
                           value: `slave_${slave.macAddress}_${relay.id}`,
-                          label: `${slave.name || slave.device_id || 'HydroWave Atlas'}: ${relay.id} - ${relay.name || `Relé ${relay.id}`}`,
+                          label: relayLabel(relay, slave),
                           slaveMac: slave.macAddress,
                           relayId: relay.id,
                         });
@@ -1070,7 +1102,7 @@ export default function CreateRuleModal({
                             className="flex-1 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
                           >
                             {relayOptions.length === 0 ? (
-                              <option value="">Nenhum relé Atlas disponível</option>
+                              <option value="">{rm.empty.noAtlasRelays}</option>
                             ) : (
                               relayOptions.map((option) => (
                                 <option key={option.value} value={option.value}>
@@ -1084,15 +1116,15 @@ export default function CreateRuleModal({
                             onChange={(e) => updateAction(index, 'action', e.target.value)}
                             className="w-32 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
                           >
-                            <option value="on">Ligar (ON)</option>
-                            <option value="off">Desligar (OFF)</option>
+                            <option value="on">{ac.on}</option>
+                            <option value="off">{ac.off}</option>
                           </select>
                           <button
                             type="button"
                             onClick={() => removeAction(index)}
                             className="px-3 py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-sm hover:bg-red-500/30 transition-colors"
                           >
-                            Remover
+                            {ac.remove}
                           </button>
                         </div>
                       </div>
@@ -1103,7 +1135,7 @@ export default function CreateRuleModal({
             )}
           </div>
 
-          <ProceduralFlowArrow label="↓ 3. Eventos" />
+          <ProceduralFlowArrow label={rm.flow.arrowEvents} />
 
           {/* Eventos Encadeados - Colapsável (de Nova Função) */}
           <div className="border-t border-dark-border pt-4">
@@ -1120,14 +1152,14 @@ export default function CreateRuleModal({
                     <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
                   )}
                   <PaperClipIcon className="w-5 h-5 text-purple-400" />
-                  <span className="text-sm font-medium text-dark-text">Eventos Encadeados</span>
+                  <span className="text-sm font-medium text-dark-text">{rm.section.chainedEvents}</span>
                 </div>
               </button>
 
               {expandedChainedEventsSequential && (
                 <div className="p-4 border-t border-dark-border space-y-4 bg-dark-surface/30">
                   <p className="text-xs text-dark-textSecondary mb-3">
-                    Quando esta regra executar, disparar outras regras:
+                    {rm.hint.chainedEvents}
                   </p>
 
                   <div className="space-y-3">
@@ -1138,7 +1170,7 @@ export default function CreateRuleModal({
                       >
                         <div className="flex justify-between items-start mb-2">
                           <span className="text-xs text-purple-400 font-mono">
-                            Evento {idx + 1}
+                            {rm.label.eventN.replace('{n}', String(idx + 1))}
                           </span>
                           <button
                             onClick={() =>
@@ -1153,7 +1185,7 @@ export default function CreateRuleModal({
                         <div className="space-y-2">
                           <div>
                             <label className="block text-xs text-dark-textSecondary mb-1">
-                              ID da Regra Alvo
+                              {rm.label.targetRuleId}
                             </label>
                             <TargetRuleIdField
                               value={event.target_rule_id}
@@ -1175,7 +1207,7 @@ export default function CreateRuleModal({
 
                           <div>
                             <label className="block text-xs text-dark-textSecondary mb-1">
-                              Disparar Quando
+                              {rm.label.triggerWhen}
                             </label>
                             <select
                               value={event.trigger_on}
@@ -1186,14 +1218,14 @@ export default function CreateRuleModal({
                               }}
                               className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                             >
-                              <option value="success">Ao Ter Sucesso</option>
-                              <option value="failure">Ao Ter Falha</option>
+                              <option value="success">{rm.trigger.success}</option>
+                              <option value="failure">{rm.trigger.failure}</option>
                             </select>
                           </div>
 
                           <div>
                             <label className="block text-xs text-dark-textSecondary mb-1">
-                              Espera (ms)
+                              {rm.label.delayMs}
                             </label>
                             <input
                               type="number"
@@ -1222,7 +1254,7 @@ export default function CreateRuleModal({
                     className="w-full px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg text-sm text-purple-400 transition-colors flex items-center justify-center gap-2"
                   >
                     <PlusIcon className="w-4 h-4" />
-                    Adicionar Evento
+                    {rm.action.addEvent}
                   </button>
                 </div>
               )}
@@ -1232,11 +1264,11 @@ export default function CreateRuleModal({
           {/* Configurações do Loop (de Nova Função) */}
           <div className="border-t border-dark-border pt-4">
             <label className="block text-sm font-medium text-dark-text mb-2">
-              Configurações do Loop
+              {rm.section.loopConfig}
             </label>
             <div className="space-y-2">
               <div>
-                <label className="text-xs text-dark-textSecondary">Intervalo entre execuções (ms)</label>
+                <label className="text-xs text-dark-textSecondary">{rm.label.loopInterval}</label>
                 <input
                   type="number"
                   value={loopInterval}
@@ -1245,7 +1277,7 @@ export default function CreateRuleModal({
                 />
               </div>
               <div>
-                <label className="text-xs text-dark-textSecondary">Máximo de iterações: <span className="text-aqua-400">0 = Perpétuo</span></label>
+                <label className="text-xs text-dark-textSecondary">{rm.label.maxIterations} <span className="text-aqua-400">{instrT.cyclesPerpetual}</span></label>
                 <input
                   type="number"
                   min="0"
@@ -1257,7 +1289,7 @@ export default function CreateRuleModal({
             </div>
           </div>
 
-          <ProceduralFlowArrow label="↓ 4. Config" />
+          <ProceduralFlowArrow label={rm.flow.arrowConfig} />
 
           {/* Configurações Avançadas - Colapsável (de Nova Função) */}
           <div className="border border-dark-border rounded-lg overflow-hidden">
@@ -1273,7 +1305,7 @@ export default function CreateRuleModal({
                   <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
                 )}
                 <Cog6ToothIcon className="w-5 h-5 text-aqua-400" />
-                <span className="text-sm font-medium text-dark-text">Configurações Avançadas</span>
+                <span className="text-sm font-medium text-dark-text">{rm.section.advanced}</span>
               </div>
             </button>
 
@@ -1282,7 +1314,7 @@ export default function CreateRuleModal({
                 {/* Prioridade */}
                 <div>
                   <label className="block text-sm font-medium text-dark-text mb-2">
-                    Prioridade (0-100)
+                    {rm.label.priority}
                   </label>
                   <input
                     type="range"
@@ -1298,12 +1330,12 @@ export default function CreateRuleModal({
                     <span className="text-xs text-dark-textSecondary">100</span>
                   </div>
                   <p className="text-xs text-dark-textSecondary mt-1">
-                    Valor + mais importante. Default 50.
+                    {rm.hint.priority}
                   </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-dark-textSecondary mb-2">
-                    Cooldown (segundos)
+                    {rm.label.cooldown}
                   </label>
                   <input
                     type="number"
@@ -1313,12 +1345,12 @@ export default function CreateRuleModal({
                     className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
                   />
                   <p className="text-xs text-dark-textSecondary mt-1">
-                    Tempo mínimo entre execuções da mesma regra.
+                    {rm.hint.cooldown}
                   </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-dark-textSecondary mb-2">
-                    Limite por Hora
+                    {rm.label.maxPerHour}
                   </label>
                   <input
                     type="number"
@@ -1328,7 +1360,7 @@ export default function CreateRuleModal({
                     className="w-full p-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
                   />
                   <p className="text-xs text-dark-textSecondary mt-1">
-                    Número máximo de execuções por hora.
+                    {rm.hint.maxPerHour}
                   </p>
                 </div>
                 {/* Regra Ativa */}
@@ -1341,7 +1373,7 @@ export default function CreateRuleModal({
                     className="w-5 h-5 rounded border-dark-border bg-dark-surface text-aqua-500 focus:ring-2 focus:ring-aqua-500 cursor-pointer"
                   />
                   <label htmlFor="enabled" className="text-sm font-medium text-dark-text cursor-pointer">
-                    Regra Ativa
+                    {rm.label.enabled}
                   </label>
                 </div>
               </div>

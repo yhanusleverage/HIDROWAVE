@@ -21,6 +21,8 @@ import {
   type HydroLiveState,
 } from '@/lib/realtime/hydro-freshness';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { toBcp47 } from '@/lib/locale';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import QuemSomosTeaser from '@/components/QuemSomosTeaser';
 import { DashboardChartsSection } from '@/components/dashboard/DashboardChartsSection';
@@ -36,6 +38,8 @@ import {
 
 export default function DashboardPage() {
   const { userProfile } = useAuth();
+  const { t, locale } = useLanguage();
+  const d = t.dashboard;
   const userEmail = userProfile?.email || '';
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const { devices } = useDevicesWithRealtime(userEmail || undefined);
@@ -367,14 +371,14 @@ export default function DashboardPage() {
       
       const saved = await saveSettings(updatedSettings, userEmail);
       if (saved) {
-        toast.success('Umbrales de EC salvos com sucesso!');
+        toast.success(d.toastEcSaved);
         setShowECConfig(false);
       } else {
-        toast.error('Erro ao salvar configuração');
+        toast.error(d.toastSaveError);
       }
     } catch (error) {
       console.error('❌ [DASHBOARD] Erro ao salvar umbrales de EC:', error);
-      toast.error('Erro ao salvar configuração');
+      toast.error(d.toastSaveError);
     } finally {
       setSavingECConfig(false);
     }
@@ -389,16 +393,17 @@ export default function DashboardPage() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">
-                Dashboard
+                {t.pages.dashboardTitle}
               </h1>
               <p className="text-sm text-dark-textSecondary mt-1">
-                Monitoramento em tempo real do seu sistema
+                {t.pages.dashboardSubtitle}
               </p>
             </div>
             
             <div className="flex items-center gap-3 flex-wrap">
               <div className="text-xs sm:text-sm text-dark-textSecondary bg-dark-surface px-3 py-1.5 rounded-lg border border-dark-border">
-                {new Date().toLocaleDateString('pt-BR')} {new Date().toLocaleTimeString('pt-BR')}
+                {new Date().toLocaleDateString(toBcp47(locale))}{' '}
+                {new Date().toLocaleTimeString(toBcp47(locale))}
               </div>
               <button 
                 onClick={() => selectedDeviceId && fetchData(selectedDeviceId)}
@@ -408,12 +413,12 @@ export default function DashboardPage() {
                 {(loadingSensors || loadingCharts) ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Atualizando...</span>
+                    <span>{t.common.updating}</span>
                   </>
                 ) : (
                   <>
                     <span>🔄</span>
-                    <span>Atualizar</span>
+                    <span>{t.common.refresh}</span>
                   </>
                 )}
               </button>
@@ -427,7 +432,7 @@ export default function DashboardPage() {
         <QuemSomosTeaser />
         {error && (
           <div className="bg-red-900/30 border border-red-500 text-red-300 px-4 py-3 rounded mb-6" role="alert">
-            <strong className="font-bold">Erro!</strong>
+            <strong className="font-bold">{t.common.error}</strong>
             <span className="block sm:inline"> {error}</span>
           </div>
         )}
@@ -465,7 +470,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-dark-text flex items-center gap-2">
                 <AdjustmentsHorizontalIcon className="h-6 w-6 text-aqua-400" />
-                Configurar Umbrales de EC
+                {d.ecConfigTitle}
               </h3>
               <button
                 onClick={() => setShowECConfig(false)}
@@ -476,18 +481,18 @@ export default function DashboardPage() {
             </div>
 
             <p className="text-sm text-dark-textSecondary mb-6">
-              Configure os valores de EC (Electrical Conductivity) em µS/cm para determinar os status de alerta.
+              {d.ecConfigHint}
             </p>
 
             <div className="space-y-4">
               {/* Danger Range */}
               <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4">
                 <label className="block text-sm font-medium text-red-400 mb-2">
-                  ⚠️ Perigo (Danger)
+                  {d.dangerLabel}
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-dark-textSecondary mb-1">Mínimo (µS/cm)</label>
+                    <label className="block text-xs text-dark-textSecondary mb-1">{d.minUs}</label>
                     <input
                       type="number"
                       value={ecThresholds.dangerMin}
@@ -498,7 +503,7 @@ export default function DashboardPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-dark-textSecondary mb-1">Máximo (µS/cm)</label>
+                    <label className="block text-xs text-dark-textSecondary mb-1">{d.maxUs}</label>
                     <input
                       type="number"
                       value={ecThresholds.dangerMax}
@@ -510,18 +515,20 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <p className="text-xs text-red-300/70 mt-2">
-                  Valores abaixo de {ecThresholds.dangerMin} ou acima de {ecThresholds.dangerMax} µS/cm
+                  {d.dangerRange
+                    .replace('{min}', String(ecThresholds.dangerMin))
+                    .replace('{max}', String(ecThresholds.dangerMax))}
                 </p>
               </div>
 
               {/* Warning Range */}
               <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4">
                 <label className="block text-sm font-medium text-yellow-400 mb-2">
-                  ⚠️ Aviso (Warning)
+                  {d.warningLabel}
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-dark-textSecondary mb-1">Mínimo (µS/cm)</label>
+                    <label className="block text-xs text-dark-textSecondary mb-1">{d.minUs}</label>
                     <input
                       type="number"
                       value={ecThresholds.warningMin}
@@ -532,7 +539,7 @@ export default function DashboardPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-dark-textSecondary mb-1">Máximo (µS/cm)</label>
+                    <label className="block text-xs text-dark-textSecondary mb-1">{d.maxUs}</label>
                     <input
                       type="number"
                       value={ecThresholds.warningMax}
@@ -544,17 +551,21 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <p className="text-xs text-yellow-300/70 mt-2">
-                  Valores entre {ecThresholds.warningMin} e {ecThresholds.warningMax} µS/cm (fora da zona normal)
+                  {d.warningRange
+                    .replace('{min}', String(ecThresholds.warningMin))
+                    .replace('{max}', String(ecThresholds.warningMax))}
                 </p>
               </div>
 
               {/* Normal Range Info */}
               <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
                 <label className="block text-sm font-medium text-green-400 mb-2">
-                  ✅ Normal
+                  {d.normalLabel}
                 </label>
                 <p className="text-xs text-green-300/70">
-                  Valores entre {ecThresholds.warningMin} e {ecThresholds.warningMax} µS/cm (zona segura)
+                  {d.normalRange
+                    .replace('{min}', String(ecThresholds.warningMin))
+                    .replace('{max}', String(ecThresholds.warningMax))}
                 </p>
               </div>
             </div>
@@ -564,14 +575,14 @@ export default function DashboardPage() {
                 onClick={() => setShowECConfig(false)}
                 className="flex-1 px-4 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border rounded-lg text-dark-text transition-colors"
               >
-                Cancelar
+                {t.common.cancel}
               </button>
               <button
                 onClick={handleSaveECThresholds}
                 disabled={savingECConfig}
                 className="flex-1 px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-all font-medium"
               >
-                {savingECConfig ? 'Salvando...' : 'Salvar'}
+                {savingECConfig ? t.common.saving : t.common.save}
               </button>
             </div>
           </div>
@@ -585,7 +596,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-dark-text flex items-center gap-2">
                 <AdjustmentsHorizontalIcon className="h-6 w-6 text-aqua-400" />
-                Configurar Umbrales de Temperatura
+                {d.tempConfigTitle}
               </h3>
               <button
                 onClick={() => setShowTempConfig(false)}
@@ -595,22 +606,22 @@ export default function DashboardPage() {
               </button>
             </div>
             <p className="text-sm text-dark-textSecondary mb-4">
-              Configure os valores de temperatura da água em °C para determinar os status de alerta.
+              {d.tempConfigHint}
             </p>
             <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4 mb-4">
               <p className="text-sm text-yellow-300">
-                ⚠️ Funcionalidade em desenvolvimento. Atualmente os umbrales são:
+                {d.tempDevNote}
               </p>
               <ul className="mt-2 text-xs text-yellow-300/70 space-y-1">
-                <li>• Normal: 18°C - 26°C</li>
-                <li>• Aviso: Fora do range normal</li>
+                <li>{d.tempNormal}</li>
+                <li>{d.tempWarning}</li>
               </ul>
             </div>
             <button
               onClick={() => setShowTempConfig(false)}
               className="w-full px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all font-medium"
             >
-              Fechar
+              {t.common.close}
             </button>
           </div>
         </div>
@@ -623,7 +634,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-dark-text flex items-center gap-2">
                 <AdjustmentsHorizontalIcon className="h-6 w-6 text-aqua-400" />
-                Configurar Umbrales de pH
+                {d.phConfigTitle}
               </h3>
               <button
                 onClick={() => setShowPHConfig(false)}
@@ -633,23 +644,23 @@ export default function DashboardPage() {
               </button>
             </div>
             <p className="text-sm text-dark-textSecondary mb-4">
-              Configure os valores de pH para determinar os status de alerta.
+              {d.phConfigHint}
             </p>
             <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4 mb-4">
               <p className="text-sm text-yellow-300">
-                ⚠️ Funcionalidade em desenvolvimento. Atualmente os umbrales são:
+                {d.phDevNote}
               </p>
               <ul className="mt-2 text-xs text-yellow-300/70 space-y-1">
-                <li>• Normal: 5.8 - 6.8</li>
-                <li>• Aviso: 5.5-5.8 ou 6.8-7.0</li>
-                <li>• Perigo: &lt; 5.5 ou &gt; 7.0</li>
+                <li>{d.phNormal}</li>
+                <li>{d.phWarning}</li>
+                <li>{d.phDanger}</li>
               </ul>
             </div>
             <button
               onClick={() => setShowPHConfig(false)}
               className="w-full px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all font-medium"
             >
-              Fechar
+              {t.common.close}
             </button>
           </div>
         </div>

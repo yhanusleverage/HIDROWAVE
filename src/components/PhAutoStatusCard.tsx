@@ -16,6 +16,7 @@ import { formatSensorValue } from '@/lib/format-sensor-value';
 import { supabase } from '@/lib/supabase';
 import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
 import { subscribePhDosageInserts } from '@/lib/realtime/ph-dosages';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useCallback, useEffect, useState } from 'react';
 
 interface PhAutoStatusCardProps {
@@ -23,6 +24,10 @@ interface PhAutoStatusCardProps {
 }
 
 export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
+  const { t } = useLanguage();
+  const ph = t.automacao.ph;
+  const auto = t.dashboard.auto;
+
   const active = Boolean(deviceId?.trim());
   const phConfig = usePhConfig(deviceId, active);
   const configReady = active && !phConfig.isLoading;
@@ -124,7 +129,9 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
 
   const limitHint =
     phConfig.ph_setpoint > 0
-      ? `Limite: pH ${(phConfig.ph_setpoint - phConfig.ph_tolerance).toFixed(2)} – ${(phConfig.ph_setpoint + phConfig.ph_tolerance).toFixed(2)}`
+      ? auto.limitPhBand
+          .replace('{min}', (phConfig.ph_setpoint - phConfig.ph_tolerance).toFixed(2))
+          .replace('{max}', (phConfig.ph_setpoint + phConfig.ph_tolerance).toFixed(2))
       : undefined;
 
   return (
@@ -132,33 +139,33 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
       <div className="flex items-center justify-between mb-4">
         <h2 className={`text-xl font-bold flex items-center gap-2 ${HW_TEXT.ph}`}>
           <BeakerIcon className="w-6 h-6" />
-          Auto pH
+          {ph.title}
         </h2>
         <NavLink
           href="/automacao"
           className={`text-sm transition-colors ${HW_TEXT.brand} hover:opacity-80`}
         >
-          Abrir automação →
+          {auto.openAutomacao}
         </NavLink>
       </div>
 
       <InstrumentCard accent="ph">
         <OperationStateBadges
           autoEnabled={phConfig.auto_enabled}
-          autoActiveLabel="Auto pH ativo"
-          autoInactiveLabel="Auto pH inativo"
+          autoActiveLabel={ph.autoActive}
+          autoInactiveLabel={ph.autoInactive}
           isLoading={phConfig.isLoading}
           isDosando={isDosando}
           dosandoLabel={
             isDosando && operationRemainingSec > 0
-              ? `Dosando pH (${operationRemainingSec}s)`
-              : 'Dosando pH'
+              ? ph.dosingTimed.replace('{n}', String(operationRemainingSec))
+              : ph.dosing
           }
           isAguardandoRecirculacao={isAguardandoRecirculacao}
           operationRemainingSec={operationRemainingSec}
           showNextCheck={showNextCheck}
           nextCheckInSec={nextCheckInSec}
-          nextCheckLabel="Próxima verificação pH"
+          nextCheckLabel={ph.nextCheck}
           accent="violet"
           operationInterrupted={operationInterrupted}
         />
@@ -170,21 +177,21 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
           accent="ph"
           metrics={[
             {
-              label: 'pH Atual',
+              label: ph.phActual.replace(/:$/, ''),
               value: phAtual != null ? formatSensorValue(phAtual, 2) : '--',
             },
             {
-              label: 'Erro (|pH − SP|)',
+              label: ph.errorAbs.replace(/:$/, ''),
               value: phError != null ? formatSensorValue(phError, 2) : '--',
             },
             {
-              label: 'Última dosagem',
+              label: auto.lastDose,
               value:
                 lastDosageMl != null ? `${lastDosageMl.toFixed(2)} ml` : '-- ml',
               loading: dosageLoading && lastDosageMl == null,
             },
             {
-              label: 'Setpoint',
+              label: auto.setpoint,
               value:
                 phConfig.ph_setpoint > 0 ? `pH ${phConfig.ph_setpoint.toFixed(1)}` : '--',
             },

@@ -67,14 +67,16 @@ export function ScheduleChip({
 
   return (
     <span
-      className={`inline-flex items-center gap-0.5 max-w-full rounded-md px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap ${scheduleChipClasses(kind)} ${className}`}
+      className={`inline-flex items-center gap-0.5 max-w-full min-w-0 rounded-md px-1 py-0.5 text-[9px] font-medium ${scheduleChipClasses(kind)} ${className}`}
       title={title}
     >
-      <ScheduleKindIcon kind={kind} className={`w-2.5 h-2.5 ${scheduleTextClass(kind)}`} />
-      <span className="truncate text-dark-text">
+      <ScheduleKindIcon kind={kind} className={`w-2.5 h-2.5 shrink-0 ${scheduleTextClass(kind)}`} />
+      <span className="truncate min-w-0 text-dark-text">
         {schedule.label === 'Circulação' ? 'Circ' : schedule.label.split(' ')[0]}
       </span>
-      <span className={`tabular-nums opacity-90 ${scheduleTextClass(kind)}`}>·{cadenceShort}</span>
+      <span className={`shrink-0 tabular-nums opacity-90 ${scheduleTextClass(kind)}`}>
+        ·{cadenceShort}
+      </span>
     </span>
   );
 }

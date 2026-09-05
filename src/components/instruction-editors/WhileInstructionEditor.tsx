@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { PlusIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { Instruction } from '../SequentialScriptEditor';
@@ -9,13 +9,8 @@ import type { MasterRelayOption } from '@/lib/master-relay-options';
 import RelayActionEditor from './RelayActionEditor';
 import ConditionFields from './ConditionFields';
 import { createNestedInstruction } from '@/lib/instruction-factory';
-import {
-  formatInstructionType,
-  SWITCH_LABEL,
-  SWITCH_MODE_CYCLE,
-  SWITCH_MODE_TIMER,
-  CONDITION_SENSORS,
-} from '@/lib/instruction-labels';
+import { formatInstructionType, getConditionSensors } from '@/lib/instruction-labels';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const IfInstructionEditor = dynamic(() => import('./IfInstructionEditor'), { ssr: false });
 
@@ -26,16 +21,22 @@ interface WhileInstructionEditorProps {
   masterRelays: MasterRelayOption[];
 }
 
-const SCRIPT_SENSORS = CONDITION_SENSORS.filter(
-  (s) => s.value !== 'ph' && s.value !== 'ec'
-);
-
 export default function WhileInstructionEditor({
   instruction,
   onChange,
   espnowSlaves,
   masterRelays,
 }: WhileInstructionEditorProps) {
+  const { t } = useLanguage();
+  const instrT = t.automacao.instr;
+  const scriptSensors = useMemo(
+    () =>
+      getConditionSensors(instrT).filter(
+        (s) => s.value !== 'ph' && s.value !== 'ec'
+      ),
+    [instrT]
+  );
+
   // ✅ Funções auxiliares para conversão de tempo
   const msToTime = (ms: number): string => {
     const totalSeconds = Math.floor(ms / 1000);
@@ -96,13 +97,13 @@ export default function WhileInstructionEditor({
             value: String(condition.value),
           })
         }
-        sensors={SCRIPT_SENSORS}
+        sensors={scriptSensors}
       />
 
       {/* Body (instruções dentro do WHILE) */}
       <div>
         <label className="block text-xs text-dark-textSecondary mb-2">
-          Instruções dentro do ciclo:
+          {instrT.loopBody}:
         </label>
         <div className="space-y-2 ml-4 border-l-2 border-aqua-500/30 pl-3">
           {(instruction.body || []).map((bodyInstr, idx) => (
@@ -112,7 +113,7 @@ export default function WhileInstructionEditor({
             >
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs text-purple-400 font-mono">
-                  {formatInstructionType(bodyInstr.type)}
+                  {formatInstructionType(bodyInstr.type, instrT)}
                 </span>
                 <button
                   type="button"
@@ -135,11 +136,11 @@ export default function WhileInstructionEditor({
               {bodyInstr.type === 'switch' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs text-dark-textSecondary mb-2">{SWITCH_LABEL}</label>
+                    <label className="block text-xs text-dark-textSecondary mb-2">{instrT.switchLabel}</label>
                     
                     {/* Seleção de Modo: Ciclo ou Timer */}
                     <div className="mb-3">
-                      <label className="block text-xs text-dark-textSecondary mb-1">Modo</label>
+                      <label className="block text-xs text-dark-textSecondary mb-1">{instrT.switchMode}</label>
                       <select
                         value={bodyInstr.switch_mode || 'timer'}
                         onChange={(e) => {
@@ -155,15 +156,15 @@ export default function WhileInstructionEditor({
                         }}
                         className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                       >
-                        <option value="timer">{SWITCH_MODE_TIMER}</option>
-                        <option value="cycle">{SWITCH_MODE_CYCLE}</option>
+                        <option value="timer">{instrT.modeTimer}</option>
+                        <option value="cycle">{instrT.modeCycle}</option>
                       </select>
                     </div>
 
                     {/* Configuração de Timer */}
                     {bodyInstr.switch_mode === 'timer' && (
                       <div>
-                        <label className="block text-xs text-dark-textSecondary mb-1">Duração (ms)</label>
+                        <label className="block text-xs text-dark-textSecondary mb-1">{instrT.durationMs}</label>
                         <input
                           type="number"
                           min="0"
@@ -177,7 +178,7 @@ export default function WhileInstructionEditor({
                           className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                           placeholder="1000"
                         />
-                        <p className="text-xs text-dark-textSecondary/80 mt-1">Tempo que o relé ficará no estado alternado</p>
+                        <p className="text-xs text-dark-textSecondary/80 mt-1">{instrT.relayDurationHint}</p>
                       </div>
                     )}
 
@@ -186,7 +187,7 @@ export default function WhileInstructionEditor({
                       <div className="space-y-2">
                         <div className="grid grid-cols-3 gap-2 items-end">
                           <div>
-                            <label className="block text-xs text-dark-textSecondary mb-1">ON ⏰</label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cycleOn}</label>
                             <input
                               type="text"
                               pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}"
@@ -209,7 +210,7 @@ export default function WhileInstructionEditor({
                             <ArrowPathIcon className="w-8 h-8 text-aqua-400 animate-spin-slow" />
                           </div>
                           <div>
-                            <label className="block text-xs text-dark-textSecondary mb-1">OFF ⏰</label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cycleOff}</label>
                             <input
                               type="text"
                               pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}"
@@ -230,7 +231,7 @@ export default function WhileInstructionEditor({
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs text-dark-textSecondary mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
+                          <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cyclesLabel} <span className="text-aqua-400">{instrT.cyclesPerpetual}</span></label>
                           <input
                             type="number"
                             min="0"
@@ -270,7 +271,7 @@ export default function WhileInstructionEditor({
               )}
 
               {bodyInstr.type === 'return' && (
-                <div className="text-xs text-dark-textSecondary italic">Retornar do loop</div>
+                <div className="text-xs text-dark-textSecondary italic">{instrT.returnFromLoop}</div>
               )}
             </div>
           ))}
@@ -282,7 +283,7 @@ export default function WhileInstructionEditor({
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
               <PlusIcon className="w-3 h-3" />
-              {formatInstructionType('while')}
+              {formatInstructionType('while', instrT)}
             </button>
             <button
               type="button"
@@ -290,7 +291,7 @@ export default function WhileInstructionEditor({
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
               <PlusIcon className="w-3 h-3" />
-              Se
+              {formatInstructionType('if', instrT)}
             </button>
             <button
               type="button"
@@ -298,7 +299,7 @@ export default function WhileInstructionEditor({
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
               <PlusIcon className="w-3 h-3" />
-              Relé
+              {formatInstructionType('relay_action', instrT)}
             </button>
             <button
               type="button"
@@ -306,7 +307,7 @@ export default function WhileInstructionEditor({
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
               <PlusIcon className="w-3 h-3" />
-              {formatInstructionType('switch')}
+              {formatInstructionType('switch', instrT)}
             </button>
             <button
               type="button"
@@ -314,7 +315,7 @@ export default function WhileInstructionEditor({
               className="px-2 py-1 bg-dark-surface hover:bg-dark-border border border-dark-border rounded text-xs text-white transition-colors flex items-center gap-1"
             >
               <PlusIcon className="w-3 h-3" />
-              Retornar
+              {instrT.addReturn}
             </button>
           </div>
         </div>

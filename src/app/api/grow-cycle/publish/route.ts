@@ -46,6 +46,7 @@ export async function POST(request: Request) {
       instance_id: result.instanceId,
       rules_created: result.rulesCreated,
       rules_updated: result.rulesUpdated,
+      schedules_upserted: result.schedulesUpserted ?? 0,
       warnings: result.errors,
     });
   } catch (error) {

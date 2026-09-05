@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type CSSProperties } from 'react';
 import type { GrowCyclePlan, GrowWeekProfile } from '@/lib/grow-cycle-timeline/types';
 import {
   PHASE_COLORS,
   PHASE_LABELS,
+  PHASE_RIBBON_SHORT,
 } from '@/lib/grow-cycle-timeline/types';
 import {
   getTankEventsForWeek,
@@ -42,6 +43,8 @@ interface GrowCycleTimelineChartProps {
   scheduleUiVersion?: ScheduleUiVersion;
   cycleStartedAt?: string | null;
   currentWeekIndex?: number;
+  /** Demo local — igual Metrics: hover fictício, sem fetch live */
+  preview?: boolean;
 }
 
 const MARGIN = TIMELINE_MARGIN;
@@ -89,6 +92,7 @@ export function GrowCycleTimelineChart({
   scheduleUiVersion = 'p1',
   cycleStartedAt = null,
   currentWeekIndex,
+  preview = false,
 }: GrowCycleTimelineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
@@ -98,6 +102,7 @@ export function GrowCycleTimelineChart({
     startedAt: cycleStartedAt,
     currentWeekIndex: currentWeekIndex ?? playheadWeek,
     weeklyStats,
+    preview,
   });
 
   const weeks = plan.weeks.filter((w) => w.weekIndex <= plan.totalWeeks);
@@ -135,33 +140,31 @@ export function GrowCycleTimelineChart({
   return (
     <div
       ref={containerRef}
-      className="bg-dark-card border border-dark-border rounded-xl overflow-hidden shadow-lg shadow-black/20 w-full min-w-0"
+      className="bg-dark-card border border-dark-border rounded-xl shadow-lg shadow-black/20 w-full min-w-0 overflow-hidden"
     >
       <div className="px-4 pt-4 pb-2">
         <p className="text-[10px] uppercase tracking-wider text-dark-textSecondary font-semibold">
           Fases do ciclo
         </p>
+        {scrollMode && (
+          <p className="text-[10px] text-aqua-400/80 mt-0.5">
+            Caixa fixa — deslize na horizontal para ver todas as semanas
+          </p>
+        )}
       </div>
 
-      <div className="relative">
-        {scrollMode && (
-          <>
-            <div
-              className="absolute left-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-r from-dark-card to-transparent pointer-events-none"
-              aria-hidden
-            />
-            <div
-              className="absolute right-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-l from-dark-card to-transparent pointer-events-none"
-              aria-hidden
-            />
-          </>
-        )}
-
-        <div
-          className={`timeline-scroll w-full min-w-0 max-w-full ${scrollMode ? 'overflow-x-auto' : 'overflow-x-hidden'}`}
-          aria-label={scrollMode ? 'Timeline — rolagem horizontal' : undefined}
-        >
-          <div className="max-w-full" style={{ width: chartW, minWidth: chartW }}>
+      {/* Viewport fixo: só este bloco faz scroll-X; conteúdo interno pode ser mais largo */}
+      <div
+        className="timeline-scroll w-full min-w-0 overflow-x-auto overscroll-x-contain"
+        aria-label="Timeline — scroll horizontal"
+        style={
+          {
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'rgba(38,198,218,0.55) rgba(255,255,255,0.06)',
+          } as CSSProperties
+        }
+      >
+        <div className="shrink-0" style={{ width: chartW, minWidth: chartW }}>
             {/* Phase ribbon — flex track matching SVG week columns */}
             <div className="pb-2 mb-1 border-b border-dark-border/60">
               <div
@@ -170,7 +173,7 @@ export function GrowCycleTimelineChart({
               >
                 <div
                   aria-hidden
-                  className="shrink-0"
+                  className="sticky left-0 z-20 shrink-0 bg-dark-card border-r border-dark-border/40"
                   style={{ width: LANE_LABEL_COL_W, minWidth: LANE_LABEL_COL_W }}
                 />
                 <div className="flex shrink-0 h-full" style={{ width: weeksTrackW, minWidth: weeksTrackW }}>
@@ -186,7 +189,7 @@ export function GrowCycleTimelineChart({
                       style={{ width: weekSlotW, minWidth: weekSlotW, maxWidth: weekSlotW }}
                     >
                       <span className="truncate px-0.5 block text-center leading-7">
-                        {PHASE_LABELS[w.phase].slice(0, 3)}
+                        {PHASE_RIBBON_SHORT[w.phase]}
                       </span>
                     </button>
                   ))}
@@ -585,7 +588,6 @@ export function GrowCycleTimelineChart({
             )}
           </div>
         </div>
-        </div>
       </div>
 
       {hoverMetrics && hoveredWeek != null && (
@@ -605,8 +607,20 @@ export function GrowCycleTimelineChart({
           </div>
           <div className="flex items-center gap-2">
             <span className="w-4 border-t-2 border-dashed border-amber-400" />
-            <span className="text-[10px] text-dark-textSecondary">Playhead simulado</span>
+            <span className="text-[10px] text-dark-textSecondary">
+              {preview ? 'Playhead simulado (demo)' : 'Playhead / semana actual'}
+            </span>
           </div>
+          {scrollMode && (
+            <span className="text-[10px] text-aqua-400/90">
+              ← Arraste / role na horizontal para ver mais semanas →
+            </span>
+          )}
+          {!preview && plan.schedules.length === 0 && (
+            <span className="text-[10px] text-dark-textSecondary">
+              Live: sem pastilhas de schedule — use Novo schedule (todo dia + duração)
+            </span>
+          )}
         </div>
       </div>
     </div>

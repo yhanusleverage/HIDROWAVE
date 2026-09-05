@@ -15,12 +15,18 @@ import { useLevelSensors } from '@/hooks/useLevelSensors';
 import { MixInterlockBadge } from '@/components/MixInterlockBadge';
 import { ecErrorAbs } from '@/lib/ec-control-display';
 import { formatSensorValue } from '@/lib/format-sensor-value';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface EcAutoStatusCardProps {
   deviceId: string;
 }
 
 export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
+  const { t } = useLanguage();
+  const ec = t.automacao.ec;
+  const dil = t.automacao.dilution;
+  const auto = t.dashboard.auto;
+
   const active = Boolean(deviceId?.trim());
   const ecConfig = useEcConfig(deviceId, active);
   const configReady = active && !ecConfig.isLoading;
@@ -65,7 +71,10 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
 
   const limitHint =
     ecConfig.ec_setpoint > 0
-      ? `Limite inferior: ${ecConfig.ec_setpoint - ecConfig.tolerance} µS/cm`
+      ? auto.limitLower.replace(
+          '{n}',
+          String(ecConfig.ec_setpoint - ecConfig.tolerance)
+        )
       : undefined;
 
   return (
@@ -73,28 +82,29 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
       <div className="flex items-center justify-between mb-4">
         <h2 className={`text-xl font-bold flex items-center gap-2 ${HW_TEXT.ec}`}>
           <BeakerIcon className="w-6 h-6" />
-          Auto EC
+          {ec.title}
         </h2>
         <NavLink
           href="/automacao"
           className={`text-sm transition-colors ${HW_TEXT.brand} hover:opacity-80`}
         >
-          Abrir automação →
+          {auto.openAutomacao}
         </NavLink>
       </div>
 
       <InstrumentCard accent="ec">
         <OperationStateBadges
           autoEnabled={ecConfig.auto_enabled}
-          autoActiveLabel="Auto EC ativo"
-          autoInactiveLabel="Auto EC inativo"
+          autoActiveLabel={ec.autoActive}
+          autoInactiveLabel={ec.autoInactive}
           isLoading={ecConfig.isLoading}
           isDosando={isDosando}
+          dosandoLabel={ec.dosing}
           isAguardandoRecirculacao={isAguardandoRecirculacao}
           operationRemainingSec={operationRemainingSec}
           showNextCheck={showNextCheck}
           nextCheckInSec={nextCheckInSec}
-          nextCheckLabel="Próxima verificação EC"
+          nextCheckLabel={ec.nextCheck}
           accent="emerald"
           operationInterrupted={operationInterrupted}
         />
@@ -105,7 +115,7 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
         {dilutionState.isDraining && dilutionState.targetL > 0 && (
           <div className="mt-4 mb-2 space-y-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2.5">
             <div className="flex justify-between text-xs text-cyan-300">
-              <span>Diluição · drenando</span>
+              <span>{dil.stateDraining}</span>
               <span className="font-medium tabular-nums">
                 {dilutionState.progressL.toFixed(1)} / {dilutionState.targetL.toFixed(1)} L
               </span>
@@ -121,9 +131,7 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
 
         {dilutionState.isFilling && (
           <div className="mt-4 mb-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2.5">
-            <p className="text-xs text-cyan-300">
-              Diluição · repondo — aguardando nível alto
-            </p>
+            <p className="text-xs text-cyan-300">{dil.stateFilling}</p>
           </div>
         )}
 
@@ -131,21 +139,21 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
           accent="ec"
           metrics={[
             {
-              label: 'EC Atual',
+              label: ec.ecActual.replace(/:$/, ''),
               value: ecAtual != null ? `${formatSensorValue(ecAtual, 0)} µS/cm` : '--',
             },
             {
-              label: 'Erro (|EC − SP|)',
+              label: auto.ecErrorAbs,
               value: ecError != null ? `${formatSensorValue(ecError, 0)} µS/cm` : '--',
             },
             {
-              label: 'Última dosagem',
+              label: auto.lastDose,
               value:
                 totalMl != null ? `${totalMl.toFixed(2)} ml` : '-- ml',
               loading: dosageLoading && totalMl == null,
             },
             {
-              label: 'Setpoint',
+              label: auto.setpoint,
               value: ecConfig.ec_setpoint > 0 ? `${ecConfig.ec_setpoint} µS/cm` : '--',
             },
           ]}
@@ -155,7 +163,7 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
             limitHint,
           }}
           dosageHint={
-            !available ? <span>Tabela nutrient_dosages ausente</span> : undefined
+            !available ? <span>{auto.missingNutrientTable}</span> : undefined
           }
         />
       </InstrumentCard>

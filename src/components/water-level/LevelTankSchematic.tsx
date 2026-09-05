@@ -1,11 +1,12 @@
 'use client';
 
 import React from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { HW_TEXT } from '@/lib/design-tokens';
 import {
-  PROBE_META_DISPLAY,
   deriveFillHeightPct,
   getProbeCell,
+  getProbeMetaDisplay,
   getProbeValue,
   countWetProbes,
 } from '@/lib/water-level-display';
@@ -21,19 +22,22 @@ export function LevelTankSchematic({
   levelsSimulated = false,
   className = '',
 }: LevelTankSchematicProps) {
+  const { t } = useLanguage();
+  const w = t.automacao.water;
+  const probeMetaDisplay = getProbeMetaDisplay(w);
   const wetCount = countWetProbes(probes);
   const fillPct = levelsSimulated ? 0 : deriveFillHeightPct(wetCount);
 
   return (
     <div className={`flex flex-col ${className}`}>
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-dark-textSecondary">
-        Esquema do reservatório
+        {w.schematicTitle}
       </p>
       <div className="flex gap-4 flex-1 min-h-[220px]">
         {/* Silueta del tanque — L4 topo arriba, L1 base abajo (V2) */}
         <div className="relative w-16 shrink-0 flex flex-col min-h-[220px]">
           <p className="mb-1 text-center text-[9px] uppercase tracking-wide text-dark-textSecondary/70">
-            topo
+            {w.schematicTop}
           </p>
           <div className="relative flex-1 flex flex-col">
             <div className="absolute inset-x-0 top-0 h-3 rounded-t-md border border-b-0 border-dark-border bg-dark-surface/80 z-10" />
@@ -43,7 +47,7 @@ export function LevelTankSchematic({
                 style={{ height: `${fillPct}%` }}
                 aria-hidden
               />
-              {PROBE_META_DISPLAY.map((meta, displayIndex) => {
+              {probeMetaDisplay.map((meta, displayIndex) => {
                 const topPct = 12 + displayIndex * 22;
                 return (
                   <div
@@ -57,14 +61,18 @@ export function LevelTankSchematic({
             </div>
           </div>
           <p className="text-center text-[9px] uppercase tracking-wide text-dark-textSecondary/70">
-            base
+            {w.schematicBase}
           </p>
         </div>
 
         {/* Lista L4 (topo) → L1 (base) */}
         <div className="flex flex-col justify-between flex-1 py-1">
-          {PROBE_META_DISPLAY.map((meta) => {
-            const cell = getProbeCell(getProbeValue(probes, meta.index), levelsSimulated);
+          {probeMetaDisplay.map((meta) => {
+            const cell = getProbeCell(
+              getProbeValue(probes, meta.index),
+              levelsSimulated,
+              w
+            );
             return (
               <div
                 key={meta.index}
@@ -101,7 +109,9 @@ export function LevelTankSchematic({
         </div>
       </div>
       <p className="mt-2 text-[10px] text-dark-textSecondary tabular-nums">
-        Níveis alcançados: {levelsSimulated ? '--' : `${wetCount}/${PROBE_META_DISPLAY.length}`}
+        {levelsSimulated
+          ? '--'
+          : w.levelsReached.replace('{n}', String(wetCount))}
       </p>
     </div>
   );

@@ -1,6 +1,8 @@
 # Keys propuestas — `automacao.ruleModal` (+ common / instr)
 
-Añadir a [`types.ts`](../../src/lib/translations/app/types.ts) en la **fase de migración 2a** (aún no implementado en runtime).
+Añadir a [`types.ts`](../../src/lib/translations/app/types.ts) en la **fase de migración 2a**.
+
+**Estado:** implementado en runtime (`types.ts` + `pt-BR` / `en` / `es` + `CreateRuleModal.tsx`).
 
 Prefijo en uso: `t.automacao.*`
 

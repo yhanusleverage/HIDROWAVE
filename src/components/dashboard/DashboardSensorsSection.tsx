@@ -10,6 +10,7 @@ import { HydroMeasurement, EnvironmentMeasurement } from '@/lib/supabase';
 import { hasFreshHydroSensorReading } from '@/lib/realtime/hydro-freshness';
 import { formatSensorValue } from '@/lib/format-sensor-value';
 import { AdjustmentsHorizontalIcon } from '@heroicons/react/24/outline';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface DashboardSensorsSectionProps {
   loadingSensors: boolean;
@@ -40,6 +41,8 @@ export function DashboardSensorsSection({
   onOpenTempConfig,
   onOpenPhConfig,
 }: DashboardSensorsSectionProps) {
+  const { t } = useLanguage();
+  const d = t.dashboard;
   const hasFreshPv = hasFreshHydroSensorReading(hydroData, sensorUpdatedAt);
   const hasLevelsSimulated = hydroData?.levels_simulated === true;
   const hasLevelsOnly =
@@ -53,7 +56,7 @@ export function DashboardSensorsSection({
           title={
             <span className="flex items-center gap-2 text-xl font-bold text-dark-text">
               <SignalIcon className="h-6 w-6 text-aqua-400" />
-              Sensores
+              {d.sensorsTitle}
             </span>
           }
           className="mb-0"
@@ -61,32 +64,32 @@ export function DashboardSensorsSection({
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {hydroData ? (
             hasFreshPv ? (
-              <HwBadge accent="ok">Hydro OK</HwBadge>
+              <HwBadge accent="ok">{d.badgeHydroOk}</HwBadge>
             ) : hasLevelsSimulated ? (
-              <HwBadge accent="warn">Níveis simulados (dev)</HwBadge>
+              <HwBadge accent="warn">{d.badgeLevelsSim}</HwBadge>
             ) : hasLevelsOnly ? (
-              <HwBadge accent="warn">Sem leitura recente</HwBadge>
+              <HwBadge accent="warn">{d.badgeNoRecent}</HwBadge>
             ) : (
-              <HwBadge accent="brand">Niveles (sem pH/EC/temp)</HwBadge>
+              <HwBadge accent="brand">{d.badgeLevelsOnly}</HwBadge>
             )
           ) : (
-            <HwBadge accent="warn">Sem Hydro</HwBadge>
+            <HwBadge accent="warn">{d.badgeNoHydro}</HwBadge>
           )}
           {environmentData ? (
-            <HwBadge accent="ok">Env OK</HwBadge>
+            <HwBadge accent="ok">{d.badgeEnvOk}</HwBadge>
           ) : (
-            <HwBadge accent="warn">Sem Env</HwBadge>
+            <HwBadge accent="warn">{d.badgeNoEnv}</HwBadge>
           )}
         </div>
       </div>
 
       {loadingSensors ? (
-        <BrandLoading message="Carregando sensores..." className="py-12" />
+        <BrandLoading message={t.common.loadingSensors} className="py-12" />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="relative">
             <SensorCard
-              title="Temperatura da Água"
+              title={d.tempWater}
               value={displayTemp !== null ? formatSensorValue(displayTemp, 1) : '--'}
               unit="°C"
               status={
@@ -101,7 +104,7 @@ export function DashboardSensorsSection({
               type="button"
               onClick={onOpenTempConfig}
               className="absolute top-2 right-2 p-1.5 rounded-lg bg-dark-surface hover:bg-aqua-500/20 border border-dark-border hover:border-aqua-500/50 transition-colors"
-              aria-label="Configurar umbrales de temperatura"
+              aria-label={d.ariaTemp}
             >
               <AdjustmentsHorizontalIcon className="h-4 w-4 text-aqua-400" />
             </button>
@@ -118,7 +121,7 @@ export function DashboardSensorsSection({
               type="button"
               onClick={onOpenPhConfig}
               className="absolute top-2 right-2 p-1.5 rounded-lg bg-dark-surface hover:bg-violet-500/20 border border-dark-border hover:border-violet-500/50 transition-colors"
-              aria-label="Configurar umbrales de pH"
+              aria-label={d.ariaPh}
             >
               <AdjustmentsHorizontalIcon className="h-4 w-4 text-violet-400" />
             </button>
@@ -136,7 +139,7 @@ export function DashboardSensorsSection({
               type="button"
               onClick={onOpenEcConfig}
               className="absolute top-2 right-2 p-1.5 rounded-lg bg-dark-surface hover:bg-yellow-500/20 border border-yellow-500/30 hover:border-yellow-500/50 transition-colors"
-              aria-label="Configurar umbrales de EC"
+              aria-label={d.ariaEc}
             >
               <AdjustmentsHorizontalIcon className="h-4 w-4 text-yellow-400" />
             </button>

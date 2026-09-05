@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Instruction } from '../SequentialScriptEditor';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface DelayEditorProps {
   instruction: Instruction;
@@ -9,9 +10,12 @@ interface DelayEditorProps {
 }
 
 export default function DelayEditor({ instruction, onChange }: DelayEditorProps) {
+  const { t } = useLanguage();
+  const instrT = t.automacao.instr;
+
   return (
     <div>
-      <label className="block text-xs text-dark-textSecondary mb-1">Duração (ms)</label>
+      <label className="block text-xs text-dark-textSecondary mb-1">{instrT.durationMs}</label>
       <input
         type="number"
         min="0"

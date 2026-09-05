@@ -4,13 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { XMarkIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, Cog6ToothIcon, PaperClipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'react-hot-toast';
-import {
-  formatInstructionType,
-  SWITCH_LABEL,
-  SWITCH_MODE_CYCLE,
-  SWITCH_MODE_TIMER,
-} from '@/lib/instruction-labels';
+import { formatInstructionType } from '@/lib/instruction-labels';
 import { InstructionAddButtons } from './instruction-editors/InstructionAddButtons';
+import { BlockAutoProcedureToggle } from './instruction-editors/BlockAutoProcedureToggle';
 import WhileInstructionEditor from './instruction-editors/WhileInstructionEditor';
 import IfInstructionEditor from './instruction-editors/IfInstructionEditor';
 import RelayActionEditor from './instruction-editors/RelayActionEditor';
@@ -18,13 +14,23 @@ import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { useAuth } from '@/contexts/AuthContext';
 import TargetRuleIdField from '@/components/TargetRuleIdField';
 import { DEFAULT_MASTER_RELAYS } from '@/lib/master-relay-options';
-import { createNestedInstruction, ensureInstructionIds } from '@/lib/instruction-factory';
+import { createNestedInstruction, ensureInstructionIds, defaultProcedureInstructions } from '@/lib/instruction-factory';
 import { resolveDecisionRuleDisplayName } from '@/lib/decision-rule-display-name';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface Instruction {
   id?: string;
-  type: 'while' | 'if' | 'relay_action' | 'switch' | 'return' | 'break' | 'continue' | 'delay';
+  type:
+    | 'while'
+    | 'if'
+    | 'relay_action'
+    | 'switch'
+    | 'return'
+    | 'break'
+    | 'continue'
+    | 'delay'
+    | 'block_auto'
+    | 'unblock_auto';
   condition?: {
     sensor: string;
     operator: string;
@@ -69,6 +75,10 @@ export default function SequentialScriptEditor({
 }: SequentialScriptEditorProps) {
   const { userProfile } = useAuth();
   const { t } = useLanguage();
+  const ac = t.automacao.common;
+  const rm = t.automacao.ruleModal;
+  const instrT = t.automacao.instr;
+  const se = t.automacao.scriptEditor;
   const [ruleName, setRuleName] = useState('');
   const [ruleDescription, setRuleDescription] = useState('');
   const [priority, setPriority] = useState(50);
@@ -144,9 +154,20 @@ export default function SequentialScriptEditor({
   useEffect(() => {
     if (scriptId) {
       loadScript(scriptId);
+    } else {
+      setRuleName('');
+      setRuleDescription('');
+      setPriority(85);
+      setEnabled(true);
+      setInstructions(defaultProcedureInstructions());
+      setLoopInterval(5000);
+      setMaxIterations(0);
+      setChainedEvents([]);
+      setCooldown(60);
+      setMaxExecutionsPerHour(10);
     }
     if (deviceId && userProfile?.email) {
-    loadSlaves();
+      loadSlaves();
     }
   }, [scriptId, deviceId, userProfile?.email]);
 
@@ -194,7 +215,7 @@ export default function SequentialScriptEditor({
       }
     } catch (error) {
       console.error('Erro ao carregar script:', error);
-      toast.error('Erro ao carregar função');
+      toast.error(se.toast.loadError);
     } finally {
       setLoading(false);
     }
@@ -205,7 +226,13 @@ export default function SequentialScriptEditor({
     if (type === 'relay_action') {
       newInstr.relay_number = 5;
     }
-    setInstructions((prev) => [...prev, newInstr]);
+    setInstructions((prev) => {
+      if (type === 'block_auto') {
+        const without = prev.filter((i) => i.type !== 'block_auto');
+        return [newInstr, ...without];
+      }
+      return [...prev, newInstr];
+    });
   };
 
   const removeInstruction = (index: number) => {
@@ -233,12 +260,12 @@ export default function SequentialScriptEditor({
 
   const handleSave = async () => {
     if (!ruleName.trim()) {
-      toast.error('Nome da função é obrigatório');
+      toast.error(se.error.nameRequired);
       return;
     }
 
     if (instructions.length === 0) {
-      toast.error('Adicione pelo menos uma instrução');
+      toast.error(se.error.needInstruction);
       return;
     }
 
@@ -294,7 +321,7 @@ export default function SequentialScriptEditor({
           rule_name: ruleData.rule_name
         });
         
-        toast.success('Função atualizada com sucesso');
+        toast.success(se.toast.savedUpdate);
       } else {
         const { data: insertedData, error } = await supabase
           .from('decision_rules')
@@ -313,13 +340,13 @@ export default function SequentialScriptEditor({
           created_by: insertedData.created_by
         });
         
-        toast.success('Função criada com sucesso');
+        toast.success(se.toast.savedCreate);
       }
 
       onClose();
     } catch (error) {
       console.error('Erro ao salvar script:', error);
-      toast.error(error instanceof Error ? error.message : 'Erro ao salvar função');
+      toast.error(error instanceof Error ? error.message : se.toast.saveError);
     } finally {
       setLoading(false);
     }
@@ -330,7 +357,7 @@ export default function SequentialScriptEditor({
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-dark-border">
         <h2 className="text-xl font-semibold text-white">
-          {scriptId ? '✏️ Editar Função' : '➕ Nova Função'}
+          {scriptId ? se.title.edit : se.title.create}
         </h2>
         <button
           onClick={onClose}
@@ -344,36 +371,36 @@ export default function SequentialScriptEditor({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Fluxo Procedural - Descrição */}
         <div className="bg-aqua-500/10 border border-aqua-500/30 rounded-lg p-3 mb-4">
-          <p className="text-xs text-aqua-300 font-medium mb-1">📋 Fluxo Procedural (de cima para baixo):</p>
+          <p className="text-xs text-aqua-300 font-medium mb-1">{rm.flow.title}</p>
           <p className="text-xs text-dark-textSecondary leading-relaxed">
-            <span className="text-aqua-400 font-semibold">1. Condições</span> → 
-            <span className="text-purple-400 font-semibold"> 2. Ações</span> → 
-            <span className="text-yellow-400 font-semibold"> 3. Eventos Encadeados</span> → 
-            <span className="text-dark-textSecondary font-semibold"> 4. Config Avançada</span>
+            <span className="text-aqua-400 font-semibold">{rm.flow.step1}</span> → 
+            <span className="text-purple-400 font-semibold"> {rm.flow.step2}</span> → 
+            <span className="text-yellow-400 font-semibold"> {rm.flow.step3}</span> → 
+            <span className="text-dark-textSecondary font-semibold"> {rm.flow.step4}</span>
           </p>
         </div>
 
         {/* Nome */}
         <div>
           <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-            Nome da Função
+            {se.label.functionName}
           </label>
           <input
             type="text"
             value={ruleName}
             onChange={(e) => setRuleName(e.target.value)}
-            placeholder="Ex: Dreno Automático"
+            placeholder={rm.placeholder.functionName}
             className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-aqua-500"
           />
         </div>
 
         {/* Descrição */}
         <div>
-          <label className="block text-sm font-medium text-dark-textSecondary mb-1">Descrição</label>
+          <label className="block text-sm font-medium text-dark-textSecondary mb-1">{ac.description}</label>
           <textarea
             value={ruleDescription}
             onChange={(e) => setRuleDescription(e.target.value)}
-            placeholder="Descrição opcional"
+            placeholder={ac.placeholderDescription}
             rows={2}
             className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-aqua-500 resize-none"
           />
@@ -393,7 +420,7 @@ export default function SequentialScriptEditor({
                 <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
               )}
               <Cog6ToothIcon className="w-5 h-5 text-aqua-400" />
-              <span className="text-sm font-medium text-white">Configurações Avançadas</span>
+              <span className="text-sm font-medium text-white">{rm.section.advanced}</span>
             </div>
           </button>
 
@@ -402,7 +429,7 @@ export default function SequentialScriptEditor({
               {/* Prioridade */}
               <div>
                 <label className="block text-sm font-medium text-dark-textSecondary mb-2">
-                  Prioridade (0-100)
+                  {rm.label.priority}
                 </label>
                 <input
                   type="range"
@@ -418,7 +445,7 @@ export default function SequentialScriptEditor({
                   <span className="text-xs text-dark-textSecondary">100</span>
                 </div>
                 <p className="text-xs text-dark-textSecondary/80 mt-1">
-                  Valor + mais importante. Default 50.
+                  {rm.hint.priority}
                 </p>
               </div>
 
@@ -432,14 +459,14 @@ export default function SequentialScriptEditor({
                   className="w-5 h-5 rounded border-dark-border bg-dark-surface text-aqua-500 focus:ring-2 focus:ring-aqua-500 cursor-pointer"
                 />
                 <label htmlFor="enabled" className="text-sm font-medium text-white cursor-pointer">
-                  Regra Ativa
+                  {rm.label.enabled}
                 </label>
               </div>
 
               {/* Cooldown */}
               <div>
                 <label className="block text-sm font-medium text-dark-textSecondary mb-2">
-                  Cooldown (segundos)
+                  {rm.label.cooldown}
                 </label>
                 <input
                   type="number"
@@ -449,14 +476,14 @@ export default function SequentialScriptEditor({
                   className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-aqua-500"
                 />
                 <p className="text-xs text-dark-textSecondary/80 mt-1">
-                  Tempo mínimo entre execuções da mesma regra.
+                  {rm.hint.cooldown}
                 </p>
               </div>
 
               {/* Limite por Hora */}
               <div>
                 <label className="block text-sm font-medium text-dark-textSecondary mb-2">
-                  Limite por Hora
+                  {rm.label.maxPerHour}
                 </label>
                 <input
                   type="number"
@@ -466,7 +493,7 @@ export default function SequentialScriptEditor({
                   className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-aqua-500"
                 />
                 <p className="text-xs text-dark-textSecondary/80 mt-1">
-                  Número máximo de execuções por hora.
+                  {rm.hint.maxPerHour}
                 </p>
               </div>
             </div>
@@ -476,25 +503,37 @@ export default function SequentialScriptEditor({
         {/* Instruções */}
         <div className="border-t border-dark-border pt-4">
           <label className="block text-sm font-medium text-dark-textSecondary mb-3">
-            📝 INSTRUÇÕES (Ordem de Execução)
+            {se.section.instructions}
           </label>
+
+          <BlockAutoProcedureToggle
+            instructions={instructions}
+            onChange={setInstructions}
+            className="mb-3"
+          />
 
           <div className="space-y-3">
             {instructions.map((instr, index) => (
               <div
-                key={index}
-                className="border border-dark-border rounded-lg p-3 bg-dark-surface/50"
+                key={instr.id ?? index}
+                className={`border rounded-lg p-3 ${
+                  instr.type === 'block_auto'
+                    ? 'border-amber-500/30 bg-amber-500/5'
+                    : 'border-dark-border bg-dark-surface/50'
+                }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-mono text-sm font-semibold text-aqua-400">
-                    {index + 1}. {formatInstructionType(instr.type)}
-                  </span>
+                    <span className="font-mono text-sm font-semibold text-aqua-400">
+                      {index + 1}. {formatInstructionType(instr.type, instrT)}
+                    </span>
                   <div className="flex gap-1">
+                    {instr.type !== 'block_auto' && (
+                      <>
                     <button
                       onClick={() => moveInstruction(index, 'up')}
-                      disabled={index === 0}
+                      disabled={index === 0 || instructions[index - 1]?.type === 'block_auto'}
                       className="p-1 hover:bg-dark-surface rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Mover para cima"
+                      title={ac.moveUp}
                     >
                       <ArrowUpIcon className="w-4 h-4 text-dark-textSecondary" />
                     </button>
@@ -502,14 +541,16 @@ export default function SequentialScriptEditor({
                       onClick={() => moveInstruction(index, 'down')}
                       disabled={index === instructions.length - 1}
                       className="p-1 hover:bg-dark-surface rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Mover para baixo"
+                      title={ac.moveDown}
                     >
                       <ArrowDownIcon className="w-4 h-4 text-dark-textSecondary" />
                     </button>
+                      </>
+                    )}
                     <button
                       onClick={() => removeInstruction(index)}
                       className="p-1 hover:bg-dark-surface rounded"
-                      title="Remover"
+                      title={ac.remove}
                     >
                       <XMarkIcon className="w-4 h-4 text-red-400" />
                     </button>
@@ -548,11 +589,11 @@ export default function SequentialScriptEditor({
                 {instr.type === 'switch' && (
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs text-dark-textSecondary mb-2">{SWITCH_LABEL}</label>
+                      <label className="block text-xs text-dark-textSecondary mb-2">{instrT.switchLabel}</label>
                       
                       {/* Seleção de Modo: Ciclo ou Timer */}
                       <div className="mb-3">
-                        <label className="block text-xs text-dark-textSecondary mb-1">Modo</label>
+                        <label className="block text-xs text-dark-textSecondary mb-1">{instrT.switchMode}</label>
                         <select
                           value={instr.switch_mode || 'timer'}
                           onChange={(e) => {
@@ -568,15 +609,15 @@ export default function SequentialScriptEditor({
                           }}
                           className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                         >
-                          <option value="timer">{SWITCH_MODE_TIMER}</option>
-                          <option value="cycle">{SWITCH_MODE_CYCLE}</option>
+                          <option value="timer">{instrT.modeTimer}</option>
+                          <option value="cycle">{instrT.modeCycle}</option>
                         </select>
                       </div>
 
                       {/* Configuração de Timer */}
                       {instr.switch_mode === 'timer' && (
                         <div>
-                          <label className="block text-xs text-dark-textSecondary mb-1">Duração (ms)</label>
+                          <label className="block text-xs text-dark-textSecondary mb-1">{instrT.durationMs}</label>
                           <input
                             type="number"
                             min="0"
@@ -590,7 +631,7 @@ export default function SequentialScriptEditor({
                             className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                             placeholder="1000"
                           />
-                          <p className="text-xs text-dark-textSecondary/80 mt-1">Tempo que o switch ficará ativo</p>
+                          <p className="text-xs text-dark-textSecondary/80 mt-1">{instrT.switchDurationHint}</p>
                         </div>
                       )}
 
@@ -599,7 +640,7 @@ export default function SequentialScriptEditor({
                         <div className="space-y-2">
                           <div className="grid grid-cols-3 gap-2 items-end">
                             <div>
-                              <label className="block text-xs text-dark-textSecondary mb-1">ON ⏰</label>
+                              <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cycleOn}</label>
                               <input
                                 type="text"
                                 value={instr.cycle_on_time || msToTime(instr.cycle_on_ms || 5000)}
@@ -640,7 +681,7 @@ export default function SequentialScriptEditor({
                               <ArrowPathIcon className="w-8 h-8 text-aqua-400 animate-spin-slow" />
                             </div>
                             <div>
-                              <label className="block text-xs text-dark-textSecondary mb-1">OFF ⏰</label>
+                              <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cycleOff}</label>
                               <input
                                 type="text"
                                 value={instr.cycle_off_time || msToTime(instr.cycle_off_ms || 5000)}
@@ -679,7 +720,7 @@ export default function SequentialScriptEditor({
                             </div>
                           </div>
                           <div>
-                            <label className="block text-xs text-dark-textSecondary mb-1">Ciclos: <span className="text-aqua-400">0 = Perpétuo</span></label>
+                            <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cyclesLabel} <span className="text-aqua-400">{instrT.cyclesPerpetual}</span></label>
                             <input
                               type="number"
                               min="0"
@@ -701,7 +742,17 @@ export default function SequentialScriptEditor({
                 )}
 
                 {instr.type === 'return' && (
-                  <div className="text-sm text-dark-textSecondary italic">Retornar do loop</div>
+                  <div className="text-sm text-dark-textSecondary italic">{instrT.returnFromLoop}</div>
+                )}
+                {instr.type === 'block_auto' && (
+                  <div className="text-sm text-amber-200/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                    {instrT.blockAutoHelp}
+                  </div>
+                )}
+                {instr.type === 'unblock_auto' && (
+                  <div className="text-sm text-green-300/90 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2">
+                    {instrT.unblockAutoHelp}
+                  </div>
                 )}
               </div>
             ))}
@@ -728,14 +779,14 @@ export default function SequentialScriptEditor({
                   <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary" />
                 )}
                 <PaperClipIcon className="w-5 h-5 text-purple-400" />
-                <span className="text-sm font-medium text-white">Eventos Encadeados</span>
+                <span className="text-sm font-medium text-white">{rm.section.chainedEvents}</span>
               </div>
             </button>
 
             {expandedChainedEvents && (
               <div className="p-4 border-t border-dark-border space-y-4 bg-dark-surface/30">
                 <p className="text-xs text-dark-textSecondary mb-3">
-                  Quando esta regra executar, disparar outras regras:
+                  {rm.hint.chainedEvents}
                 </p>
 
                 <div className="space-y-3">
@@ -746,7 +797,7 @@ export default function SequentialScriptEditor({
                     >
                       <div className="flex justify-between items-start mb-2">
                         <span className="text-xs text-purple-400 font-mono">
-                          Evento {idx + 1}
+                          {rm.label.eventN.replace('{n}', String(idx + 1))}
                         </span>
                         <button
                           onClick={() =>
@@ -761,7 +812,7 @@ export default function SequentialScriptEditor({
                       <div className="space-y-2">
                         <div>
                           <label className="block text-xs text-dark-textSecondary mb-1">
-                            ID da Regra Alvo
+                            {rm.label.targetRuleId}
                           </label>
                           <TargetRuleIdField
                             value={event.target_rule_id}
@@ -779,7 +830,7 @@ export default function SequentialScriptEditor({
 
                         <div>
                           <label className="block text-xs text-dark-textSecondary mb-1">
-                            Disparar Quando
+                            {rm.label.triggerWhen}
                           </label>
                           <select
                             value={event.trigger_on}
@@ -790,14 +841,14 @@ export default function SequentialScriptEditor({
                             }}
                             className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
                           >
-                            <option value="success">Ao Ter Sucesso</option>
-                            <option value="failure">Ao Ter Falha</option>
+                            <option value="success">{rm.trigger.success}</option>
+                            <option value="failure">{rm.trigger.failure}</option>
                           </select>
                         </div>
 
                         <div>
                           <label className="block text-xs text-dark-textSecondary mb-1">
-                            Espera (ms)
+                            {rm.label.delayMs}
                           </label>
                           <input
                             type="number"
@@ -826,7 +877,7 @@ export default function SequentialScriptEditor({
                   className="w-full px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg text-sm text-purple-400 transition-colors flex items-center justify-center gap-2"
                 >
                   <PlusIcon className="w-4 h-4" />
-                  Adicionar Evento
+                  {rm.action.addEvent}
                 </button>
               </div>
             )}
@@ -836,11 +887,11 @@ export default function SequentialScriptEditor({
         {/* Configurações do Loop */}
         <div className="border-t border-dark-border pt-4">
           <label className="block text-sm font-medium text-dark-textSecondary mb-2">
-            Configurações do Loop
+            {rm.section.loopConfig}
           </label>
           <div className="space-y-2">
             <div>
-              <label className="text-xs text-dark-textSecondary">Intervalo entre execuções (ms)</label>
+              <label className="text-xs text-dark-textSecondary">{rm.label.loopInterval}</label>
               <input
                 type="number"
                 value={loopInterval}
@@ -849,7 +900,7 @@ export default function SequentialScriptEditor({
               />
             </div>
             <div>
-              <label className="text-xs text-dark-textSecondary">Máximo de iterações: <span className="text-aqua-400">0 = Perpétuo</span></label>
+              <label className="text-xs text-dark-textSecondary">{rm.label.maxIterations} <span className="text-aqua-400">{instrT.cyclesPerpetual}</span></label>
               <input
                 type="number"
                 min="0"
@@ -868,14 +919,14 @@ export default function SequentialScriptEditor({
           onClick={onClose}
           className="flex-1 px-4 py-2 bg-dark-surface hover:bg-dark-border border border-dark-border rounded-lg text-white transition-colors"
         >
-          ❌ Cancelar
+          {ac.cancel}
         </button>
         <button
           onClick={handleSave}
           disabled={loading}
           className="flex-1 px-4 py-2 bg-aqua-600 hover:bg-aqua-700 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          {loading ? 'Salvando...' : '💾 Salvar Função'}
+          {loading ? se.action.saving : se.action.save}
         </button>
       </div>
     </div>

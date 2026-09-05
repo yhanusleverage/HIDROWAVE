@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { GrowCyclePlan } from '@/lib/grow-cycle-timeline/types';
 import {
+  buildMockWeekHoverMetrics,
   emptyWeekHoverStats,
   getWeekHoverRecipe,
   type WeekHoverMetrics,
@@ -21,17 +22,20 @@ export function useGrowCycleWeekHoverMetrics(
     startedAt?: string | null;
     currentWeekIndex?: number;
     weeklyStats?: GrowCycleWeeklyStatsRow[];
+    /** Demo local — igual Metrics preview: sem fetch, dados fictícios */
+    preview?: boolean;
   }
 ): WeekHoverMetrics | null {
   const activeDeviceId = deviceId?.trim() || '';
   const currentWeekIndex = options?.currentWeekIndex ?? 0;
   const startedAt = options?.startedAt?.trim() || '';
   const weeklyStat = options?.weeklyStats?.find((s) => s.week_index === hoveredWeek) ?? null;
+  const preview = options?.preview === true;
 
   const [fetched, setFetched] = useState<ReturnType<typeof emptyWeekHoverStats> | null>(null);
 
   useEffect(() => {
-    if (hoveredWeek == null) {
+    if (preview || hoveredWeek == null) {
       setFetched(null);
       return;
     }
@@ -50,10 +54,15 @@ export function useGrowCycleWeekHoverMetrics(
     return () => {
       cancelled = true;
     };
-  }, [plan, hoveredWeek, currentWeekIndex, startedAt, activeDeviceId]);
+  }, [plan, hoveredWeek, currentWeekIndex, startedAt, activeDeviceId, preview]);
 
   return useMemo(() => {
     if (hoveredWeek == null) return null;
+
+    if (preview) {
+      return buildMockWeekHoverMetrics(plan, hoveredWeek, currentWeekIndex);
+    }
+
     const recipe = getWeekHoverRecipe(plan, hoveredWeek, currentWeekIndex);
     if (!recipe) return null;
     if (recipe.weekKind === 'future') return recipe;
@@ -78,5 +87,5 @@ export function useGrowCycleWeekHoverMetrics(
       phAvg,
       hasWeekData,
     };
-  }, [plan, hoveredWeek, currentWeekIndex, fetched, weeklyStat]);
+  }, [plan, hoveredWeek, currentWeekIndex, fetched, weeklyStat, preview]);
 }

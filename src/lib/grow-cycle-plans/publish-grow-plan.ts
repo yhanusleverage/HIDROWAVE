@@ -8,6 +8,7 @@ import {
 import { buildProceduresFromGrowPlan } from '@/lib/rule-procedure/publish-from-timeline';
 import { saveProcedureToDecisionRulesServer } from '@/lib/rule-procedure/save-procedure-server';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
+import { syncGrowCycleSchedulesFromPlan } from '@/lib/grow-cycle-plans/sync-grow-schedules';
 
 export interface PublishGrowPlanInput {
   deviceId: string;
@@ -23,6 +24,7 @@ export interface PublishGrowPlanResult {
   instanceId?: string;
   rulesCreated: number;
   rulesUpdated: number;
+  schedulesUpserted?: number;
 }
 
 async function applyWeekZeroSetpoints(deviceId: string, plan: GrowCyclePlan): Promise<string[]> {
@@ -57,6 +59,10 @@ async function applyWeekZeroSetpoints(deviceId: string, plan: GrowCyclePlan): Pr
   return warnings;
 }
 
+/**
+ * Iniciar ciclo: plan + instance S0 + schedules primero.
+ * Regras P1/P4 são best-effort (avisos) — não bloqueiam o arranque.
+ */
 export async function publishGrowCyclePlan(
   input: PublishGrowPlanInput
 ): Promise<PublishGrowPlanResult> {
@@ -67,7 +73,7 @@ export async function publishGrowCyclePlan(
 
   const deviceId = input.deviceId.trim();
   let planId = input.planRowId;
-  const errors: string[] = [];
+  const warnings: string[] = [];
   let rulesCreated = 0;
   let rulesUpdated = 0;
 
@@ -94,25 +100,6 @@ export async function publishGrowCyclePlan(
       });
     }
 
-    const procedures = buildProceduresFromGrowPlan(input.plan);
-    for (const proc of procedures) {
-      const result = await saveProcedureToDecisionRulesServer(
-        deviceId,
-        proc,
-        input.createdBy
-      );
-      if (!result.ok) {
-        errors.push(`${proc.id}: ${result.error}`);
-        continue;
-      }
-      if (result.created) rulesCreated++;
-      else rulesUpdated++;
-    }
-
-    if (errors.length > 0) {
-      return { ok: false, errors, planId, rulesCreated, rulesUpdated };
-    }
-
     const instance = await createGrowCycleInstance({
       planId: planId!,
       deviceId,
@@ -120,22 +107,79 @@ export async function publishGrowCyclePlan(
     });
 
     const setpointWarnings = await applyWeekZeroSetpoints(deviceId, input.plan);
-    if (setpointWarnings.length) {
-      errors.push(...setpointWarnings);
+    warnings.push(...setpointWarnings);
+
+    const sched = await syncGrowCycleSchedulesFromPlan(deviceId, input.plan);
+    warnings.push(...sched.warnings);
+
+    const procedures = buildProceduresFromGrowPlan(input.plan);
+    for (const proc of procedures) {
+      try {
+        const result = await saveProcedureToDecisionRulesServer(
+          deviceId,
+          proc,
+          input.createdBy ?? 'grow-cycle-publish',
+          { skipMqtt: true }
+        );
+        if (!result.ok) {
+          warnings.push(`${proc.id}: ${result.error}`);
+          continue;
+        }
+        if (result.created) rulesCreated++;
+        else rulesUpdated++;
+      } catch (e) {
+        warnings.push(
+          `${proc.id}: ${e instanceof Error ? e.message : 'erro ao guardar regra'}`
+        );
+      }
+    }
+
+    // Um único manifest MQTT no fim (evita hang de N publishes)
+    try {
+      const sb = getSupabaseServerClient();
+      const { data: rows } = await sb
+        .from('decision_rules')
+        .select('rule_id, rule_name, rule_description, rule_json, enabled, priority')
+        .eq('device_id', deviceId);
+      if (rows?.length) {
+        const { notifyDeviceRulesManifest, hashRulePayload } = await import(
+          '@/lib/mqtt-rules-publish'
+        );
+        await notifyDeviceRulesManifest(
+          deviceId,
+          rows.map((r) => ({
+            rule_id: String(r.rule_id),
+            hash: hashRulePayload({
+              rule_id: r.rule_id,
+              rule_name: r.rule_name,
+              rule_description: r.rule_description,
+              enabled: Boolean(r.enabled),
+              priority: r.priority ?? 50,
+              rule_json: r.rule_json ?? {},
+            }),
+            enabled: Boolean(r.enabled),
+          }))
+        );
+      }
+    } catch (e) {
+      warnings.push(
+        `MQTT manifest: ${e instanceof Error ? e.message : 'falhou (ciclo já activo)'}`
+      );
     }
 
     return {
       ok: true,
-      errors: setpointWarnings,
+      errors: warnings,
       planId,
       instanceId: instance.id,
       rulesCreated,
       rulesUpdated,
+      schedulesUpserted: sched.upserted,
     };
   } catch (e) {
     return {
       ok: false,
-      errors: [e instanceof Error ? e.message : 'Erro ao publicar plano'],
+      errors: [e instanceof Error ? e.message : 'Erro ao iniciar ciclo'],
       planId,
       rulesCreated,
       rulesUpdated,

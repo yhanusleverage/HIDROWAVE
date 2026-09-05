@@ -43,7 +43,7 @@ export function AutomacaoTabs({ activeTab, onTabChange }: AutomacaoTabsProps) {
       return { id, label: t.automacao.tabs.rules, subtitle: t.automacao.tabs.rulesSub };
     }
     if (id === 'schedules') {
-      return { id, label: 'Schedules', subtitle: 'Cronogramas' };
+      return { id, label: t.automacao.tabs.schedules, subtitle: t.automacao.tabs.schedulesSub };
     }
     return { id, label: t.automacao.tabs.timeline, subtitle: t.automacao.tabs.timelineSub };
   });

@@ -2,11 +2,12 @@
 
 import React from 'react';
 import {
-  WATER_LEVEL_OPTIONS,
   defaultConditionForSensor,
   getOperatorsForSensor,
+  getWaterLevelOptions,
   isLevelSensor,
 } from '@/lib/instruction-labels';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface ConditionValue {
   sensor: string;
@@ -27,8 +28,11 @@ export default function ConditionFields({
   onChange,
   sensors,
 }: ConditionFieldsProps) {
+  const { t } = useLanguage();
+  const instrT = t.automacao.instr;
   const levelSensor = isLevelSensor(condition.sensor);
-  const operators = getOperatorsForSensor(condition.sensor);
+  const operators = getOperatorsForSensor(condition.sensor, instrT);
+  const waterLevels = getWaterLevelOptions(instrT);
 
   const handleSensorChange = (newSensor: string) => {
     const defaults = defaultConditionForSensor(newSensor);
@@ -41,14 +45,14 @@ export default function ConditionFields({
 
   const numericPlaceholder =
     condition.sensor === 'humidity'
-      ? 'Valor (%)'
+      ? instrT.valuePercent
       : condition.sensor === 'ph' || condition.sensor === 'ec'
-        ? 'Valor'
+        ? instrT.valuePlaceholder
         : condition.sensor === 'temperature' ||
             condition.sensor === 'temp_water' ||
             condition.sensor === 'temp_env'
-          ? 'Valor (°C)'
-          : 'Valor';
+          ? instrT.valueCelsius
+          : instrT.valuePlaceholder;
 
   return (
     <div className="border border-dark-border rounded-lg p-3 bg-dark-surface/30">
@@ -82,13 +86,11 @@ export default function ConditionFields({
         </select>
         {levelSensor ? (
           <select
-            value={String(condition.value || 'vazio')}
-            onChange={(e) =>
-              onChange({ ...condition, value: e.target.value })
-            }
+            value={String(condition.value)}
+            onChange={(e) => onChange({ ...condition, value: e.target.value })}
             className="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
           >
-            {WATER_LEVEL_OPTIONS.map((option) => (
+            {waterLevels.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -97,16 +99,16 @@ export default function ConditionFields({
         ) : (
           <input
             type="number"
-            step="0.1"
-            value={condition.value ?? ''}
+            step="any"
+            value={condition.value}
             onChange={(e) =>
               onChange({
                 ...condition,
-                value: parseFloat(e.target.value) || 0,
+                value: e.target.value === '' ? 0 : Number(e.target.value),
               })
             }
             placeholder={numericPlaceholder}
-            className="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
+            className="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
           />
         )}
       </div>

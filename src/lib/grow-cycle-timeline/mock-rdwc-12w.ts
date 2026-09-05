@@ -31,7 +31,7 @@ const weeks: GrowWeekProfile[] = [
   week(2, 'vegetative', 1000, 5.8, 96),
   week(3, 'vegetative', 1100, 5.8, 94),
   week(4, 'vegetative', 1200, 5.8, 92),
-  week(5, 'flip', 1400, 6.0, 90, 'Flip'),
+  week(5, 'flip', 1400, 6.0, 90, 'Pré-flor'),
   week(6, 'flower', 1600, 6.1, 88),
   week(7, 'flower', 1650, 6.15, 86),
   week(8, 'flower', 1700, 6.2, 84),
@@ -91,7 +91,7 @@ export const MOCK_RDWC_12W_PLAN: GrowCyclePlan = {
   id: 'mock-rdwc-12w',
   name: 'RDWC Demo — 12 semanas',
   description:
-    'Plano simulado: estabelecimento, veg, flip, flower e flush. Changeout semanal P1 @ 08:00.',
+    'Plano simulado: estabelecimento, veg, pré-flor, flower e flush. Changeout semanal P1 @ 08:00.',
   totalWeeks: 12,
   weeks,
   tankEvents,

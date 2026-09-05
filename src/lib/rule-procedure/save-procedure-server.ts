@@ -64,7 +64,8 @@ async function publishProcedureRuleMqtt(
 export async function saveProcedureToDecisionRulesServer(
   deviceId: string,
   procedure: RuleProcedure,
-  createdBy?: string
+  createdBy?: string,
+  options?: { skipMqtt?: boolean }
 ): Promise<SaveProcedureServerResult> {
   if (!deviceId?.trim()) {
     return { ok: false, error: 'device_id ausente', created: false };
@@ -132,7 +133,9 @@ export async function saveProcedureToDecisionRulesServer(
         .eq('id', existing.id);
 
       if (error) return { ok: false, error: error.message, created: false };
-      await publishProcedureRuleMqtt(deviceId.trim(), procedure, ruleJson);
+      if (!options?.skipMqtt) {
+        await publishProcedureRuleMqtt(deviceId.trim(), procedure, ruleJson);
+      }
       return { ok: true, ruleDbId: existing.id, created: false };
     }
 
@@ -154,7 +157,9 @@ export async function saveProcedureToDecisionRulesServer(
     if (error || !created?.id) {
       return { ok: false, error: error?.message ?? 'Falha ao criar regra', created: false };
     }
-    await publishProcedureRuleMqtt(deviceId.trim(), procedure, ruleJson);
+    if (!options?.skipMqtt) {
+      await publishProcedureRuleMqtt(deviceId.trim(), procedure, ruleJson);
+    }
     return { ok: true, ruleDbId: created.id, created: true };
   } catch (e) {
     return {

@@ -25,6 +25,11 @@ export function createNestedInstruction(type: Instruction['type']): Instruction 
   };
 }
 
+/** Novo procedimento: já começa com Bloquear Auto (pausa EC/pH). */
+export function defaultProcedureInstructions(): Instruction[] {
+  return [createNestedInstruction('block_auto')];
+}
+
 function normalizeInstructionTree(instr: Instruction): Instruction {
   const normalized: Instruction = {
     ...instr,

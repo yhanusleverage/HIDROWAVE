@@ -75,25 +75,46 @@ export function getDeviceDisplayStatus(row: {
   return 'online';
 }
 
-export function getDeviceStatusText(status: DeviceDisplayStatus): string {
+export type DeviceStatusLabels = {
+  online: string;
+  offline: string;
+  warning: string;
+  neverConnected: string;
+  now: string;
+  minutesAgo: string; // '{n}'
+  hoursAgo: string;
+  daysAgo: string;
+};
+
+export function getDeviceStatusText(
+  status: DeviceDisplayStatus,
+  labels?: Pick<DeviceStatusLabels, 'online' | 'offline' | 'warning'>
+): string {
   switch (status) {
     case 'online':
-      return 'Online';
+      return labels?.online ?? 'Online';
     case 'offline':
-      return 'Offline';
+      return labels?.offline ?? 'Offline';
     case 'warning':
-      return 'Aviso';
+      return labels?.warning ?? 'Aviso';
   }
 }
 
-export function getLastSeenText(lastSeen: string | null | undefined): string {
-  if (!lastSeen) return 'Nunca conectado';
+export function getLastSeenText(
+  lastSeen: string | null | undefined,
+  labels?: Pick<DeviceStatusLabels, 'neverConnected' | 'now' | 'minutesAgo' | 'hoursAgo' | 'daysAgo'>
+): string {
+  if (!lastSeen) return labels?.neverConnected ?? 'Nunca conectado';
   const minutesAgo = Math.floor((Date.now() - new Date(lastSeen).getTime()) / 60000);
-  if (minutesAgo < 1) return 'Agora';
-  if (minutesAgo < 60) return `Há ${minutesAgo} min`;
+  if (minutesAgo < 1) return labels?.now ?? 'Agora';
+  if (minutesAgo < 60) {
+    return (labels?.minutesAgo ?? 'Há {n} min').replace('{n}', String(minutesAgo));
+  }
   const hoursAgo = Math.floor(minutesAgo / 60);
-  if (hoursAgo < 24) return `Há ${hoursAgo}h`;
-  return `Há ${Math.floor(hoursAgo / 24)} dias`;
+  if (hoursAgo < 24) {
+    return (labels?.hoursAgo ?? 'Há {n}h').replace('{n}', String(hoursAgo));
+  }
+  return (labels?.daysAgo ?? 'Há {n} dias').replace('{n}', String(Math.floor(hoursAgo / 24)));
 }
 
 function belongsToUser(row: DeviceStatusRow, userEmail: string): boolean {

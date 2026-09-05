@@ -4,7 +4,7 @@ import { FN_RULE_IDS, FN_RULE_NAME_PT } from '@/lib/fixed-function-rule-from-hyd
 import type { HydraulicRoleId, ProcedureStep } from '@/lib/rule-procedure/types';
 import { HwBadge } from '@/components/ui/HwBadge';
 import ConditionFields from '@/components/instruction-editors/ConditionFields';
-import { CONDITION_SENSORS } from '@/lib/instruction-labels';
+import { getConditionSensors } from '@/lib/instruction-labels';
 import { getHydraulicRoleDefinition } from '@/lib/hydraulic-relay-roles';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { hydraulicRoleCopy } from '@/lib/translations/app/procedure-roles';
@@ -119,7 +119,7 @@ export function ProcedureStepEditor({
                 },
               })
             }
-            sensors={CONDITION_SENSORS.filter((s) => s.value === 'water_level')}
+            sensors={getConditionSensors(t.automacao.instr).filter((s) => s.value === 'water_level')}
           />
           <label className="block text-xs">
             <span className="text-dark-textSecondary">{p.timeoutMin}</span>

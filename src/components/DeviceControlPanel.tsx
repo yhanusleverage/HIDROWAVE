@@ -6,6 +6,8 @@ import { DeviceStatus } from '@/lib/automation';
 import { resolveDeviceOnline } from '@/lib/realtime/device-status';
 import { HW_TEXT } from '@/lib/design-tokens';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { toBcp47 } from '@/lib/locale';
 import { getDeviceAnalytics, DosageMetrics } from '@/lib/analytics';
 import BrandLoading from '@/components/BrandLoading';
 import toast from 'react-hot-toast';
@@ -19,6 +21,8 @@ interface DeviceControlPanelProps {
 
 export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceControlPanelProps) {
   const { userProfile } = useAuth();
+  const { t, locale } = useLanguage();
+  const p = t.dispositivos.panel;
   const isOnline = resolveDeviceOnline(device);
 
   const [analytics, setAnalytics] = useState<DosageMetrics[]>([]);
@@ -53,13 +57,13 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
 
   const handleReboot = async () => {
     if (!device.device_id || !userProfile?.email) {
-      toast.error('Dados do dispositivo ou usuário não disponíveis');
+      toast.error(p.toastRebootMissingData);
       return;
     }
 
     if (
       !confirm(
-        `Tem certeza que deseja reiniciar o dispositivo "${device.device_name || device.device_id}"?\n\nO dispositivo será reiniciado e o contador de reinícios será incrementado.`
+        p.rebootConfirm.replace('{name}', device.device_name || device.device_id)
       )
     ) {
       return;
@@ -78,18 +82,23 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Erro ao reiniciar dispositivo');
+        throw new Error(error.error || p.toastRebootError);
       }
 
       const result = await response.json();
-      toast.success(`✅ Comando de reinício enviado! (Total: ${result.reboot_count} reinícios)`);
+      toast.success(
+        p.toastRebootSuccess.replace(
+          '{count}',
+          String(result.reboot_count)
+        )
+      );
 
       setTimeout(() => {
         window.location.reload();
       }, 2000);
     } catch (error) {
       console.error('Erro ao reiniciar dispositivo:', error);
-      toast.error(error instanceof Error ? error.message : 'Erro ao reiniciar dispositivo');
+      toast.error(error instanceof Error ? error.message : p.toastRebootError);
     } finally {
       setRebooting(false);
     }
@@ -103,33 +112,35 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
       size="full"
     >
       <p className="text-dark-textSecondary text-sm mb-4">
-        {device.location || 'Localização não especificada'}
+        {device.location || p.locationFallback}
       </p>
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-            <p className="text-sm text-dark-textSecondary mb-1">Status</p>
+            <p className="text-sm text-dark-textSecondary mb-1">{p.status}</p>
             <p className={`text-lg font-bold ${isOnline ? HW_TEXT.ok : HW_TEXT.danger}`}>
-              {isOnline ? 'Online' : 'Offline'}
+              {isOnline ? t.common.online : t.common.offline}
             </p>
           </div>
           <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-            <p className="text-sm text-dark-textSecondary mb-1">Última Conexão</p>
+            <p className="text-sm text-dark-textSecondary mb-1">{p.lastConnection}</p>
             <p className="text-lg font-bold text-dark-text">
-              {device.last_seen ? new Date(device.last_seen).toLocaleString('pt-BR') : 'N/A'}
+              {device.last_seen
+                ? new Date(device.last_seen).toLocaleString(toBcp47(locale))
+                : p.na}
             </p>
           </div>
           <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-            <p className="text-sm text-dark-textSecondary mb-1">IP Address</p>
+            <p className="text-sm text-dark-textSecondary mb-1">{p.ipAddress}</p>
             <p className="text-lg font-bold text-dark-text font-mono">
-              {device.ip_address || 'N/A'}
+              {device.ip_address || p.na}
             </p>
           </div>
           <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-            <p className="text-sm text-dark-textSecondary mb-1">Firmware</p>
+            <p className="text-sm text-dark-textSecondary mb-1">{p.firmware}</p>
             <p className="text-lg font-bold text-dark-text">
-              {device.firmware_version || 'N/A'}
+              {device.firmware_version || p.na}
             </p>
           </div>
         </div>
@@ -137,7 +148,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
         {device.free_heap !== undefined && device.free_heap !== null && (
           <div className="bg-dark-card border border-dark-border rounded-lg p-6">
             <h3 className="text-lg font-semibold text-dark-text mb-4 flex items-center gap-2">
-              🔧 Debug de Memória
+              {p.memoryDebugTitle}
               {(() => {
                 const totalHeap = 300000;
                 const freeHeap = device.free_heap;
@@ -155,7 +166,11 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                           : 'bg-green-500/20 text-green-400'
                     }`}
                   >
-                    {isLowMemory ? '⚠️ Crítico' : isWarning ? '⚠️ Atenção' : '✅ OK'}
+                    {isLowMemory
+                      ? p.memoryBadgeCritical
+                      : isWarning
+                        ? p.memoryBadgeWarning
+                        : p.memoryBadgeOk}
                   </span>
                 );
               })()}
@@ -168,12 +183,13 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
               const freePercent = (freeHeap / totalHeap) * 100;
               const isLowMemory = freePercent < 20;
               const isWarning = freePercent < 30;
+              const loc = toBcp47(locale);
 
               return (
                 <div className="space-y-4">
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm text-dark-textSecondary">Memória Livre</span>
+                      <span className="text-sm text-dark-textSecondary">{p.freeMemoryLabel}</span>
                       <span
                         className={`text-lg font-bold ${
                           isLowMemory
@@ -195,9 +211,9 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                       />
                     </div>
                     <div className="flex justify-between text-xs text-dark-textSecondary">
-                      <span>Livre: {freeHeap.toLocaleString()} bytes</span>
-                      <span>Usada: {usedHeap.toLocaleString()} bytes</span>
-                      <span>Total: {totalHeap.toLocaleString()} bytes</span>
+                      <span>{p.freeBytes.replace('{n}', freeHeap.toLocaleString(loc))}</span>
+                      <span>{p.usedBytes.replace('{n}', usedHeap.toLocaleString(loc))}</span>
+                      <span>{p.totalBytes.replace('{n}', totalHeap.toLocaleString(loc))}</span>
                     </div>
                   </div>
 
@@ -214,31 +230,30 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                           isLowMemory ? 'text-red-400' : 'text-yellow-400'
                         }`}
                       >
-                        {isLowMemory ? '⚠️ Memória Crítica!' : '⚠️ Memória Baixa'}
+                        {isLowMemory ? p.memoryCriticalTitle : p.memoryLowTitle}
                       </h4>
                       <ul className="space-y-2 text-sm text-dark-textSecondary">
                         <li className="flex items-start gap-2">
                           <span>•</span>
-                          <span>Reduza o número de regras ativas</span>
+                          <span>{p.tipReduceRules}</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <span>•</span>
-                          <span>Aumente o intervalo de avaliação das regras</span>
+                          <span>{p.tipIncreaseInterval}</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <span>•</span>
-                          <span>Limpe logs antigos do sistema</span>
+                          <span>{p.tipClearLogs}</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <span>•</span>
-                          <span>Verifique vazamentos de memória no código</span>
+                          <span>{p.tipCheckLeaks}</span>
                         </li>
                         {device.total_rules !== undefined && (
                           <li className="flex items-start gap-2">
                             <span>•</span>
                             <span>
-                              Regras ativas:{' '}
-                              <strong className="text-dark-text">{device.total_rules}</strong>
+                              {p.activeRules.replace('{n}', String(device.total_rules))}
                             </span>
                           </li>
                         )}
@@ -249,22 +264,26 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     {device.uptime_seconds !== undefined && (
                       <div className="bg-dark-surface border border-dark-border rounded p-3">
-                        <p className="text-dark-textSecondary mb-1">Uptime</p>
+                        <p className="text-dark-textSecondary mb-1">{p.uptime}</p>
                         <p className="font-bold text-dark-text">
-                          {Math.floor(device.uptime_seconds / 3600)}h{' '}
-                          {Math.floor((device.uptime_seconds % 3600) / 60)}m
+                          {p.uptimeFormat
+                            .replace('{h}', String(Math.floor(device.uptime_seconds / 3600)))
+                            .replace(
+                              '{m}',
+                              String(Math.floor((device.uptime_seconds % 3600) / 60))
+                            )}
                         </p>
                       </div>
                     )}
                     {device.reboot_count !== undefined && device.reboot_count !== null && (
                       <div className="bg-dark-surface border border-dark-border rounded p-3">
                         <div className="flex items-center justify-between mb-1">
-                          <p className="text-dark-textSecondary">🔄 Reinícios</p>
+                          <p className="text-dark-textSecondary">{t.dispositivos.reboots}</p>
                           <button
                             onClick={handleReboot}
                             disabled={rebooting || !isOnline}
                             className="p-1.5 hover:bg-dark-border rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Reiniciar dispositivo"
+                            title={p.rebootTitle}
                           >
                             <ArrowPathIcon
                               className={`w-4 h-4 text-aqua-400 ${rebooting ? 'animate-spin' : ''}`}
@@ -280,36 +299,36 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                                 : 'text-red-400'
                           }`}
                         >
-                          {device.reboot_count.toLocaleString()}
+                          {device.reboot_count.toLocaleString(toBcp47(locale))}
                         </p>
                         <p className="text-xs text-dark-textSecondary mt-1">
                           {device.reboot_count === 0
-                            ? 'Estável'
+                            ? p.rebootStable
                             : device.reboot_count < 10
-                              ? 'Atenção'
-                              : 'Crítico'}
+                              ? p.rebootAttention
+                              : p.rebootCritical}
                         </p>
                       </div>
                     )}
                     {device.total_rules !== undefined && (
                       <div className="bg-dark-surface border border-dark-border rounded p-3">
-                        <p className="text-dark-textSecondary mb-1">Regras Totais</p>
+                        <p className="text-dark-textSecondary mb-1">{p.totalRules}</p>
                         <p className="font-bold text-dark-text">{device.total_rules}</p>
                       </div>
                     )}
                     {device.total_evaluations !== undefined && (
                       <div className="bg-dark-surface border border-dark-border rounded p-3">
-                        <p className="text-dark-textSecondary mb-1">Avaliações</p>
+                        <p className="text-dark-textSecondary mb-1">{p.evaluations}</p>
                         <p className="font-bold text-dark-text">
-                          {device.total_evaluations.toLocaleString()}
+                          {device.total_evaluations.toLocaleString(toBcp47(locale))}
                         </p>
                       </div>
                     )}
                     {device.last_evaluation && (
                       <div className="bg-dark-surface border border-dark-border rounded p-3">
-                        <p className="text-dark-textSecondary mb-1">Última Avaliação</p>
+                        <p className="text-dark-textSecondary mb-1">{p.lastEvaluation}</p>
                         <p className="font-bold text-dark-text text-xs">
-                          {new Date(device.last_evaluation).toLocaleTimeString('pt-BR')}
+                          {new Date(device.last_evaluation).toLocaleTimeString(toBcp47(locale))}
                         </p>
                       </div>
                     )}
@@ -322,17 +341,17 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
 
         <div className="mt-6 bg-dark-card border border-dark-border rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-dark-text">📊 Analytics de Dosagem</h3>
+            <h3 className="text-lg font-semibold text-dark-text">{p.analyticsTitle}</h3>
             <div className="flex items-center space-x-2">
               <select
                 value={analyticsDays}
                 onChange={(e) => setAnalyticsDays(parseInt(e.target.value))}
                 className="px-3 py-1 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
               >
-                <option value={1}>Último dia</option>
-                <option value={7}>Últimos 7 dias</option>
-                <option value={30}>Últimos 30 dias</option>
-                <option value={90}>Últimos 90 dias</option>
+                <option value={1}>{p.periodLastDay}</option>
+                <option value={7}>{p.periodLast7Days}</option>
+                <option value={30}>{p.periodLast30Days}</option>
+                <option value={90}>{p.periodLast90Days}</option>
               </select>
               <button
                 onClick={loadAnalytics}
@@ -345,15 +364,16 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
           </div>
 
           {loadingAnalytics ? (
-            <BrandLoading message="Calculando métricas..." size={40} />
+            <BrandLoading message={t.common.calculatingMetrics} size={40} />
           ) : analytics.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-dark-textSecondary">
-                Nenhuma dosagem registrada nos últimos {analyticsDays}{' '}
-                {analyticsDays === 1 ? 'dia' : 'dias'}
+                {p.noDosage
+                  .replace('{n}', String(analyticsDays))
+                  .replace('{unit}', analyticsDays === 1 ? p.dayUnit : p.daysUnit)}
               </p>
               <p className="text-dark-textSecondary/70 text-sm mt-2">
-                Comandos de relé concluídos aparecerão aqui automaticamente
+                {p.noDosageHint}
               </p>
             </div>
           ) : (
@@ -371,21 +391,21 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
                   </div>
                   <div className="grid grid-cols-3 gap-4 text-sm">
                     <div>
-                      <p className="text-dark-textSecondary">Ativações</p>
+                      <p className="text-dark-textSecondary">{p.activations}</p>
                       <p className="font-medium text-dark-text">{metric.total_activations}</p>
                     </div>
                     <div>
-                      <p className="text-dark-textSecondary">Tempo Total</p>
+                      <p className="text-dark-textSecondary">{p.totalTime}</p>
                       <p className="font-medium text-dark-text">
-                        {Math.floor(metric.total_duration_seconds / 60)} min
+                        {Math.floor(metric.total_duration_seconds / 60)} {p.minutesUnit}
                       </p>
                     </div>
                     <div>
-                      <p className="text-dark-textSecondary">Última Ativação</p>
+                      <p className="text-dark-textSecondary">{p.lastActivation}</p>
                       <p className="font-medium text-dark-text text-xs">
                         {metric.last_activation
-                          ? new Date(metric.last_activation).toLocaleDateString('pt-BR')
-                          : 'Nunca'}
+                          ? new Date(metric.last_activation).toLocaleDateString(toBcp47(locale))
+                          : p.never}
                       </p>
                     </div>
                   </div>
@@ -394,7 +414,7 @@ export default function DeviceControlPanel({ device, isOpen, onClose }: DeviceCo
 
               <div className="bg-aqua-500/10 border border-aqua-500/30 rounded-lg p-4 mt-4">
                 <div className="flex items-center justify-between">
-                  <p className="font-semibold text-dark-text">Total Geral</p>
+                  <p className="font-semibold text-dark-text">{p.grandTotal}</p>
                   <p className="text-2xl font-bold text-aqua-400">
                     {analytics.reduce((sum, m) => sum + m.total_ml_dosed, 0).toFixed(1)} ml
                   </p>

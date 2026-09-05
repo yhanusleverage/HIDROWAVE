@@ -7,6 +7,7 @@ import ControllerMetricsChart from '@/components/ControllerMetricsChart';
 import BrandLoading from '@/components/BrandLoading';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { HydroMeasurement } from '@/lib/supabase';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface DashboardChartsSectionProps {
   loadingCharts: boolean;
@@ -19,6 +20,9 @@ export function DashboardChartsSection({
   hydroHistory,
   selectedDeviceId,
 }: DashboardChartsSectionProps) {
+  const { t } = useLanguage();
+  const d = t.dashboard;
+
   return (
     <section className="mb-8">
       <SectionHeader
@@ -26,9 +30,9 @@ export function DashboardChartsSection({
         title={
           <span className="flex items-center gap-2 text-xl font-bold text-dark-text">
             <ChartBarIcon className="h-6 w-6 text-aqua-400" />
-            Gráficos de Monitoramento
+            {d.chartsTitle}
             {loadingCharts && (
-              <span className="text-xs text-dark-textSecondary font-normal ml-2">(Carregando...)</span>
+              <span className="text-xs text-dark-textSecondary font-normal ml-2">{d.chartsLoading}</span>
             )}
           </span>
         }
@@ -37,7 +41,7 @@ export function DashboardChartsSection({
       <div className="grid grid-cols-1 gap-6">
         {loadingCharts ? (
           <BrandLoading
-            message="Carregando histórico hidropônico..."
+            message={t.common.loadingHistory}
             size={40}
             className="py-12 bg-dark-surface rounded-lg border border-dark-border"
           />

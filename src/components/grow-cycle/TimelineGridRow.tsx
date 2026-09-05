@@ -9,7 +9,10 @@ interface TimelineWeekSlotProps {
   className?: string;
 }
 
-/** Fixed-width cell — matches SVG week column (MARGIN.left + i * weekSlotW). */
+/**
+ * Fixed-width week cell — matches SVG week column.
+ * Sem overflow-hidden: pastilhas usam truncate; não cortar o texto.
+ */
 export function TimelineWeekSlot({ weekSlotW, children, className = '' }: TimelineWeekSlotProps) {
   const style: CSSProperties = {
     width: weekSlotW,
@@ -19,7 +22,7 @@ export function TimelineWeekSlot({ weekSlotW, children, className = '' }: Timeli
   };
 
   return (
-    <div className={`min-w-0 overflow-hidden ${className}`} style={style}>
+    <div className={`shrink-0 ${className}`} style={style}>
       {children}
     </div>
   );
@@ -35,7 +38,7 @@ interface TimelineFlexRowProps {
   className?: string;
 }
 
-/** Event-lane row using flex + exact px widths (same math as SVG). */
+/** Event-lane row: label sticky à esquerda; track de semanas no scroll. */
 export function TimelineFlexRow({
   chartW,
   weekSlotW,
@@ -50,10 +53,10 @@ export function TimelineFlexRow({
   return (
     <div
       className={`flex items-center ${className}`}
-      style={{ width: chartW, minWidth: chartW, maxWidth: chartW }}
+      style={{ width: chartW, minWidth: chartW }}
     >
       <div
-        className={`shrink-0 text-[10px] text-dark-textSecondary self-center font-medium min-w-0 ${labelClassName}`}
+        className={`sticky left-0 z-20 shrink-0 self-stretch flex items-center bg-dark-surface/95 backdrop-blur-[2px] text-[10px] text-dark-textSecondary font-medium border-r border-dark-border/40 pl-1 pr-0.5 ${labelClassName}`}
         style={{ width: LANE_LABEL_COL_W, minWidth: LANE_LABEL_COL_W }}
       >
         {label}

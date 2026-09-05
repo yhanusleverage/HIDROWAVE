@@ -7,6 +7,7 @@ import { Cog6ToothIcon, PlayIcon, PauseIcon, PlusIcon, PencilIcon, XMarkIcon } f
 import SequentialScriptEditor from './SequentialScriptEditor';
 import { formatInstructionPreview } from '@/lib/instruction-labels';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { HwBadge } from '@/components/ui/HwBadge';
 import { HwButton } from '@/components/ui/HwButton';
@@ -50,6 +51,8 @@ interface ScriptInstruction {
 
 export default function DecisionEngineCard({ deviceId }: DecisionEngineCardProps) {
   const { userProfile } = useAuth();
+  const { t } = useLanguage();
+  const instrT = t.automacao.instr;
   const [scripts, setScripts] = useState<Script[]>([]);
   const [isEnabled, setIsEnabled] = useState(false);
   const [editingScript, setEditingScript] = useState<string | null>(null);
@@ -211,7 +214,7 @@ export default function DecisionEngineCard({ deviceId }: DecisionEngineCardProps
                   <div className={`mt-2 text-xs space-y-1 font-mono ${HW_LABEL}`}>
                     {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
                       <div key={idx} className="text-aqua-300">
-                        {idx + 1}. {formatInstructionPreview(instr)}
+                        {idx + 1}. {formatInstructionPreview(instr, instrT)}
                       </div>
                     ))}
                     {script.rule_json.script.instructions.length > 2 && (

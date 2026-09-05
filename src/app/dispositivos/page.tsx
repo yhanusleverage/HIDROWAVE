@@ -18,12 +18,15 @@ import {
 } from '@/lib/realtime/device-status';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import DeviceControlPanel from '@/components/DeviceControlPanel';
 import BrandEmptyState from '@/components/BrandEmptyState';
 import BrandLoading from '@/components/BrandLoading';
 
 export default function DispositivosPage() {
   const { userProfile } = useAuth();
+  const { t } = useLanguage();
+  const d = t.dispositivos;
   const { masters: devices, loading, reload } = useDevicesWithRealtime(userProfile?.email);
   const [selectedDevice, setSelectedDevice] = useState<DeviceStatus | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -31,9 +34,23 @@ export default function DispositivosPage() {
   const [availableDevices, setAvailableDevices] = useState<DeviceStatus[]>([]);
   const [loadingAvailable, setLoadingAvailable] = useState(false);
 
+  const statusLabels = {
+    online: t.common.online,
+    offline: t.common.offline,
+    warning: d.warning,
+  };
+
+  const lastSeenLabels = {
+    neverConnected: d.neverConnected,
+    now: d.now,
+    minutesAgo: d.minutesAgo,
+    hoursAgo: d.hoursAgo,
+    daysAgo: d.daysAgo,
+  };
+
   useEffect(() => {
     if (!selectedDevice) return;
-    const updated = devices.find((d) => d.device_id === selectedDevice.device_id);
+    const updated = devices.find((dev) => dev.device_id === selectedDevice.device_id);
     if (updated) setSelectedDevice(updated);
   }, [devices, selectedDevice?.device_id]);
 
@@ -62,14 +79,14 @@ export default function DispositivosPage() {
       setAvailableDevices(discovered);
       
       if (discovered.length === 0) {
-        toast('Nenhum dispositivo disponível encontrado', { 
+        toast(d.toastNoneFound, { 
           icon: 'ℹ️',
           duration: 3000 
         });
       }
     } catch (error) {
       console.error('❌ Erro ao descobrir dispositivos:', error);
-      toast.error('Erro ao descobrir dispositivos');
+      toast.error(d.toastDiscoverError);
     } finally {
       setLoadingAvailable(false);
     }
@@ -78,7 +95,7 @@ export default function DispositivosPage() {
   const handleAssignDevice = async (device: DeviceStatus) => {
     // ✅ VALIDAR: Usuário deve estar autenticado e ter email válido
     if (!userProfile || !userProfile.email) {
-      toast.error('Você precisa estar logado para adicionar dispositivos');
+      toast.error(d.toastNeedLogin);
       return;
     }
 
@@ -86,19 +103,19 @@ export default function DispositivosPage() {
     
     // ✅ VALIDAR: Dispositivo deve ter device_id e mac_address válidos
     if (!device.device_id || !device.mac_address) {
-      toast.error('Dispositivo inválido: falta device_id ou mac_address');
+      toast.error(d.toastInvalidDevice);
       return;
     }
 
     // ✅ VALIDAR: MAC address deve ser válido (não pode ser 00:00:00:00:00:00)
     if (device.mac_address.trim() === '' || device.mac_address === '00:00:00:00:00:00') {
-      toast.error('MAC address inválido. O dispositivo deve ter um MAC address válido.');
+      toast.error(d.toastInvalidMac);
       return;
     }
 
     // ✅ VALIDAR: Email do usuário deve existir na tabela users e estar ativo
     if (!userProfile.is_active) {
-      toast.error('Sua conta está desativada. Contate o administrador.');
+      toast.error(d.toastAccountDisabled);
       return;
     }
 
@@ -113,7 +130,9 @@ export default function DispositivosPage() {
       );
 
       if (result) {
-        toast.success(`✅ Dispositivo ${device.device_name || device.device_id} adicionado com sucesso!`);
+        toast.success(
+          d.toastAdded.replace('{name}', device.device_name || device.device_id)
+        );
         
         // 2. ✅ Se for um slave ESP-NOW, enviar comando de teste
         const isSlave = device.device_type?.toLowerCase().includes('slave') || 
@@ -122,14 +141,14 @@ export default function DispositivosPage() {
         
         if (isSlave) {
           // Buscar o Master para enviar comando
-          const masters = devices.filter(d => 
-            d.device_type?.toLowerCase().includes('hydroponic') || 
-            d.device_type?.toLowerCase().includes('master')
+          const masters = devices.filter(dev => 
+            dev.device_type?.toLowerCase().includes('hydroponic') || 
+            dev.device_type?.toLowerCase().includes('master')
           );
           
           if (masters.length > 0) {
             const master = masters[0];
-            toast.loading('Enviando comando de teste ao Atlas...', { id: 'test-command' });
+            toast.loading(d.toastTestSending, { id: 'test-command' });
             
             try {
               // Enviar comando de teste: ligar relé 0 por 2 segundos
@@ -150,15 +169,18 @@ export default function DispositivosPage() {
 
               if (response.ok) {
                 const data = await response.json();
-                toast.success(`✅ Comando de teste enviado! Relé 0 ligado por 2s`, { id: 'test-command' });
+                toast.success(d.toastTestSent, { id: 'test-command' });
                 console.log(`✅ Comando de teste enviado ao slave ${device.device_name}:`, data);
               } else {
                 const error = await response.json();
-                toast.error(`⚠️ Dispositivo adicionado, mas teste falhou: ${error.error || 'Erro desconhecido'}`, { id: 'test-command' });
+                toast.error(
+                  d.toastTestFail.replace('{error}', error.error || 'Erro desconhecido'),
+                  { id: 'test-command' }
+                );
                 console.error('Erro ao enviar comando de teste:', error);
               }
             } catch (error) {
-              toast.error('⚠️ Dispositivo adicionado, mas não foi possível testar', { id: 'test-command' });
+              toast.error(d.toastTestSkip, { id: 'test-command' });
               console.error('Erro ao enviar comando de teste:', error);
             }
           }
@@ -167,11 +189,11 @@ export default function DispositivosPage() {
         setIsAddModalOpen(false);
         reload();
       } else {
-        toast.error('Erro ao adicionar dispositivo');
+        toast.error(d.toastAssignError);
       }
     } catch (error) {
       console.error('Erro ao adicionar dispositivo:', error);
-      toast.error('Erro ao adicionar dispositivo');
+      toast.error(d.toastAssignError);
     }
   };
 
@@ -201,15 +223,22 @@ export default function DispositivosPage() {
     }
   };
 
-  const getStatusText = (status: DeviceDisplayStatus) => getDeviceStatusText(status);
+  const getStatusText = (status: DeviceDisplayStatus) =>
+    getDeviceStatusText(status, statusLabels);
+
+  const onlineCount = devices.filter((dev) => getDeviceDisplayStatus(dev) === 'online').length;
+  const offlineCount = devices.filter((dev) => getDeviceDisplayStatus(dev) === 'offline').length;
+  const warningCount = devices.filter((dev) => getDeviceDisplayStatus(dev) === 'warning').length;
 
   return (
     <div className="min-h-screen bg-dark-bg">
       
       <header className="bg-dark-card border-b border-dark-border shadow-lg">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">📱 Dispositivos</h1>
-          <p className="text-dark-textSecondary mt-1">Gerencie e monitore seus dispositivos conectados</p>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">
+            📱 {t.pages.dispositivosTitle}
+          </h1>
+          <p className="text-dark-textSecondary mt-1">{t.pages.dispositivosSubtitle}</p>
         </div>
       </header>
       
@@ -219,13 +248,13 @@ export default function DispositivosPage() {
             <div className="flex items-center space-x-2">
               <WifiIcon className="w-5 h-5 text-aqua-400" />
               <span className="text-sm text-dark-textSecondary">
-                {devices.filter((d) => getDeviceDisplayStatus(d) === 'online').length} online
+                {d.countOnline.replace('{n}', String(onlineCount))}
               </span>
             </div>
             <div className="flex items-center space-x-2">
               <SignalIcon className="w-5 h-5 text-aqua-400" />
               <span className="text-sm text-dark-textSecondary">
-                {devices.filter((d) => getDeviceDisplayStatus(d) === 'offline').length} offline
+                {d.countOffline.replace('{n}', String(offlineCount))}
               </span>
             </div>
           </div>
@@ -233,22 +262,22 @@ export default function DispositivosPage() {
             onClick={handleOpenAddModal}
             className="bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-2 px-4 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50"
           >
-            + Adicionar Dispositivo
+            + {t.common.addDevice}
           </button>
         </div>
 
         {loading ? (
-          <BrandLoading message="Carregando dispositivos..." />
+          <BrandLoading message={t.common.loadingDevices} />
         ) : devices.length === 0 ? (
           <BrandEmptyState
-            title="Nenhum dispositivo encontrado"
-            description="Associe seu ESP32 com o mesmo email da sua conta para começar a monitorar o cultivo."
+            title={t.common.noDevices}
+            description={t.common.noDevicesHint}
           >
             <button
               onClick={handleOpenAddModal}
               className="bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-2 px-4 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50"
             >
-              Adicionar Primeiro Dispositivo
+              {t.common.addFirstDevice}
             </button>
           </BrandEmptyState>
         ) : (
@@ -283,15 +312,17 @@ export default function DispositivosPage() {
                   
                   <div className="space-y-2 mb-4">
                     <div className="flex justify-between text-sm">
-                      <span className="text-dark-textSecondary">Status:</span>
+                      <span className="text-dark-textSecondary">{d.statusLabel}</span>
                       <span className={`font-medium ${getStatusColor(status).split(' ')[1]}`}>
                         {getStatusText(status)}
                       </span>
                     </div>
                     
                     <div className="flex justify-between text-sm">
-                      <span className="text-dark-textSecondary">Última conexão:</span>
-                      <span className="text-dark-text">{getLastSeenText(device.last_seen)}</span>
+                      <span className="text-dark-textSecondary">{d.lastSeenLabel}</span>
+                      <span className="text-dark-text">
+                        {getLastSeenText(device.last_seen, lastSeenLabels)}
+                      </span>
                     </div>
                     
                     {/* ✅ Debug de Memória - Usando dados reais do banco de dados */}
@@ -302,7 +333,6 @@ export default function DispositivosPage() {
                           // ESP32 geralmente tem ~300KB de heap total (valor estimado)
                           const totalHeap = 300000; // ~300KB (estimativa padrão para ESP32)
                           const freeHeap = device.free_heap; // ✅ Dado real do banco
-                          const usedHeap = totalHeap - freeHeap;
                           const freePercent = (freeHeap / totalHeap) * 100;
                           const isLowMemory = freePercent < 20;
                           const isWarning = freePercent < 30;
@@ -310,7 +340,7 @@ export default function DispositivosPage() {
                           return (
                             <div className={`border rounded-lg p-2 ${isLowMemory ? 'bg-red-500/10 border-red-500/30' : isWarning ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-dark-surface/50 border-dark-border'}`}>
                               <div className="flex justify-between items-center text-xs mb-1">
-                                <span className="text-dark-textSecondary">💾 Memória Livre:</span>
+                                <span className="text-dark-textSecondary">{d.freeMemory}</span>
                                 <span className={`font-bold ${isLowMemory ? 'text-red-400' : isWarning ? 'text-yellow-400' : 'text-aqua-400'}`}>
                                   {freePercent.toFixed(1)}%
                                 </span>
@@ -354,7 +384,7 @@ export default function DispositivosPage() {
                     {/* ✅ Reboot Count - Device Info */}
                     {device.reboot_count !== undefined && device.reboot_count !== null && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-dark-textSecondary">🔄 Reinícios:</span>
+                        <span className="text-dark-textSecondary">{d.reboots}</span>
                         <span className={`font-bold ${
                           device.reboot_count === 0 
                             ? 'text-green-400' 
@@ -369,7 +399,7 @@ export default function DispositivosPage() {
                   </div>
                   
                   <div className="text-center">
-                    <span className="text-sm text-aqua-400 font-medium">Clique para configurar →</span>
+                    <span className="text-sm text-aqua-400 font-medium">{d.clickConfigure}</span>
                   </div>
                 </div>
               );
@@ -378,25 +408,19 @@ export default function DispositivosPage() {
         )}
 
         <div className="mt-8 bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-dark-text mb-4">Estatísticas de Conexão</h3>
+          <h3 className="text-lg font-semibold text-dark-text mb-4">{d.statsTitle}</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-aqua-500/20 border border-aqua-500/30 p-4 rounded-lg">
-              <p className="text-2xl font-bold text-aqua-400">
-                {devices.filter((d) => getDeviceDisplayStatus(d) === 'online').length}
-              </p>
-              <p className="text-sm text-aqua-300">Dispositivos Online</p>
+              <p className="text-2xl font-bold text-aqua-400">{onlineCount}</p>
+              <p className="text-sm text-aqua-300">{d.onlineDevices}</p>
             </div>
             <div className="bg-yellow-500/20 border border-yellow-500/30 p-4 rounded-lg">
-              <p className="text-2xl font-bold text-yellow-400">
-                {devices.filter((d) => getDeviceDisplayStatus(d) === 'warning').length}
-              </p>
-              <p className="text-sm text-yellow-300">Com Avisos</p>
+              <p className="text-2xl font-bold text-yellow-400">{warningCount}</p>
+              <p className="text-sm text-yellow-300">{d.withWarnings}</p>
             </div>
             <div className="bg-red-500/20 border border-red-500/30 p-4 rounded-lg">
-              <p className="text-2xl font-bold text-red-400">
-                {devices.filter((d) => getDeviceDisplayStatus(d) === 'offline').length}
-              </p>
-              <p className="text-sm text-red-300">Offline</p>
+              <p className="text-2xl font-bold text-red-400">{offlineCount}</p>
+              <p className="text-sm text-red-300">{d.offlineDevices}</p>
             </div>
           </div>
         </div>
@@ -417,26 +441,27 @@ export default function DispositivosPage() {
           <div className="bg-dark-card border border-dark-border rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h2 className="text-xl font-bold text-dark-text">🔍 Descobrir Dispositivos</h2>
+                <h2 className="text-xl font-bold text-dark-text">🔍 {t.pages.discoverTitle}</h2>
                 <p className="text-sm text-dark-textSecondary mt-1">
-                  Dispositivos disponíveis para adicionar à sua conta
+                  {d.discoverSubtitle}
                 </p>
               </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
                 className="text-dark-textSecondary hover:text-dark-text"
+                aria-label={d.close}
               >
                 <XCircleIcon className="w-6 h-6" />
               </button>
             </div>
 
             {loadingAvailable ? (
-              <BrandLoading message="Descobrindo dispositivos..." />
+              <BrandLoading message={t.common.discoveringDevices} />
             ) : availableDevices.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-dark-textSecondary mb-2">Nenhum dispositivo disponível encontrado</p>
+                <p className="text-dark-textSecondary mb-2">{d.noneAvailable}</p>
                 <p className="text-sm text-dark-textSecondary">
-                  Todos os dispositivos já estão atribuídos ou não há dispositivos na base de dados
+                  {d.noneAvailableHint}
                 </p>
               </div>
             ) : (
@@ -452,23 +477,23 @@ export default function DispositivosPage() {
                           {device.device_name || device.device_id}
                         </h3>
                         <div className="space-y-1 text-sm text-dark-textSecondary">
-                          <p><span className="font-medium">Device ID:</span> {device.device_id}</p>
+                          <p><span className="font-medium">{d.deviceId}</span> {device.device_id}</p>
                           {device.mac_address && (
-                            <p><span className="font-medium">MAC:</span> {device.mac_address}</p>
+                            <p><span className="font-medium">{d.mac}</span> {device.mac_address}</p>
                           )}
                           {device.device_type && (
-                            <p><span className="font-medium">Tipo:</span> {device.device_type}</p>
+                            <p><span className="font-medium">{d.type}</span> {device.device_type}</p>
                           )}
                           {device.location && (
-                            <p><span className="font-medium">Localização:</span> {device.location}</p>
+                            <p><span className="font-medium">{d.location}</span> {device.location}</p>
                           )}
                           {device.user_email ? (
                             <p className="text-yellow-400">
-                              <span className="font-medium">Atualmente atribuído a:</span> {device.user_email}
+                              <span className="font-medium">{d.assignedTo}</span> {device.user_email}
                             </p>
                           ) : (
                             <p className="text-aqua-400">
-                              <span className="font-medium">Status:</span> Disponível (sem atribuição)
+                              <span className="font-medium">{d.statusLabel}</span> {d.availableStatus}
                             </p>
                           )}
                         </div>
@@ -477,7 +502,7 @@ export default function DispositivosPage() {
                         onClick={() => handleAssignDevice(device)}
                         className="bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-2 px-4 rounded-lg transition-all ml-4"
                       >
-                        Adicionar
+                        {d.add}
                       </button>
                     </div>
                   </div>
@@ -490,7 +515,7 @@ export default function DispositivosPage() {
                 onClick={() => setIsAddModalOpen(false)}
                 className="px-4 py-2 text-dark-textSecondary hover:text-dark-text transition"
               >
-                Fechar
+                {d.close}
               </button>
             </div>
           </div>
@@ -499,4 +524,3 @@ export default function DispositivosPage() {
     </div>
   );
 }
-

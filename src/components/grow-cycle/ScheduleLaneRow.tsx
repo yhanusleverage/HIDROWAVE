@@ -80,10 +80,17 @@ export function ScheduleLaneRow({ plan, chartW, weekSlotW, weekCount }: Schedule
               const kind = resolveScheduleKind(s);
               const recurring = scheduleIsRecurring(kind);
               return (
-                <div key={s.ruleId + s.label} className="w-full flex flex-col items-center gap-0.5 min-w-0">
-                  <ScheduleChip schedule={s} variant="compact" className="w-full justify-center max-w-full" />
+                <div
+                  key={s.ruleId + s.label}
+                  className="w-full min-w-0 flex flex-col items-center gap-0.5 px-0.5"
+                >
+                  <ScheduleChip
+                    schedule={s}
+                    variant="compact"
+                    className="w-full max-w-full justify-center"
+                  />
                   <div
-                    className={`h-1 w-full max-w-[min(44px,80%)] rounded-full ${
+                    className={`h-1 w-full max-w-[min(40px,90%)] rounded-full ${
                       recurring
                         ? 'border border-dashed border-cyan-500/50 bg-cyan-500/10'
                         : 'bg-aqua-500/40'

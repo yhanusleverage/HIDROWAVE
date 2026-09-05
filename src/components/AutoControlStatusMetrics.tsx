@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { HW_TEXT } from '@/lib/design-tokens';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export type AutoControlMetric = {
   label: string;
@@ -29,6 +30,8 @@ export function AutoControlStatusMetrics({
   footer,
   dosageHint,
 }: AutoControlStatusMetricsProps) {
+  const { t } = useLanguage();
+  const auto = t.dashboard.auto;
   const valueClass = accent === 'ec' ? HW_TEXT.ec : HW_TEXT.ph;
 
   return (
@@ -48,12 +51,12 @@ export function AutoControlStatusMetrics({
       </div>
 
       <div className="border-t border-dark-border/40 pt-3 mt-4 text-sm">
-        <p className="text-dark-textSecondary mb-0.5">Banda morta / intervalo</p>
+        <p className="text-dark-textSecondary mb-0.5">{auto.deadbandInterval}</p>
         <p className={`font-semibold tabular-nums ${valueClass}`}>{footer.bandLabel}</p>
         {(footer.recircSec != null && footer.recircSec > 0) || footer.limitHint ? (
           <p className="text-xs text-dark-textSecondary mt-1 space-x-3">
             {footer.recircSec != null && footer.recircSec > 0 ? (
-              <span>Recirculação: {footer.recircSec}s</span>
+              <span>{auto.recirculation.replace('{n}', String(footer.recircSec))}</span>
             ) : null}
             {footer.limitHint ? <span>{footer.limitHint}</span> : null}
           </p>

@@ -53,6 +53,7 @@ import { MetricRow } from '@/components/ui/MetricRow';
 import ControllerMetricsPanel from '@/components/ControllerMetricsPanel';
 import { EcGrowerSummaryCard } from '@/components/GrowerSummaryCards';
 import { showLockUnlockToast } from '@/lib/automacao/admin-lock';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const NutrientDosageDetail = dynamic(
   () => import('@/components/NutrientDosageDetail').then((m) => m.NutrientDosageDetail),
@@ -78,6 +79,8 @@ export interface AutoEcControllerPanelProps {
 }
 
 export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEcControllerPanelProps) {
+  const { t } = useLanguage();
+  const ec = t.automacao.ec;
   const [ecControllerLocked, setEcControllerLocked] = useState<boolean>(false);
   const [expandedEcInfo, setExpandedEcInfo] = useState(false);
   const [showECConfigPreview, setShowECConfigPreview] = useState<boolean>(false);
@@ -642,7 +645,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     }
 
     if (nutrientsState.length === 0) {
-      toast.error('Adicione pelo menos um nutriente na tabela nutricional');
+      toast.error(ec.toastNoNutrients);
       return false;
     }
     
@@ -754,7 +757,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
         relayAllocation.phConfig ?? undefined
       );
       if (!relayCheck.ok) {
-        toast.error(relayCheck.error || 'Conflito de relés EC/pH');
+        toast.error(relayCheck.error || ec.toastConflict);
         return false;
       }
 
@@ -811,7 +814,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       // Só mostrar toast se não estiver em modo silencioso
       markConfigSynced();
       if (!silent) {
-        hwToast.success('Configuração salva com sucesso!', 'AUTO EC');
+        hwToast.success(ec.toastSaved, 'AUTO EC');
       }
       return true;
     } catch (error) {
@@ -819,7 +822,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       toast.error(`Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`);
       return false;
     }
-  }, [deviceId, nutrientsState, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, availableRelays, relayAllocation, markConfigSynced]);
+  }, [deviceId, nutrientsState, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, availableRelays, relayAllocation, markConfigSynced, ec]);
   
   // ✅ Cleanup: Limpiar timeout al desmontar componente
   useEffect(() => {
@@ -1080,9 +1083,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     const previous = autoEnabled;
 
     if (newValue && !canActivateAutoEc) {
-      toast.error(
-        'Configure pelo menos um nutriente com ml/L > 0 (total_ml > 0) antes de ativar o Auto EC'
-      );
+      toast.error(ec.toastNoNutrients);
       return;
     }
 
@@ -1096,7 +1097,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
         const saved = await saveECControllerConfig(true, true);
         if (!saved) {
           setAutoEnabled(previous);
-          toast.error('Salve os parâmetros antes de ativar Auto EC');
+          toast.error(ec.toastSaveBeforeActivate);
           return;
         }
         const { error: rpcError } = await supabase.rpc('activate_auto_ec', {
@@ -1151,8 +1152,8 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
         justSavedRef.current = false;
       }, 2000);
 
-      if (newValue) hwToast.success('Auto EC ativado', 'AUTO EC');
-      else hwToast.info('Auto EC desativado', 'AUTO EC');
+      if (newValue) hwToast.success(ec.toastActivated, 'AUTO EC');
+      else hwToast.info(ec.toastDeactivated, 'AUTO EC');
     } catch (err) {
       setAutoEnabled(previous);
       toast.error(`Erro: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
@@ -1164,7 +1165,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   if (!deviceId || deviceId === 'default_device') {
     return (
       <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6 mb-6 text-dark-textSecondary text-sm">
-        Selecione um dispositivo Master para configurar o Auto EC.
+        {ec.selectDevice}
       </div>
     );
   }
@@ -1174,28 +1175,28 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
         <div className="w-full p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-dark-border">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 flex-1 min-w-0">
-            <h3 className="text-lg font-semibold text-dark-text">Auto EC</h3>
+            <h3 className="text-lg font-semibold text-dark-text">{ec.title}</h3>
             <OperationStateBadges
               variant="header"
               autoEnabled={autoEnabled}
-              autoActiveLabel="Auto EC ativo"
-              autoInactiveLabel="Auto EC inativo"
+              autoActiveLabel={ec.autoActive}
+              autoInactiveLabel={ec.autoInactive}
               isDosando={isDosando || isDraining}
-              dosandoLabel={isDraining ? 'Drenando' : 'Dosando'}
+              dosandoLabel={isDraining ? ec.draining : ec.dosing}
               isReplacing={isReplacing}
-              replacingLabel="Reponendo"
+              replacingLabel={ec.replacing}
               isAguardandoRecirculacao={isAguardandoRecirculacao}
               operationRemainingSec={recirculacaoRestanteSec}
               showNextCheck={showEcNextCheck}
               nextCheckInSec={ecNextCheckInSec}
-              nextCheckLabel="Próxima verificação EC"
+              nextCheckLabel={ec.nextCheck}
               accent="emerald"
             />
           </div>
           <button
             type="button"
             onClick={() => {
-              showLockUnlockToast(ecControllerLocked, 'Controles EC', () =>
+              showLockUnlockToast(ecControllerLocked, ec.lockSection, () =>
                 setEcControllerLocked((prev) => !prev)
               );
             }}
@@ -1204,11 +1205,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                 ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
                 : 'bg-aqua-500/20 text-aqua-400 hover:bg-aqua-500/30 border border-aqua-500/30'
             }`}
-            title={
-              ecControllerLocked
-                ? 'Desbloquear controles (requer senha admin)'
-                : 'Bloquear controles (requer senha admin)'
-            }
+            title={ecControllerLocked ? ec.unlock : ec.lock}
           >
             {ecControllerLocked ? (
               <LockClosedIcon className="w-4 h-4" />
@@ -1220,9 +1217,9 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
         <div className="p-4 sm:p-6">
                         {/* ===== SEÇÃO: CONFIGURAÇÃO EC CONTROLLER ===== */}
                         <div>
-                          <h2 className="text-lg sm:text-xl font-bold text-dark-text mb-3 sm:mb-4">🎯 Controle Automático de EC</h2>
+                          <h2 className="text-lg sm:text-xl font-bold text-dark-text mb-3 sm:mb-4">🎯 {ec.titleLong}</h2>
                           <p className="text-xs sm:text-sm text-dark-textSecondary mb-4">
-                            Configure o sistema adaptativo proporcional para controle automático da condutividade elétrica.
+                            {ec.subtitle}
                           </p>
           
                           <div className="mb-6 rounded-lg border border-aqua-500/30 bg-aqua-500/5 overflow-hidden">
@@ -1236,16 +1233,22 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                               ) : (
                                 <ChevronDownIcon className="w-4 h-4 shrink-0" />
                               )}
-                              Informação — como usar o Auto EC
+                              {ec.helpTitle}
                             </button>
                             {expandedEcInfo && (
                             <div className="px-4 pb-4 space-y-2 text-xs sm:text-sm text-dark-textSecondary leading-relaxed border-t border-aqua-500/20">
-                              <p><strong className="text-dark-text">1. Nutrientes</strong> — Cadastre cada parte do plano (A, B, C…), escolha a bomba (relé) e a dose em ml por litro de água do tanque (mín. {MIN_NUTRIENT_ML_PER_LITER}). Calibre a vazão da bomba em Calibragem.</p>
-                              <p><strong className="text-dark-text">2. Alvo de EC</strong> — Informe o EC desejado da solução e a faixa de tolerância. O sistema só acrescenta nutrientes quando o EC está abaixo do alvo (fora da faixa, por baixo).</p>
-                              <p><strong className="text-dark-text">3. Ritmo</strong> — De quanto em quanto tempo medir o EC, e quanto tempo misturar (recirculação) depois de cada dose.</p>
-                              <p><strong className="text-dark-text">4. Salvar e ligar</strong> — Salve os parâmetros e depois Ative o Auto EC. O controlador passa a dosar sozinho conforme o plano.</p>
-                              <p><strong className="text-dark-text">5. EC alto demais</strong> — Se o EC passar do alvo + faixa, o sistema dilui sozinho (drena um pouco e repõe água). Configure dreno e reposição abaixo; use o volume do reservatório como referência.</p>
-                              <p className="text-dark-textSecondary/80">Guia completo: menu <NavLink href="/informacao" className="text-aqua-400 hover:underline">Informação</NavLink>.</p>
+                              <p>{ec.help1.replace('{min}', String(MIN_NUTRIENT_ML_PER_LITER))}</p>
+                              <p>{ec.help2}</p>
+                              <p>{ec.help3}</p>
+                              <p>{ec.help4}</p>
+                              <p>{ec.help5}</p>
+                              <p className="text-dark-textSecondary/80">
+                                {ec.helpGuidePrefix}
+                                <NavLink href="/informacao" className="text-aqua-400 hover:underline">
+                                  {ec.helpGuideLink}
+                                </NavLink>
+                                .
+                              </p>
                             </div>
                             )}
                           </div>
@@ -1263,12 +1266,12 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                           {/* Status / Ajuste agora — abaixo do chart, acima da config Auto EC */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                             {/* Status do EC Controller */}
-                            <InstrumentCard accent="ec" title="📊 Status do Controle" ariaLive="polite">
+                            <InstrumentCard accent="ec" title={`📊 ${ec.statusCard}`} ariaLive="polite">
                               <div className="space-y-2.5">
                                 <OperationStateBanners
                                   autoEnabled={autoEnabled}
                                   isDosando={isDosando}
-                                  dosandoLabel="Dosando"
+                                  dosandoLabel={ec.dosing}
                                   isAguardandoRecirculacao={isAguardandoRecirculacao}
                                   operationRemainingSec={recirculacaoRestanteSec}
                                   showNextCheck={
@@ -1278,16 +1281,16 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                     ecNextCheckInSec > 0
                                   }
                                   nextCheckInSec={ecNextCheckInSec}
-                                  nextCheckLabel="Próxima verificação EC"
+                                  nextCheckLabel={ec.nextCheck}
                                   formatCountdown={formatRecircCountdown}
                                 />
                                 <MetricRow
-                                  label="Status:"
-                                  value={autoEnabled ? '✅ Ativado' : '❌ Desativado'}
+                                  label={ec.statusLabel}
+                                  value={autoEnabled ? ec.statusOn : ec.statusOff}
                                   variant={autoEnabled ? 'ok' : 'danger'}
                                 />
                                 <MetricRow
-                                  label="Setpoint:"
+                                  label={ec.setpoint}
                                   value={
                                     ecSetpoint > 0
                                       ? `${formatSensorValue(ecSetpoint, 0)} µS/cm`
@@ -1297,11 +1300,11 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                   domain="ec"
                                 />
                                 <MetricRow
-                                  label="Banda morta:"
+                                  label={ec.deadband}
                                   value={`± ${formatSensorValue(ecTolerance, 0)} µS/cm`}
                                 />
                                 <MetricRow
-                                  label="Erro (SP − EC):"
+                                  label={ec.errorSpEc}
                                   value={
                                     ecAtual !== null
                                       ? `${formatSensorValue(Math.max(0, ecError), 1)} µS/cm`
@@ -1310,26 +1313,26 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                   variant={ecWithinDeadBand === false ? 'alarm' : 'default'}
                                 />
                                 <MetricRow
-                                  label="Zona de controle:"
+                                  label={ec.controlZone}
                                   value={
                                     ecWithinDeadBand === null
                                       ? '--'
                                       : ecWithinDeadBand
-                                        ? '✓ Sem dosagem (EC ≥ limite)'
-                                        : '⚡ Ajuste Kp (EC abaixo da banda)'
+                                        ? ec.noDoseAbove
+                                        : ec.adjustKp
                                   }
                                   variant={
                                     ecWithinDeadBand === true ? 'ok' : ecWithinDeadBand === false ? 'alarm' : 'default'
                                   }
                                 />
                                 <MetricRow
-                                  label="Última dosagem:"
+                                  label={ec.lastDose}
                                   value={lastDosageMl != null ? `${lastDosageMl.toFixed(2)} ml` : '-- ml'}
                                   variant="preview"
                                   domain="ec"
                                 />
                                 <MetricRow
-                                  label="EC Atual:"
+                                  label={ec.ecActual}
                                   value={
                                     ecAtual !== null
                                       ? `${formatSensorValue(ecAtual, 1)} µS/cm`
@@ -1365,7 +1368,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                           <div className="mb-6 sm:mb-8 pb-6 sm:pb-8 border-b border-dark-border">
                             {/* Header com título e botão + Nutriente */}
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4">
-                              <h3 className="text-base sm:text-lg font-bold text-dark-text">Tabela de Nutrição</h3>
+                              <h3 className="text-base sm:text-lg font-bold text-dark-text">{ec.nutritionTable}</h3>
                               <button
                                 onClick={() => {
                                   setEditingNutrientIndex(null);
@@ -1375,10 +1378,10 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                 className={`flex items-center justify-center space-x-2 px-4 py-3 sm:py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 text-sm sm:text-base w-full sm:w-auto ${
                                   addNutrientControl.disabled ? 'opacity-50 cursor-not-allowed' : ''
                                 }`}
-                                title={addNutrientControl.title || 'Adicionar nutriente'}
+                                title={addNutrientControl.title || ec.addNutrient}
                               >
                                 <span className="text-base sm:text-lg">+</span>
-                                <span>Nutriente</span>
+                                <span>{ec.nutrient}</span>
                               </button>
                             </div>
                         
@@ -1397,13 +1400,13 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                               href="/calibragem"
                               className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg border border-aqua-500/40 text-aqua-400 hover:bg-aqua-500/10 transition-colors whitespace-nowrap"
                             >
-                              Calibrar bombas →
+                              {ec.calibratePumps}
                             </NavLink>
                           </div>
           
                           <div>
                             <label htmlFor="totalVolume" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                              Volume do Reservatório (L):
+                              {ec.tankVolume}
                             </label>
                             <input
                               id="totalVolume"
@@ -1432,13 +1435,13 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                           <table className="w-full">
                             <thead className="bg-dark-surface">
                               <tr>
-                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Nutriente</th>
-                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Relé</th>
-                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">ml por Litro</th>
-                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Quantidade (ml)</th>
-                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Vazão (ml/s)</th>
-                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Tempo (seg)</th>
-                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">Ação</th>
+                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">{ec.nutrient}</th>
+                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">{ec.colRelay}</th>
+                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">{ec.colMlPerL}</th>
+                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">{ec.colQuantity}</th>
+                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">{ec.colFlow}</th>
+                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">{ec.colTime}</th>
+                                <th className="py-2 px-4 text-left text-sm font-medium text-dark-textSecondary">{ec.colAction}</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1644,7 +1647,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                         } ${
                                           manualDoseControl.disabled ? 'opacity-50 cursor-not-allowed' : ''
                                         }`}
-                                        title={manualDoseControl.title || 'Dosificar'}
+                                        title={manualDoseControl.title || ec.dose}
                                       >
                                         {(() => {
                                           const left = Math.max(
@@ -1655,9 +1658,9 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                             )
                                           );
                                           if (left > 0) return `ON ${left}s`;
-                                          if (isLoadingNutrients[nutrient.relayNumber]) return 'Dosificando...';
-                                          if (manualDoseControl.disabled) return 'Bloqueado';
-                                          return 'Dosificar';
+                                          if (isLoadingNutrients[nutrient.relayNumber]) return ec.dosingBusy;
+                                          if (manualDoseControl.disabled) return ec.locked;
+                                          return ec.dose;
                                         })()}
                                       </button>
                                             <button
@@ -1699,9 +1702,9 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                           
                           {/* Parâmetros hidropônicos */}
                           <div className="mb-8">
-                            <h3 className="text-base sm:text-lg font-bold text-dark-text mb-1">Parâmetros hidropônicos</h3>
+                            <h3 className="text-base sm:text-lg font-bold text-dark-text mb-1">{ec.hydroParams}</h3>
                             <p className="text-xs text-dark-textSecondary mb-4">
-                              Setpoint, banda morta e calibração da solução nutriente — fecham o loop de controle visível no status.
+                              {ec.hydroParamsHint}
                             </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                             <div>
@@ -1731,7 +1734,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                             
                             <div>
                               <label htmlFor="total-ml" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                                Soma ml por Litro (concentração):
+                                {ec.sumMlPerL}
                               </label>
                               <input
                                 id="total-ml"
@@ -1749,7 +1752,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                             
                             <div>
                               <label htmlFor="ec-setpoint" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                                EC Setpoint (µS/cm):
+                                {ec.ecSetpoint}
                               </label>
                               <input
                                 id="ec-setpoint"
@@ -1771,7 +1774,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
           
                             <div>
                               <label htmlFor="ec-tolerance" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                                Tolerância / banda morta (µS/cm):
+                                {ec.toleranceDeadband}
                               </label>
                               <input
                                 id="ec-tolerance"
@@ -1790,13 +1793,13 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                 placeholder="Ex: 50"
                               />
                               <small className="text-xs text-aqua-400 mt-1 block">
-                                Sem dosagem se EC ≥ setpoint − {ecTolerance} µS/cm (banda só por baixo do SP)
+                                {ec.noDoseIfAbove.replace('{n}', String(ecTolerance))}
                               </small>
                             </div>
 
                             <div>
                               <label htmlFor="ec-pulse-ml" className="block text-sm font-medium text-dark-textSecondary mb-1">
-                                ml por pulso:
+                                {ec.pulseMl}
                               </label>
                               <input
                                 id="ec-pulse-ml"
@@ -1850,7 +1853,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
           
                           {/* Parâmetros de ciclo */}
                           <div className="mb-8 pb-6 border-b border-dark-border">
-                            <h3 className="text-base sm:text-lg font-bold text-dark-text mb-1">Parâmetros de ciclo</h3>
+                            <h3 className="text-base sm:text-lg font-bold text-dark-text mb-1">{ec.cycleParams}</h3>
                             <p className="text-xs text-dark-textSecondary mb-4">
                               Quando o firmware verifica a EC e quanto tempo aguarda a recirculação antes da próxima decisão.
                             </p>
@@ -1973,12 +1976,15 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
 
                           <div className="mb-4 rounded-lg border border-aqua-500/30 bg-aqua-500/5 p-4">
                             <p className="text-sm font-medium text-dark-text mb-3">
-                              Agressividade e Consumo 24 h
+                              {ec.aggressiveness24h}
                             </p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <label className="block text-sm text-dark-textSecondary mb-1">
-                                  Agressividade EC ({Math.round(aggressiveness * 100)} %)
+                                  {ec.aggressivenessEc.replace(
+                                    '{pct}',
+                                    String(Math.round(aggressiveness * 100))
+                                  )}
                                 </label>
                                 <input
                                   type="range"
@@ -2037,7 +2043,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                     : 'Nada a salvar — já está gravado'
                               }
                             >
-                              💾 Salvar Parâmetros
+                              {ec.saveParams}
                             </button>
                             <button
                               onClick={() => void toggleAutoEc()}
@@ -2063,17 +2069,17 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                   : !autoEnabled && !canActivateAutoEc
                                     ? 'Adicione nutrientes com ml/L > 0 antes de ativar'
                                     : autoEnabled
-                                      ? 'Desativar Auto EC'
-                                      : 'Ativar Auto EC'
+                                      ? ec.deactivate
+                                      : ec.activate
                               }
                             >
                               {autoTogglePending
                                 ? '…'
                                 : autoEnabled
-                                  ? '⏹️ Desativar Auto EC'
-                                  : '🤖 Ativar Auto EC'}
+                                  ? ec.deactivate
+                                  : ec.activate}
                               {autoRtStatus === 'SUBSCRIBED' && !autoTogglePending ? (
-                                <span className="ml-1.5 text-[10px] opacity-80">ao vivo</span>
+                                <span className="ml-1.5 text-[10px] opacity-80">{ec.live}</span>
                               ) : null}
                             </button>
                             <button
@@ -2084,9 +2090,9 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                               className={`px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-lg transition-all shadow-lg hover:shadow-purple-500/50 ${
                                 ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
                               }`}
-                              title={ecControllerLocked ? 'Controles bloqueados' : 'Ver preview da configuração'}
+                              title={ecControllerLocked ? 'Controles bloqueados' : ec.debugPreviewTitle}
                             >
-                              🔍 Debug Vista Previa
+                              {ec.debugButton}
                             </button>
                             <button
                               onClick={() => {
@@ -2108,10 +2114,10 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                               className={`px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all ${
                                 ecControllerLocked ? 'opacity-50 cursor-not-allowed' : ''
                               }`}
-                              title={ecControllerLocked ? 'Controles bloqueados' : 'Limpar valores'}
+                              title={ecControllerLocked ? 'Controles bloqueados' : ec.clearValues}
                             >
                               <XMarkIcon className="w-4 h-4 inline mr-1" />
-                              Limpar Valores
+                              {ec.clearValues}
                             </button>
                           </div>
                         </div>
@@ -2122,13 +2128,13 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-dark-card border border-dark-border rounded-lg shadow-xl p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-dark-text mb-4">
-              {editingNutrientIndex !== null ? 'Editar Nutriente' : 'Adicionar Nutriente'}
+              {editingNutrientIndex !== null ? ec.editNutrient : ec.addNutrient}
             </h3>
             
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                  Nome do Nutriente
+                  {ec.nutrientName}
                 </label>
                 <input
                   type="text"
@@ -2143,7 +2149,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
               
               <div>
                 <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                  Relé (Master)
+                  {ec.relayMaster}
                 </label>
                 <span title={modalNutrientControl.title || undefined}>
                   <DoserRelaySelect
@@ -2163,7 +2169,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
               
               <div>
                 <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                  ml por Litro
+                  {ec.colMlPerL}
                 </label>
                 <input
                   type="number"
@@ -2276,7 +2282,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                 className="px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
                 title={modalNutrientControl.title || undefined}
               >
-                {editingNutrientIndex !== null ? 'Salvar' : 'Adicionar'}
+                {editingNutrientIndex !== null ? t.automacao.common.save : ec.addNutrient}
               </button>
             </div>
           </div>
@@ -2289,7 +2295,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-dark-border">
               <h2 className="text-xl font-bold text-dark-text">
-                🔍 Debug Vista Previa - EC Controller Config
+                {ec.debugTitle}
               </h2>
               <button
                 onClick={() => setShowECConfigPreview(false)}
@@ -2310,28 +2316,24 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
               {/* Informação adicional */}
               <div className="mt-4 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
                 <p className="text-xs text-purple-300 mb-2">
-                  💡 Este é o JSON completo que será enviado/salvo no Supabase (tabela ec_config_view)
+                  {ec.debugIntro}
                 </p>
                 <p className="text-xs text-dark-textSecondary mb-2">
-                  Este formato é o mesmo que aparece no console.log quando a configuração é salva.
+                  {ec.debugConsoleNote}
                 </p>
                 <div className="mt-3 space-y-1 text-xs text-dark-textSecondary">
-                  <p><strong className="text-purple-300">device_id:</strong> ID do dispositivo Master</p>
-                  <p><strong className="text-purple-300">base_dose:</strong> EC base em µS/cm</p>
-                  <p><strong className="text-purple-300">nutrients[].flowRate:</strong> Vazão de cada bomba (ml/s), da Calibragem</p>
-                  <p><strong className="text-purple-300">volume:</strong> Volume total do reservatório (L)</p>
-                  <p><strong className="text-purple-300">total_ml:</strong> Soma de ml/L de todos os nutrientes</p>
-                  <p><strong className="text-purple-300">ec_setpoint:</strong> Setpoint desejado de EC (µS/cm)</p>
-                  <p><strong className="text-purple-300">tolerance:</strong> Banda morta em µS/cm — needsAdjustment se (SP − EC) &gt; tolerance</p>
-                  <p><strong className="text-purple-300">auto_enabled:</strong> Controle automático ativado?</p>
-                  <p><strong className="text-purple-300">aggressiveness:</strong> Tope de passo Auto EC (0.05–1.0)</p>
-                  <p><strong className="text-purple-300">consumo_24h:</strong> Camada Consumo EC 24 h</p>
-                  <p><strong className="text-purple-300">pulse_ml:</strong> ml por pulso (HMI pulseMl)</p>
-                  <p><strong className="text-purple-300">pulse_gap_sec:</strong> Gap pulsos em segundos (HMI pulseGapSec)</p>
-                  <p><strong className="text-purple-300">nutrients:</strong> Array de nutrientes com relés e ml/L</p>
-                  <p><strong className="text-purple-300">intervalo_auto_ec:</strong> Intervalo entre verificações de EC (segundos)</p>
-                  <p><strong className="text-purple-300">tempo_recirculacao:</strong> Tempo de recirculação em segundos (integer)</p>
-                  <p className="mt-2 text-purple-300"><strong>_debug:</strong> Informação calculada adicional (preview)</p>
+                  {ec.debugLegend.split('\n').map((line) => {
+                    const idx = line.indexOf(':');
+                    if (idx < 0) return <p key={line}>{line}</p>;
+                    const key = line.slice(0, idx);
+                    const rest = line.slice(idx + 1);
+                    return (
+                      <p key={key} className={key === '_debug' ? 'mt-2 text-purple-300' : undefined}>
+                        <strong className="text-purple-300">{key}:</strong>
+                        {rest}
+                      </p>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -2342,18 +2344,18 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                 onClick={() => {
                   const jsonStr = JSON.stringify(getECConfigJson(), null, 2);
                   navigator.clipboard.writeText(jsonStr);
-                  toast.success('JSON copiado para a área de transferência!');
+                  toast.success(t.automacao.common.toastJsonCopied);
                 }}
                 className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
               >
                 <ClipboardIcon className="w-4 h-4" />
-                Copiar JSON
+                {t.automacao.common.copyJson}
               </button>
               <button
                 onClick={() => setShowECConfigPreview(false)}
                 className="px-4 py-2 bg-dark-surface hover:bg-dark-border text-dark-text border border-dark-border rounded-lg text-sm font-medium transition-colors"
               >
-                Fechar
+                {t.automacao.common.close}
               </button>
             </div>
           </div>

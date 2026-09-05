@@ -118,6 +118,49 @@ export function getWeekHoverMetricsSimulated(
   return getWeekHoverRecipe(plan, weekIndex, weekIndex);
 }
 
+/**
+ * Demo local (igual Metrics preview): preenche resumo fictício para hover
+ * sem buscar EC/pH reais. Só usado com `preview=true`.
+ */
+export function buildMockWeekHoverMetrics(
+  plan: GrowCyclePlan,
+  weekIndex: number,
+  currentWeekIndex: number
+): WeekHoverMetrics | null {
+  const recipe = getWeekHoverRecipe(plan, weekIndex, currentWeekIndex);
+  if (!recipe) return null;
+  if (recipe.weekKind === 'future') return recipe;
+
+  const sp = recipe.ecSetpoint;
+  const drift = 40 + (weekIndex % 5) * 12;
+  const ecFirst = Math.max(200, sp - drift);
+  const ecLast = Math.max(180, sp - Math.round(drift * 0.55));
+  const phFirst = Math.min(6.8, recipe.phSetpoint + 0.25);
+  const phLast = recipe.phSetpoint + 0.05;
+
+  return {
+    ...recipe,
+    ecFirst,
+    ecLast,
+    ecAvg: (ecFirst + ecLast) / 2,
+    ecAvgDailyDrop: (ecFirst - ecLast) / 7,
+    phFirst,
+    phLast,
+    phAvg: (phFirst + phLast) / 2,
+    phAvgDailyDrop: (phFirst - phLast) / 7,
+    ecMlTotal: 12 + weekIndex * 3.5,
+    phMlUp: weekIndex % 2 === 0 ? 2.5 : 0,
+    phMlDown: weekIndex % 2 === 1 ? 1.8 : 0.5,
+    ecAdjustments: 2 + (weekIndex % 3),
+    phAdjustments: 1 + (weekIndex % 2),
+    byNutrient: [
+      { name: 'Grow', ml: 8 + weekIndex },
+      { name: 'Micro', ml: 4 + weekIndex * 0.5 },
+    ],
+    hasWeekData: true,
+  };
+}
+
 export function getWeekProfile(
   plan: GrowCyclePlan,
   weekIndex: number
