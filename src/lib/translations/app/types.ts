@@ -223,6 +223,15 @@ export interface AppTranslations {
       typeRoleSaved: string;
       ruleInactive: string;
       typePerRoleHint: string;
+      protectionTitle: string;
+      protectionIntro: string;
+      protectionLevelTitle: string;
+      protectionLevelBody: string;
+      protectionTempTitle: string;
+      protectionTempBody: string;
+      protectionEmergencyTitle: string;
+      protectionEmergencyBody: string;
+      protectionTip: string;
       fixedFunctionKind: string;
       sequentialScriptKind: string;
       classicRuleKind: string;
@@ -663,6 +672,9 @@ export interface AppTranslations {
       weekLabel: string;
       lastTriggered: string;
       confirmDelete: string;
+      toggleEnable: string;
+      toggleDisable: string;
+      deleteAction: string;
       errorCreate: string;
       createAction: string;
       saving: string;
@@ -1192,5 +1204,19 @@ export interface AppTranslations {
       weekdays: string[];
       months: string[];
     };
+  };
+  home: {
+    tagline: string;
+    body: string;
+    featureMonitorTitle: string;
+    featureMonitorBody: string;
+    featureAutoTitle: string;
+    featureAutoBody: string;
+    featureDoseTitle: string;
+    featureDoseBody: string;
+    featureHistoryTitle: string;
+    featureHistoryBody: string;
+    ctaDashboard: string;
+    linkQuemSomos: string;
   };
 }

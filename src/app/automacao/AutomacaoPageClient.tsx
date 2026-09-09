@@ -93,7 +93,6 @@ import { getMasterLocalRelayNames } from '@/lib/nutrition-plan';
 import { useRelayAllocation } from '@/hooks/useRelayAllocation';
 import { AutomacaoTabs, useAutomacaoTab } from '@/components/automacao/AutomacaoTabs';
 import { ProceduresTabPanel } from '@/components/automacao/ProceduresTabPanel';
-import ScheduleEditor from '@/components/automacao/ScheduleEditor';
 import { showLockUnlockToast, validateAdminPassword } from '@/lib/automacao/admin-lock';
 
 const SectionSkeleton = ({ className = 'h-32' }: { className?: string }) => (
@@ -3047,10 +3046,6 @@ export default function AutomacaoPageClient() {
 
         <RuleExecutionHistoryPanel deviceId={selectedDeviceId} />
           </>
-        )}
-
-        {activeTab === 'schedules' && (
-          <ScheduleEditor deviceId={selectedDeviceId} />
         )}
 
         {activeTab === 'ec' && (

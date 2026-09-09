@@ -62,7 +62,7 @@ async function main() {
     .eq('device_id', DEVICE_ID);
 
   if (cleanAll) {
-    previewQuery = previewQuery.in('status', ['pending', 'sent']);
+    previewQuery = previewQuery.in('status', ['pending', 'sent', 'processing']);
   } else {
     previewQuery = previewQuery.in('id', ids);
   }
@@ -97,7 +97,7 @@ async function main() {
       }
     : {
         status: 'failed',
-        error_message: 'stuck pending/sent — limpeza manual Jun/2026',
+        error_message: 'stuck pending/sent/processing — limpeza manual',
         completed_at: new Date().toISOString(),
       };
 
@@ -105,7 +105,7 @@ async function main() {
     .from('relay_commands')
     .update(updatePayload)
     .eq('device_id', DEVICE_ID)
-    .in('status', ['pending', 'sent']);
+    .in('status', ['pending', 'sent', 'processing']);
 
   if (!cleanAll) {
     updateQuery = updateQuery.in('id', ids);
@@ -127,9 +127,9 @@ async function main() {
     .from('relay_commands')
     .select('id, status')
     .eq('device_id', DEVICE_ID)
-    .in('status', ['pending', 'sent']);
+    .in('status', ['pending', 'sent', 'processing']);
 
-  console.log(`\nPending/sent restantes: ${remaining.data?.length ?? 0}`);
+  console.log(`\nPending/sent/processing restantes: ${remaining.data?.length ?? 0}`);
   process.exit(0);
 }
 

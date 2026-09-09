@@ -70,10 +70,15 @@ export default function RelayActionEditor({
     const parsed = parseActuatorKey(value);
     if (!parsed) return;
 
+    // Un solo onChange: varios updateField en el mismo handler se pisan
+    // (solo queda relay_number) y el select salta a Core pH+/mismo índice.
     if (parsed.target === 'slave') {
-      updateField('target', 'slave');
-      updateField('slave_mac', parsed.slaveMac ?? '');
-      updateField('relay_number', parsed.relayIndex);
+      onChange({
+        ...instruction,
+        target: 'slave',
+        slave_mac: parsed.slaveMac ?? '',
+        relay_number: parsed.relayIndex,
+      });
       return;
     }
 

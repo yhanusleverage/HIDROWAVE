@@ -1,24 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import NavLink from '@/components/NavLink';
 import BrandLogo from '@/components/BrandLogo';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { HW_TEXT } from '@/lib/design-tokens';
+import { useLanguage } from '@/contexts/LanguageContext';
 import {
-  QUEM_SOMOS_BEFORE_AFTER,
-  QUEM_SOMOS_CTA,
-  QUEM_SOMOS_ELEMENTS,
-  QUEM_SOMOS_HERO,
-  QUEM_SOMOS_JOURNEY,
-  QUEM_SOMOS_MANIFESTO,
-  QUEM_SOMOS_MISSION,
-  QUEM_SOMOS_PRODUCT_LINE,
-  QUEM_SOMOS_PROMISES,
-  QUEM_SOMOS_SOCIAL_PROOF,
-  type QuemSomosIconId,
-} from '@/lib/content/quem-somos';
+  getQuemSomosContent,
+  type QuemSomosElement,
+} from '@/lib/translations/quem-somos';
 import {
   ArrowRightIcon,
   BoltIcon,
@@ -36,7 +28,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 const ELEMENT_ICONS: Record<
-  QuemSomosIconId,
+  QuemSomosElement['id'],
   React.ComponentType<{ className?: string }>
 > = {
   electronics: CpuChipIcon,
@@ -50,8 +42,10 @@ const ELEMENT_ICONS: Record<
 
 function ElementCard({
   item,
+  howItWorks,
 }: {
-  item: (typeof QUEM_SOMOS_ELEMENTS)[number];
+  item: QuemSomosElement;
+  howItWorks: string;
 }) {
   const [techOpen, setTechOpen] = useState(false);
   const Icon = ELEMENT_ICONS[item.id];
@@ -79,7 +73,7 @@ function ElementCard({
         onClick={() => setTechOpen((v) => !v)}
         className={`flex items-center gap-1 text-xs ${HW_TEXT.neutral} hover:opacity-80 mb-3`}
       >
-        Como funciona
+        {howItWorks}
         {techOpen ? <ChevronUpIcon className="w-3.5 h-3.5" /> : <ChevronDownIcon className="w-3.5 h-3.5" />}
       </button>
       {techOpen && (
@@ -99,6 +93,10 @@ function ElementCard({
 }
 
 export default function QuemSomosContent() {
+  const { locale } = useLanguage();
+  const c = useMemo(() => getQuemSomosContent(locale), [locale]);
+  const { ui } = c;
+
   return (
     <>
       <header className="relative overflow-hidden bg-dark-card border-b border-dark-border shadow-lg">
@@ -115,16 +113,16 @@ export default function QuemSomosContent() {
             <BrandLogo variant="gradient" size={48} />
           </div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-aqua-400/90 mb-3">
-            {QUEM_SOMOS_HERO.eyebrow}
+            {c.hero.eyebrow}
           </p>
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-dark-text leading-tight mb-4">
-            {QUEM_SOMOS_HERO.title}{' '}
+            {c.hero.title}{' '}
             <span className="bg-gradient-to-r from-aqua-400 via-primary-400 to-violet-400 bg-clip-text text-transparent">
-              {QUEM_SOMOS_HERO.titleHighlight}
+              {c.hero.titleHighlight}
             </span>
           </h1>
           <p className="text-lg text-dark-textSecondary max-w-2xl mx-auto leading-relaxed">
-            {QUEM_SOMOS_HERO.subtitle}
+            {c.hero.subtitle}
           </p>
         </div>
       </header>
@@ -135,12 +133,12 @@ export default function QuemSomosContent() {
             <div className="flex items-start gap-4">
               <BoltIcon className="w-8 h-8 text-aqua-400 shrink-0 mt-1" />
               <div>
-                <SectionHeader title={QUEM_SOMOS_MISSION.title} accent="brand" className="mb-3" />
+                <SectionHeader title={c.mission.title} accent="brand" className="mb-3" />
                 <p className="text-dark-textSecondary leading-relaxed mb-4">
-                  <strong className="text-dark-text">{QUEM_SOMOS_MISSION.body}</strong>
+                  <strong className="text-dark-text">{c.mission.body}</strong>
                 </p>
                 <p className="text-sm text-dark-textSecondary leading-relaxed border-l-4 border-aqua-500/60 pl-4">
-                  {QUEM_SOMOS_MISSION.aside}
+                  {c.mission.aside}
                 </p>
               </div>
             </div>
@@ -159,20 +157,20 @@ export default function QuemSomosContent() {
             />
             <div className="relative">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-aqua-400/90 mb-4">
-                {QUEM_SOMOS_MANIFESTO.eyebrow}
+                {c.manifesto.eyebrow}
               </p>
               <blockquote className="border-l-4 border-aqua-500/70 pl-5 sm:pl-6">
                 <h2
                   id="manifesto-heading"
                   className="text-2xl sm:text-3xl font-bold text-dark-text leading-snug mb-2"
                 >
-                  {QUEM_SOMOS_MANIFESTO.lead}
+                  {c.manifesto.lead}
                 </h2>
                 <p className="text-lg text-aqua-400/95 font-medium mb-6">
-                  {QUEM_SOMOS_MANIFESTO.subtitle}
+                  {c.manifesto.subtitle}
                 </p>
                 <div className="space-y-4 text-dark-textSecondary leading-relaxed">
-                  {QUEM_SOMOS_MANIFESTO.paragraphs.map((paragraph) => (
+                  {c.manifesto.paragraphs.map((paragraph) => (
                     <p key={paragraph.slice(0, 48)} className="text-sm sm:text-base">
                       {paragraph}
                     </p>
@@ -186,14 +184,14 @@ export default function QuemSomosContent() {
         <section id="linha-produto" aria-labelledby="product-line-heading">
           <div className="text-center mb-8">
             <h2 id="product-line-heading" className="text-2xl font-bold text-dark-text mb-2">
-              {QUEM_SOMOS_PRODUCT_LINE.title}
+              {c.productLine.title}
             </h2>
             <p className="text-sm text-dark-textSecondary max-w-xl mx-auto">
-              {QUEM_SOMOS_PRODUCT_LINE.subtitle}
+              {c.productLine.subtitle}
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {QUEM_SOMOS_PRODUCT_LINE.modules.map((mod) => (
+            {c.productLine.modules.map((mod) => (
               <InstrumentCard key={mod.name} accent={mod.accent} tinted className="flex flex-col">
                 <p className="text-xs font-semibold uppercase tracking-wide text-dark-textSecondary/70 mb-1">
                   {mod.role}
@@ -207,13 +205,11 @@ export default function QuemSomosContent() {
 
         <section>
           <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-dark-text mb-2">Por que cultivadores confiam</h2>
-            <p className="text-sm text-dark-textSecondary max-w-xl mx-auto">
-              Produto testado, planos para escalar e automação com limites claros.
-            </p>
+            <h2 className="text-2xl font-bold text-dark-text mb-2">{ui.trustTitle}</h2>
+            <p className="text-sm text-dark-textSecondary max-w-xl mx-auto">{ui.trustSubtitle}</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {QUEM_SOMOS_SOCIAL_PROOF.map((item) => (
+            {c.socialProof.map((item) => (
               <InstrumentCard key={item.title} accent={item.accent} tinted className="flex flex-col">
                 <SectionHeader title={item.title} accent={item.accent} />
                 <p className="text-sm text-dark-textSecondary leading-relaxed mb-2 flex-1">
@@ -234,22 +230,20 @@ export default function QuemSomosContent() {
 
         <section>
           <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-dark-text mb-2">Antes e depois</h2>
-            <p className="text-sm text-dark-textSecondary max-w-lg mx-auto">
-              O que muda quando as grandezas da hidroponia passam a ter instrumento.
-            </p>
+            <h2 className="text-2xl font-bold text-dark-text mb-2">{ui.beforeAfterTitle}</h2>
+            <p className="text-sm text-dark-textSecondary max-w-lg mx-auto">{ui.beforeAfterSubtitle}</p>
           </div>
           <InstrumentCard accent="neutral">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-dark-border text-dark-textSecondary">
-                    <th className="text-left py-2 pr-4 font-medium">Sem HydroWave</th>
-                    <th className="text-left py-2 font-medium text-aqua-400">Com HydroWave</th>
+                    <th className="text-left py-2 pr-4 font-medium">{ui.withoutHw}</th>
+                    <th className="text-left py-2 font-medium text-aqua-400">{ui.withHw}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {QUEM_SOMOS_BEFORE_AFTER.map((row) => (
+                  {c.beforeAfter.map((row) => (
                     <tr key={row.without} className="border-b border-dark-border/50 last:border-0">
                       <td className="py-3 pr-4 text-dark-textSecondary">{row.without}</td>
                       <td className="py-3 text-dark-text">{row.with}</td>
@@ -263,15 +257,12 @@ export default function QuemSomosContent() {
 
         <section id="elementos">
           <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-dark-text mb-2">Os elementos do controle</h2>
-            <p className="text-sm text-dark-textSecondary max-w-xl mx-auto">
-              Cada grandeza mapeada a um domínio real do produto — do sensor no tanque ao gráfico no
-              celular.
-            </p>
+            <h2 className="text-2xl font-bold text-dark-text mb-2">{ui.elementsTitle}</h2>
+            <p className="text-sm text-dark-textSecondary max-w-xl mx-auto">{ui.elementsSubtitle}</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {QUEM_SOMOS_ELEMENTS.map((item) => (
-              <ElementCard key={item.id} item={item} />
+            {c.elements.map((item) => (
+              <ElementCard key={item.id} item={item} howItWorks={ui.howItWorks} />
             ))}
           </div>
         </section>
@@ -281,21 +272,19 @@ export default function QuemSomosContent() {
             <div className="flex items-center gap-2 mb-6">
               <CloudIcon className="w-5 h-5 text-aqua-400 shrink-0" />
               <div>
-                <h2 className="text-xl font-semibold text-dark-text">Do silício ao seu dedo</h2>
-                <p className="text-sm text-dark-textSecondary mt-0.5">
-                  A ponte completa — do sensor no tanque ao gráfico no celular.
-                </p>
+                <h2 className="text-xl font-semibold text-dark-text">{ui.journeyTitle}</h2>
+                <p className="text-sm text-dark-textSecondary mt-0.5">{ui.journeySubtitle}</p>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {QUEM_SOMOS_JOURNEY.map((item, index) => (
+              {c.journey.map((item, index) => (
                 <div key={item.step} className="relative">
                   <div className="bg-dark-card border border-dark-border rounded-lg p-4 h-full">
                     <span className="text-2xl font-bold text-aqua-500/40">{item.step}</span>
                     <h3 className="font-semibold text-dark-text mt-1 mb-2">{item.layer}</h3>
                     <p className="text-xs text-dark-textSecondary leading-relaxed">{item.detail}</p>
                   </div>
-                  {index < QUEM_SOMOS_JOURNEY.length - 1 && (
+                  {index < c.journey.length - 1 && (
                     <ArrowRightIcon
                       className="hidden lg:block absolute top-1/2 -right-3 w-5 h-5 text-dark-textSecondary/40 -translate-y-1/2 z-10"
                       aria-hidden
@@ -308,13 +297,9 @@ export default function QuemSomosContent() {
         </section>
 
         <section>
-          <SectionHeader
-            title="O que prometemos — sem letras miúdas"
-            accent="brand"
-            className="mb-4"
-          />
+          <SectionHeader title={ui.promisesTitle} accent="brand" className="mb-4" />
           <ul className="space-y-3">
-            {QUEM_SOMOS_PROMISES.map((promise) => (
+            {c.promises.map((promise) => (
               <li
                 key={promise}
                 className="flex items-start gap-3 bg-dark-card border border-dark-border rounded-lg px-4 py-3"
@@ -327,37 +312,33 @@ export default function QuemSomosContent() {
         </section>
 
         <section className="text-center bg-gradient-to-r from-aqua-500/10 via-primary-500/10 to-violet-500/10 border border-aqua-500/30 rounded-xl p-8">
-          <h2 className="text-xl font-bold text-dark-text mb-2">{QUEM_SOMOS_CTA.title}</h2>
-          <p className="text-sm text-dark-textSecondary mb-6 max-w-md mx-auto">
-            {QUEM_SOMOS_CTA.subtitle}
-          </p>
+          <h2 className="text-xl font-bold text-dark-text mb-2">{c.cta.title}</h2>
+          <p className="text-sm text-dark-textSecondary mb-6 max-w-md mx-auto">{c.cta.subtitle}</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <NavLink
               href="/dashboard"
               className="inline-flex items-center gap-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-3 px-6 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/40"
             >
-              Ir para o Dashboard
+              {ui.ctaDashboard}
               <ArrowRightIcon className="w-4 h-4" />
             </NavLink>
             <NavLink
               href="/planos"
               className="inline-flex items-center gap-2 bg-dark-card border border-dark-border text-dark-text hover:border-aqua-500/50 font-medium py-3 px-6 rounded-lg transition-all"
             >
-              Ver planos comerciais
+              {ui.ctaPlans}
             </NavLink>
             <NavLink
               href="/informacao"
               className="text-sm text-aqua-400 hover:text-aqua-300 transition-colors"
             >
-              Manual de uso →
+              {ui.ctaManual}
             </NavLink>
           </div>
         </section>
 
         <footer className="text-center pb-6">
-          <p className="text-xs text-dark-textSecondary/60">
-            HydroWave — nada desperdiçado, tudo com propósito.
-          </p>
+          <p className="text-xs text-dark-textSecondary/60">{ui.footer}</p>
         </footer>
       </div>
     </>

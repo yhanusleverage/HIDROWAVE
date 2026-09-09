@@ -63,19 +63,27 @@ export interface SimulatedLogEntry {
   message: string;
 }
 
+/**
+ * Portuguese defaults for non-React / builder code.
+ * UI should use `getPhaseLabels(locale)` from `@/lib/translations/grow-cycle`
+ * (avoids circular deps if this module imported translations).
+ */
 export const PHASE_LABELS: Record<GrowPhase, string> = {
   establishment: 'Estabelecimento',
   vegetative: 'Vegetativo',
-  flip: 'Pré-flor',
+  flip: 'Transição',
   flower: 'Floração',
   flush: 'Flush',
 };
 
-/** Ribbon do canopy (3 chars). */
+/**
+ * Ribbon do canopy (3 chars) — PT defaults for non-React code.
+ * UI should use `getGrowCycleChrome(locale).phaseRibbon`.
+ */
 export const PHASE_RIBBON_SHORT: Record<GrowPhase, string> = {
   establishment: 'Est',
   vegetative: 'Veg',
-  flip: 'Pré',
+  flip: 'Tra',
   flower: 'Flo',
   flush: 'Flu',
 };

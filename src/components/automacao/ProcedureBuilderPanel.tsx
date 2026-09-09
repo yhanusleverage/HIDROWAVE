@@ -117,26 +117,27 @@ export function ProcedureBuilderPanel({
         title={p.builderTitle}
         subtitle={`${procedure.name} · ${procedure.layer}`}
         accent="brand"
+        size="comfortable"
       />
 
-      <div className="bg-dark-card border border-dark-border rounded-xl p-4 space-y-4">
+      <div className="bg-dark-card border border-dark-border rounded-xl p-4 sm:p-5 space-y-4">
         <div className="grid sm:grid-cols-2 gap-4">
-          <label className="block text-xs">
+          <label className="block text-sm">
             <span className="text-dark-textSecondary">{p.ruleId}</span>
             <input
               type="text"
               value={procedure.id}
               onChange={(e) => setProcedure((p) => ({ ...p, id: e.target.value }))}
-              className="mt-1 w-full p-2 bg-dark-surface border border-dark-border rounded-lg font-mono"
+              className="mt-1 w-full p-2.5 bg-dark-surface border border-dark-border rounded-lg font-mono text-base"
             />
           </label>
-          <label className="block text-xs">
+          <label className="block text-sm">
             <span className="text-dark-textSecondary">{p.name}</span>
             <input
               type="text"
               value={procedure.name}
               onChange={(e) => setProcedure((p) => ({ ...p, name: e.target.value }))}
-              className="mt-1 w-full p-2 bg-dark-surface border border-dark-border rounded-lg"
+              className="mt-1 w-full p-2.5 bg-dark-surface border border-dark-border rounded-lg text-base"
             />
           </label>
         </div>

@@ -39,27 +39,27 @@ export function SlaveRelaySelect({
 
   if (slaves.length === 0) {
     return (
-      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-        <p className="text-xs font-medium text-amber-300/95 mb-1">{label}</p>
-        <p className="text-xs text-amber-400/90">Nenhum HydroWave Atlas registado para este Core.</p>
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+        <p className="text-sm font-medium text-amber-300/95 mb-1">{label}</p>
+        <p className="text-sm text-amber-400/90 leading-relaxed">Nenhum HydroWave Atlas registado para este Core.</p>
       </div>
     );
   }
 
   if (options.length === 0) {
     return (
-      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-        <p className="text-xs font-medium text-amber-300/95 mb-1">{label}</p>
-        <p className="text-xs text-amber-400/90">{emptyMessage}</p>
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+        <p className="text-sm font-medium text-amber-300/95 mb-1">{label}</p>
+        <p className="text-sm text-amber-400/90 leading-relaxed">{emptyMessage}</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-dark-textSecondary">{label}</span>
-        <span className="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-violet-500/40 bg-violet-500/15 text-violet-300">
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-base font-medium text-dark-textSecondary">{label}</span>
+        <span className="text-xs uppercase tracking-wide font-semibold px-2 py-0.5 rounded border border-violet-500/40 bg-violet-500/15 text-violet-300">
           HydroWave Atlas
         </span>
       </div>
@@ -74,7 +74,7 @@ export function SlaveRelaySelect({
           }
           onChange(parseSlaveRelayKey(key));
         }}
-        className="w-full p-2.5 bg-dark-surface border border-violet-500/25 rounded-lg text-dark-text text-sm focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/50 disabled:opacity-50"
+        className="w-full p-3 bg-dark-surface border border-violet-500/25 rounded-lg text-dark-text text-base focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/50 disabled:opacity-50"
       >
         <option value="">— Selecionar relé Atlas —</option>
         {options.map((opt) => (
@@ -85,12 +85,12 @@ export function SlaveRelaySelect({
         ))}
       </select>
       {value && selectedLabel && (
-        <p className="text-[11px] text-dark-textSecondary truncate">
+        <p className="text-sm text-dark-textSecondary truncate">
           {formatSlaveRelayLabel(selectedLabel)}
         </p>
       )}
       {value && showMac && (
-        <p className="text-[11px] text-dark-textSecondary/60 font-mono truncate">
+        <p className="text-sm text-dark-textSecondary/60 font-mono truncate">
           {value.slaveMac} · relé {value.relayId}
         </p>
       )}

@@ -5,6 +5,7 @@ import {
   CalendarDaysIcon,
   ClockIcon,
 } from '@heroicons/react/24/outline';
+import { useMemo } from 'react';
 import type { ScheduleBlock, ScheduleKind } from '@/lib/grow-cycle-timeline/types';
 import {
   resolveScheduleKind,
@@ -12,6 +13,8 @@ import {
   scheduleChipClasses,
   scheduleTextClass,
 } from '@/lib/grow-cycle-timeline/schedule-tokens';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getGrowCycleChrome } from '@/lib/translations/grow-cycle';
 
 interface ScheduleChipProps {
   schedule: ScheduleBlock;
@@ -41,9 +44,18 @@ export function ScheduleChip({
   variant = 'compact',
   className = '',
 }: ScheduleChipProps) {
+  const { locale } = useLanguage();
+  const shortCirc = useMemo(
+    () => getGrowCycleChrome(locale).scheduleShortCirculation,
+    [locale]
+  );
   const kind = resolveScheduleKind(schedule);
   const cadenceShort = scheduleCadenceShort(schedule);
   const title = `${schedule.label} (${schedule.cadence})`;
+  const compactLabel =
+    kind === 'circulation' || schedule.label === 'Circulação'
+      ? shortCirc
+      : schedule.label.split(' ')[0];
 
   if (variant === 'detail') {
     return (
@@ -71,9 +83,7 @@ export function ScheduleChip({
       title={title}
     >
       <ScheduleKindIcon kind={kind} className={`w-2.5 h-2.5 shrink-0 ${scheduleTextClass(kind)}`} />
-      <span className="truncate min-w-0 text-dark-text">
-        {schedule.label === 'Circulação' ? 'Circ' : schedule.label.split(' ')[0]}
-      </span>
+      <span className="truncate min-w-0 text-dark-text">{compactLabel}</span>
       <span className={`shrink-0 tabular-nums opacity-90 ${scheduleTextClass(kind)}`}>
         ·{cadenceShort}
       </span>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { XMarkIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, Cog6ToothIcon, PaperClipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'react-hot-toast';
@@ -13,10 +13,12 @@ import RelayActionEditor from './instruction-editors/RelayActionEditor';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { useAuth } from '@/contexts/AuthContext';
 import TargetRuleIdField from '@/components/TargetRuleIdField';
-import { DEFAULT_MASTER_RELAYS } from '@/lib/master-relay-options';
+import { DEFAULT_MASTER_RELAYS, type MasterRelayOption } from '@/lib/master-relay-options';
 import { createNestedInstruction, ensureInstructionIds, defaultProcedureInstructions } from '@/lib/instruction-factory';
 import { resolveDecisionRuleDisplayName } from '@/lib/decision-rule-display-name';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useRelayAllocation } from '@/hooks/useRelayAllocation';
+import { getDoserRelaySlots } from '@/lib/relay-allocation';
 
 export interface Instruction {
   id?: string;
@@ -68,6 +70,27 @@ interface SequentialScriptEditorProps {
   onClose: () => void;
 }
 
+/** Relés Master já usados neste script (para manter no select mesmo se ocupados por EC/pH). */
+function collectMasterRelaysInUse(list: Instruction[]): Set<number> {
+  const used = new Set<number>();
+  const walk = (items: Instruction[]) => {
+    for (const instr of items) {
+      if (
+        instr.type === 'relay_action' &&
+        (instr.target === 'master' || !instr.target) &&
+        typeof instr.relay_number === 'number'
+      ) {
+        used.add(instr.relay_number);
+      }
+      if (instr.body) walk(instr.body);
+      if (instr.then) walk(instr.then);
+      if (instr.else) walk(instr.else);
+    }
+  };
+  walk(list);
+  return used;
+}
+
 export default function SequentialScriptEditor({
   scriptId,
   deviceId,
@@ -94,7 +117,25 @@ export default function SequentialScriptEditor({
   const [availableRules, setAvailableRules] = useState<Array<{ rule_id: string; rule_name: string }>>([]);
   const [loadingAvailableRules, setLoadingAvailableRules] = useState(false);
   const [currentRuleId, setCurrentRuleId] = useState<string | null>(null);
-  const masterRelays = DEFAULT_MASTER_RELAYS;
+
+  const { registry } = useRelayAllocation(deviceId, {
+    enabled: Boolean(deviceId && deviceId !== 'default_device'),
+  });
+
+  /** Peristálticos Master livres (sem EC/pH/calibragem) + os já escolhidos no script. */
+  const masterRelays: MasterRelayOption[] = useMemo(() => {
+    const usedInScript = collectMasterRelaysInUse(instructions);
+    const slots = getDoserRelaySlots(registry);
+    // isFree ignora claims de config (pH/EC); para scripts usamos só badge "livre"
+    const available = slots
+      .filter((s) => s.slotBadge === 'livre' || usedInScript.has(s.relayNumber))
+      .map((s) => ({ number: s.relayNumber, name: s.name || `Relé Master ${s.relayNumber}` }));
+    if (available.length > 0) return available;
+    // Fallback: lista completa se allocation ainda não carregou
+    return DEFAULT_MASTER_RELAYS;
+  }, [registry, instructions]);
+
+  const firstFreeMasterRelay = masterRelays[0]?.number ?? 0;
 
   // ✅ Carregar regras disponíveis para eventos encadeados
   useEffect(() => {
@@ -224,7 +265,9 @@ export default function SequentialScriptEditor({
   const addInstruction = (type: Instruction['type']) => {
     const newInstr = createNestedInstruction(type);
     if (type === 'relay_action') {
-      newInstr.relay_number = 5;
+      newInstr.relay_number = firstFreeMasterRelay;
+      newInstr.target = 'master';
+      newInstr.action = 'on';
     }
     setInstructions((prev) => {
       if (type === 'block_auto') {
@@ -759,8 +802,12 @@ export default function SequentialScriptEditor({
           </div>
 
           {/* Botões para adicionar instruções */}
-          <div className="mt-4 p-3 border border-dark-border rounded-lg bg-aqua-500/10">
+          <div className="mt-4 p-3 border border-dark-border rounded-lg bg-aqua-500/10 space-y-2">
             <InstructionAddButtons onAdd={addInstruction} />
+            <p className="text-xs text-dark-textSecondary leading-relaxed">
+              Relés Core (peristálticos): só os livres (sem EC/pH/calibragem). Atlas sempre disponível
+              na lista do passo.
+            </p>
           </div>
         </div>
 

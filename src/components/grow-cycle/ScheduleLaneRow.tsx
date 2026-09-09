@@ -1,16 +1,18 @@
 'use client';
 
+import { useMemo } from 'react';
 import type { GrowCyclePlan } from '@/lib/grow-cycle-timeline/types';
 import { getSchedulesForWeek } from '@/lib/grow-cycle-timeline/simulation-engine';
 import {
   resolveScheduleKind,
   scheduleIsRecurring,
-  SCHEDULE_KIND_LABELS,
 } from '@/lib/grow-cycle-timeline/schedule-tokens';
 import { LANE_LABEL_COL_W } from '@/lib/grow-cycle-timeline/layout-constants';
 import { HW_TEXT } from '@/lib/design-tokens';
 import { ScheduleChip } from '@/components/grow-cycle/ScheduleChip';
 import { TimelineFlexRow, TimelineWeekSlot } from '@/components/grow-cycle/TimelineGridRow';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getGrowCycleChrome } from '@/lib/translations/grow-cycle';
 
 const LANE_LABEL_W = LANE_LABEL_COL_W;
 
@@ -23,6 +25,8 @@ interface ScheduleLaneRowProps {
 
 /** P0 legacy — plain text labels (preserved for ?scheduleUi=p0). */
 export function SchedulesP0Lane({ plan, chartW, weekSlotW, weekCount }: ScheduleLaneRowProps) {
+  const { locale } = useLanguage();
+  const chrome = useMemo(() => getGrowCycleChrome(locale), [locale]);
   const weeks = plan.weeks.filter((w) => w.weekIndex <= plan.totalWeeks);
 
   return (
@@ -35,15 +39,22 @@ export function SchedulesP0Lane({ plan, chartW, weekSlotW, weekCount }: Schedule
             weekSlotW={weekSlotW}
             className="flex flex-col gap-0.5 items-center"
           >
-            {scheds.map((s) => (
-              <span
-                key={s.ruleId + s.label}
-                className="text-[8px] text-cyan-400/80 truncate max-w-full text-center"
-                title={`${s.label} (${s.cadence})`}
-              >
-                {s.label === 'Circulação' ? '⟳ 2h' : 'UC Dom'}
-              </span>
-            ))}
+            {scheds.map((s) => {
+              const kind = resolveScheduleKind(s);
+              const short =
+                kind === 'circulation' || s.label === 'Circulação'
+                  ? `⟳ ${chrome.scheduleShortCirculation}`
+                  : s.label.split(' ')[0];
+              return (
+                <span
+                  key={s.ruleId + s.label}
+                  className="text-[8px] text-cyan-400/80 truncate max-w-full text-center"
+                  title={`${s.label} (${s.cadence})`}
+                >
+                  {short}
+                </span>
+              );
+            })}
           </TimelineWeekSlot>
         );
       })}
@@ -53,6 +64,8 @@ export function SchedulesP0Lane({ plan, chartW, weekSlotW, weekCount }: Schedule
 
 /** P1 — chip-based schedule lane with mini-bars. */
 export function ScheduleLaneRow({ plan, chartW, weekSlotW, weekCount }: ScheduleLaneRowProps) {
+  const { locale } = useLanguage();
+  const chrome = useMemo(() => getGrowCycleChrome(locale), [locale]);
   const weeks = plan.weeks.filter((w) => w.weekIndex <= plan.totalWeeks);
 
   return (
@@ -63,7 +76,9 @@ export function ScheduleLaneRow({ plan, chartW, weekSlotW, weekCount }: Schedule
       label={
         <>
           <span className="block">P4</span>
-          <span className="block text-[8px] font-normal text-dark-textSecondary">Agend.</span>
+          <span className="block text-[8px] font-normal text-dark-textSecondary">
+            {chrome.scheduleLaneLabel}
+          </span>
         </>
       }
       labelClassName={`font-semibold leading-tight ${HW_TEXT.wait}`}
@@ -84,18 +99,14 @@ export function ScheduleLaneRow({ plan, chartW, weekSlotW, weekCount }: Schedule
                   key={s.ruleId + s.label}
                   className="w-full min-w-0 flex flex-col items-center gap-0.5 px-0.5"
                 >
-                  <ScheduleChip
-                    schedule={s}
-                    variant="compact"
-                    className="w-full max-w-full justify-center"
-                  />
+                  <ScheduleChip schedule={s} variant="compact" />
                   <div
-                    className={`h-1 w-full max-w-[min(40px,90%)] rounded-full ${
+                    className={`h-1 w-full max-w-[28px] rounded-sm ${
                       recurring
                         ? 'border border-dashed border-cyan-500/50 bg-cyan-500/10'
                         : 'bg-aqua-500/40'
                     }`}
-                    title={recurring ? 'Recorrente na semana' : 'Evento pontual'}
+                    title={recurring ? chrome.scheduleRecurring : chrome.scheduleOneShot}
                     aria-hidden
                   />
                 </div>
@@ -109,18 +120,21 @@ export function ScheduleLaneRow({ plan, chartW, weekSlotW, weekCount }: Schedule
 }
 
 export function ScheduleLegend() {
+  const { locale } = useLanguage();
+  const chrome = useMemo(() => getGrowCycleChrome(locale), [locale]);
+
   return (
     <>
       <div className="flex items-center gap-2">
         <span className="w-3 h-3 rounded-sm border border-dashed border-cyan-500/50 bg-cyan-500/15" />
         <span className="text-[10px] text-dark-textSecondary">
-          {SCHEDULE_KIND_LABELS.circulation}
+          {chrome.scheduleKindCirculation}
         </span>
       </div>
       <div className="flex items-center gap-2">
         <span className="w-3 h-3 rounded-sm bg-aqua-500/25 border border-aqua-500/40" />
         <span className="text-[10px] text-dark-textSecondary">
-          {SCHEDULE_KIND_LABELS.maintenance}
+          {chrome.scheduleKindMaintenance}
         </span>
       </div>
     </>

@@ -1,12 +1,8 @@
 'use client';
 
-import { useCallback, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { GrowCyclePlan, GrowWeekProfile } from '@/lib/grow-cycle-timeline/types';
-import {
-  PHASE_COLORS,
-  PHASE_LABELS,
-  PHASE_RIBBON_SHORT,
-} from '@/lib/grow-cycle-timeline/types';
+import { PHASE_COLORS } from '@/lib/grow-cycle-timeline/types';
 import {
   getTankEventsForWeek,
 } from '@/lib/grow-cycle-timeline/simulation-engine';
@@ -30,6 +26,8 @@ import {
 import { TimelineFlexRow, TimelineWeekSlot } from '@/components/grow-cycle/TimelineGridRow';
 
 import type { ScheduleUiVersion } from '@/components/grow-cycle/schedule-ui';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getGrowCycleChrome } from '@/lib/translations/grow-cycle';
 
 export type { ScheduleUiVersion };
 
@@ -94,6 +92,10 @@ export function GrowCycleTimelineChart({
   currentWeekIndex,
   preview = false,
 }: GrowCycleTimelineChartProps) {
+  const { locale } = useLanguage();
+  const chrome = useMemo(() => getGrowCycleChrome(locale), [locale]);
+  const phaseLabels = chrome.phaseLabels;
+  const phaseRibbon = chrome.phaseRibbon;
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
   const [pointer, setPointer] = useState({ clientX: 0, clientY: 0 });
@@ -182,14 +184,14 @@ export function GrowCycleTimelineChart({
                       key={`phase-${w.weekIndex}`}
                       type="button"
                       onClick={() => onSelectWeek(w.weekIndex)}
-                      title={PHASE_LABELS[w.phase]}
+                      title={phaseLabels[w.phase]}
                       className={`h-full text-[9px] font-medium border-r border-dark-border/50 transition-opacity hover:opacity-90 shrink-0 ${PHASE_COLORS[w.phase]} ${
                         w.weekIndex === selectedWeek ? 'ring-2 ring-inset ring-aqua-400/60 z-[1]' : ''
                       } ${i === weeks.length - 1 ? 'border-r-0' : ''}`}
                       style={{ width: weekSlotW, minWidth: weekSlotW, maxWidth: weekSlotW }}
                     >
                       <span className="truncate px-0.5 block text-center leading-7">
-                        {PHASE_RIBBON_SHORT[w.phase]}
+                        {phaseRibbon[w.phase]}
                       </span>
                     </button>
                   ))}
@@ -608,17 +610,15 @@ export function GrowCycleTimelineChart({
           <div className="flex items-center gap-2">
             <span className="w-4 border-t-2 border-dashed border-amber-400" />
             <span className="text-[10px] text-dark-textSecondary">
-              {preview ? 'Playhead simulado (demo)' : 'Playhead / semana actual'}
+              {preview ? chrome.chartPlayheadDemo : chrome.chartPlayheadLive}
             </span>
           </div>
           {scrollMode && (
-            <span className="text-[10px] text-aqua-400/90">
-              ← Arraste / role na horizontal para ver mais semanas →
-            </span>
+            <span className="text-[10px] text-aqua-400/90">{chrome.chartScrollHint}</span>
           )}
           {!preview && plan.schedules.length === 0 && (
             <span className="text-[10px] text-dark-textSecondary">
-              Live: sem pastilhas de schedule — use Novo schedule (todo dia + duração)
+              {chrome.chartLiveEmptySchedules}
             </span>
           )}
         </div>

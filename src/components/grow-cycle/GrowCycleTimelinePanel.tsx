@@ -18,6 +18,7 @@ import { GrowCycleTimelineChart } from '@/components/grow-cycle/GrowCycleTimelin
 import { parseScheduleUiVersion } from '@/components/grow-cycle/schedule-ui';
 import { WeekDetailPanel } from '@/components/grow-cycle/WeekDetailPanel';
 import { SimulationRulesPanel } from '@/components/grow-cycle/SimulationRulesPanel';
+import ScheduleEditor from '@/components/automacao/ScheduleEditor';
 import { MOCK_RDWC_12W_PLAN } from '@/lib/grow-cycle-timeline/mock-rdwc-12w';
 import {
   buildLiveEmptyDisplayPlan,
@@ -30,9 +31,12 @@ import {
 } from '@/lib/grow-cycle-timeline/live-schedule-blocks';
 import { buildWeekSimulationEntries } from '@/lib/grow-cycle-timeline/simulation-engine';
 import type { GrowCyclePlan, GrowPhase, SimulatedLogEntry } from '@/lib/grow-cycle-timeline/types';
-import { PHASE_LABELS } from '@/lib/grow-cycle-timeline/types';
 import { HW_BANNER } from '@/lib/design-tokens';
 import { useGrowCyclePlans, useGrowCycleWeeklyStats } from '@/hooks/useGrowCyclePlans';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { toBcp47 } from '@/lib/locale';
+import { getGrowCycleChrome } from '@/lib/translations/grow-cycle';
+import { PhaseFlipButtons } from '@/components/grow-cycle/PhaseFlipButtons';
 
 interface DeviceOption {
   device_id: string;
@@ -56,6 +60,9 @@ export function GrowCycleTimelinePanel({
   devices = [],
   onDeviceChange,
 }: GrowCycleTimelinePanelProps) {
+  const { locale } = useLanguage();
+  const gc = useMemo(() => getGrowCycleChrome(locale), [locale]);
+  const phaseLabels = gc.phaseLabels;
   const searchParams = useSearchParams();
   const scheduleUiVersion = parseScheduleUiVersion(searchParams.get('scheduleUi'));
 
@@ -98,10 +105,10 @@ export function GrowCycleTimelinePanel({
       weeks: base.weeks.map((w) => {
         const phase = phaseByWeek[w.weekIndex];
         if (!phase) return w;
-        return { ...w, phase, label: PHASE_LABELS[phase] };
+        return { ...w, phase, label: phaseLabels[phase] };
       }),
     };
-  }, [totalWeeks, phaseByWeek]);
+  }, [totalWeeks, phaseByWeek, phaseLabels]);
 
   const handleWeekPhaseChange = useCallback((weekIndex: number, phase: GrowPhase) => {
     setPhaseByWeek((prev) => ({ ...prev, [weekIndex]: phase }));
@@ -158,7 +165,7 @@ export function GrowCycleTimelinePanel({
 
   const handleSaveDraft = useCallback(async () => {
     if (!selectedDeviceId) {
-      toast.error(embedded ? 'Selecione um dispositivo no cabeçalho' : 'Selecione um dispositivo');
+      toast.error(embedded ? gc.selectDeviceEmbedded : gc.selectDevice);
       return;
     }
     setBusy('save');
@@ -166,18 +173,16 @@ export function GrowCycleTimelinePanel({
     setBusy(null);
     if (result.ok) {
       setSavedPlanId(result.plan.id);
-      toast.success('Plano guardado como rascunho');
+      toast.success(gc.draftSaved);
     } else {
       toast.error(result.error);
     }
-  }, [embedded, recipePlan, savePlan, selectedDeviceId]);
+  }, [embedded, gc, recipePlan, savePlan, selectedDeviceId]);
 
   const handlePublish = useCallback(async () => {
     setActionError(null);
     if (!selectedDeviceId) {
-      const msg = embedded
-        ? 'Selecione um HydroWave Core no cabeçalho'
-        : 'Selecione um HydroWave Core';
+      const msg = embedded ? gc.selectCoreEmbedded : gc.selectCore;
       setActionError(msg);
       toast.error(msg);
       return;
@@ -185,7 +190,7 @@ export function GrowCycleTimelinePanel({
     if (busy) return;
 
     setBusy('publish');
-    const toastId = toast.loading('A iniciar ciclo… (pode demorar uns segundos)');
+    const toastId = toast.loading(gc.startingCycleToast);
     /** Arranque: P1 da receita OK; schedules do plano vazios → live começa limpo */
     const publishPlanPayload = buildStartCyclePublishPlan(recipePlan);
     try {
@@ -200,8 +205,7 @@ export function GrowCycleTimelinePanel({
         const schedN = typeof result.schedules_upserted === 'number' ? result.schedules_upserted : 0;
         const warnN = result.warnings?.length ?? 0;
         toast.success(
-          `Ciclo iniciado S0 — FILL/CO/DRAIN ok; Circ vazio até Novo schedule` +
-            (warnN > 0 ? ` (${warnN} avisos)` : ''),
+          gc.cycleStarted + (warnN > 0 ? gc.cycleStartedWarnings.replace('{n}', String(warnN)) : ''),
           { id: toastId, duration: 6000 }
         );
         if (warnN > 0 && result.warnings) {
@@ -214,19 +218,29 @@ export function GrowCycleTimelinePanel({
         const detail =
           result.details?.slice(0, 3).join(' · ') ||
           result.error ||
-          'Erro ao iniciar ciclo';
+          gc.startCycleError;
         setActionError(detail);
         toast.error(detail, { id: toastId, duration: 8000 });
         console.warn('[iniciar ciclo] falha', result);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Erro de rede ao iniciar ciclo';
+      const msg = e instanceof Error ? e.message : gc.networkError;
       setActionError(msg);
       toast.error(msg, { id: toastId, duration: 8000 });
     } finally {
       setBusy(null);
     }
-  }, [busy, embedded, recipePlan, publishPlan, refreshLiveSchedules, savedPlanId, selectedDeviceId, userEmail]);
+  }, [
+    busy,
+    embedded,
+    gc,
+    recipePlan,
+    publishPlan,
+    refreshLiveSchedules,
+    savedPlanId,
+    selectedDeviceId,
+    userEmail,
+  ]);
 
   const handleDeviceSelect = (value: string) => {
     setLocalDeviceId(value);
@@ -239,29 +253,25 @@ export function GrowCycleTimelinePanel({
         className={`${embedded ? 'rounded-lg' : 'sticky top-0 z-20'} border px-4 py-2.5 text-center text-sm font-medium ${HW_BANNER.warn}`}
       >
         {isPreviewOnly ? (
-          <>
-            {embedded
-              ? 'Preview — selecione o Core no cabeçalho; execute migration SQL para persistência'
-              : 'Preview — selecione dispositivo e execute migration SQL para persistência'}
-          </>
+          <>{embedded ? gc.bannerPreviewEmbedded : gc.bannerPreview}</>
         ) : isDemoMode ? (
-          <>
-            Demo local — receita completa (FILL / CO / Circ). Arraste a timeline na horizontal.
-          </>
+          <>{gc.bannerDemo}</>
         ) : activeInstance ? (
           <>
-            Ciclo activo desde {new Date(activeInstance.started_at).toLocaleDateString()} · S
-            {activeInstance.current_week_index}
-            {' · '}
-            schedules: pastilhas live (todo dia / semana) — Novo schedule no painel
+            {gc.bannerActive
+              .replace(
+                '{date}',
+                new Date(activeInstance.started_at).toLocaleDateString(toBcp47(locale))
+              )
+              .replace('{week}', String(activeInstance.current_week_index))}
           </>
         ) : (
-          <>F2 — Iniciar ciclo: FILL/CO/DRAIN da receita; Circ só quando criar schedule</>
+          <>{gc.bannerF2}</>
         )}
         {liveMetricsDeviceId ? (
           <span className="block text-xs font-normal mt-0.5 opacity-90">
-            Hover = resumo da semana (Δ, ml, ajustes) · {weeklyStats.length} semanas com histórico
-            {isDemoMode ? ' · modo demo' : ' · dados live'}
+            {gc.bannerHoverHint.replace('{n}', String(weeklyStats.length))}
+            {isDemoMode ? gc.bannerHoverDemoSuffix : gc.bannerHoverLiveSuffix}
           </span>
         ) : null}
       </div>
@@ -274,11 +284,11 @@ export function GrowCycleTimelinePanel({
                 href="/processos"
                 className="inline-flex items-center gap-1.5 text-xs text-dark-textSecondary hover:text-aqua-400 mb-3"
               >
-                Processos
+                {gc.processosLink}
               </NavLink>
               <SectionHeader
-                title="Timeline de cultivo"
-                subtitle={`${recipePlan.name} — ISA-88 Recipe (F1–F2)`}
+                title={gc.timelineTitle}
+                subtitle={gc.timelineSubtitle.replace('{name}', recipePlan.name)}
                 accent="brand"
                 className="mb-0"
               />
@@ -286,11 +296,11 @@ export function GrowCycleTimelinePanel({
                 href="/automacao?tab=timeline"
                 className="inline-flex items-center gap-1.5 text-xs text-aqua-400 hover:text-aqua-300 mt-2"
               >
-                Abrir em Automação → Ciclo de Cultivo
+                {gc.openInAutomacao}
               </NavLink>
             </div>
             <HwBadge accent={activeInstance ? 'brand' : 'wait'}>
-              {activeInstance ? 'CICLO ACTIVO' : 'DESIGNER'}
+              {activeInstance ? gc.badgeActive : gc.badgeDesigner}
             </HwBadge>
           </div>
         )}
@@ -298,10 +308,10 @@ export function GrowCycleTimelinePanel({
         {embedded && (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SectionHeader
-              title="Ciclo de Cultivo"
-              subtitle={`${recipePlan.name} — receita S0…S${totalWeeks}${
-                isDemoMode ? ' · demo' : ' · live vazio'
-              }`}
+              title={gc.cicloTitle}
+              subtitle={(isDemoMode ? gc.subtitleDemo : gc.subtitleLiveEmpty)
+                .replace('{name}', recipePlan.name)
+                .replace('{weeks}', String(totalWeeks))}
               accent="brand"
               className="mb-0"
             />
@@ -311,20 +321,20 @@ export function GrowCycleTimelinePanel({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20"
               >
                 <BeakerIcon className="w-3.5 h-3.5" />
-                Auto EC
+                {gc.linkAutoEc}
               </NavLink>
               <NavLink
                 href="/automacao?tab=ph"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-violet-500/10 border border-violet-500/30 text-violet-300 hover:bg-violet-500/20"
               >
                 <SparklesIcon className="w-3.5 h-3.5" />
-                Auto pH
+                {gc.linkAutoPh}
               </NavLink>
               <NavLink
                 href="/automacao?tab=rules"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-dark-surface border border-dark-border text-dark-textSecondary hover:text-dark-text"
               >
-                Ver regras publicadas
+                {gc.linkRules}
               </NavLink>
             </div>
           </div>
@@ -333,7 +343,7 @@ export function GrowCycleTimelinePanel({
         <div className="bg-dark-card border border-dark-border rounded-xl p-4 space-y-4">
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <label className="block">
-              <span className="text-xs text-dark-textSecondary">Duração do ciclo (semanas)</span>
+              <span className="text-xs text-dark-textSecondary">{gc.durationLabel}</span>
               <div className="flex items-center gap-3 mt-1">
                 <input
                   type="range"
@@ -350,12 +360,14 @@ export function GrowCycleTimelinePanel({
                 />
                 <span className="text-sm font-semibold tabular-nums w-8">{totalWeeks}</span>
               </div>
-              <p className="text-[10px] text-dark-textSecondary mt-1">S0 … S{totalWeeks}</p>
+              <p className="text-[10px] text-dark-textSecondary mt-1">
+                {gc.weeksRangeHint.replace('{weeks}', String(totalWeeks))}
+              </p>
             </label>
 
             <label className="block">
               <span className="text-xs text-dark-textSecondary">
-                {isDemoMode ? 'Semana actual (simulada)' : 'Semana actual (ciclo)'}
+                {isDemoMode ? gc.weekSimulated : gc.weekCycle}
               </span>
               <div className="flex items-center gap-3 mt-1">
                 <input
@@ -378,23 +390,39 @@ export function GrowCycleTimelinePanel({
             </label>
 
             {playheadProfile && (
-              <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
-                <span className="text-xs text-dark-textSecondary">Fase actual:</span>
-                <HwBadge accent="wait">{PHASE_LABELS[playheadProfile.phase]}</HwBadge>
-                {playheadProfile.label && (
-                  <span className="text-xs text-dark-textSecondary">{playheadProfile.label}</span>
-                )}
+              <div className="sm:col-span-2 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-dark-textSecondary">{gc.phaseCurrent}</span>
+                  <HwBadge accent="wait">{phaseLabels[playheadProfile.phase]}</HwBadge>
+                  {playheadProfile.label && (
+                    <span className="text-xs text-dark-textSecondary">{playheadProfile.label}</span>
+                  )}
+                </div>
+                <PhaseFlipButtons
+                  size="sm"
+                  value={playheadProfile.phase}
+                  labels={phaseLabels}
+                  ariaLabel={gc.weekDetail.phaseFlipGroupAria}
+                  onChange={(next) => {
+                    handleWeekPhaseChange(effectivePlayhead, next);
+                    toast.success(
+                      gc.weekDetail.toastPhaseChanged
+                        .replace('{week}', String(effectivePlayhead))
+                        .replace('{phase}', phaseLabels[next])
+                    );
+                  }}
+                />
               </div>
             )}
 
             {!embedded && (
               <div className="sm:col-span-2 lg:col-span-4">
                 <HwSelect
-                  label="HydroWave Core"
+                  label={gc.deviceSelectLabel}
                   value={selectedDeviceId}
                   onChange={(e) => handleDeviceSelect(e.target.value)}
                 >
-                  <option value="">Nenhum — só simulado</option>
+                  <option value="">{gc.noneDeviceOption}</option>
                   {devices.map((d) => (
                     <option key={d.device_id} value={d.device_id}>
                       {d.device_id}
@@ -413,7 +441,7 @@ export function GrowCycleTimelinePanel({
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-dark-surface border border-dark-border text-sm hover:bg-dark-surface/80"
               >
                 <ForwardIcon className="w-4 h-4" />
-                Avançar simulação 1 semana
+                {gc.advanceSim}
               </button>
             )}
             <button
@@ -425,11 +453,11 @@ export function GrowCycleTimelinePanel({
                   : 'bg-dark-surface border-dark-border text-dark-textSecondary hover:text-dark-text'
               }`}
             >
-              {preview ? 'Demo local ON' : 'Alternar demo (dev)'}
+              {preview ? gc.demoOn : gc.demoToggle}
             </button>
             {preview && (
               <span className="text-xs rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-300">
-                Demo local
+                {gc.demoBadge}
               </span>
             )}
             <button
@@ -439,7 +467,7 @@ export function GrowCycleTimelinePanel({
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-dark-surface border border-dark-border text-sm hover:bg-dark-surface/80 disabled:opacity-50"
             >
               <BookmarkIcon className="w-4 h-4" />
-              {busy === 'save' ? 'Guardando…' : 'Guardar rascunho'}
+              {busy === 'save' ? gc.saving : gc.saveDraft}
             </button>
             <button
               type="button"
@@ -449,16 +477,14 @@ export function GrowCycleTimelinePanel({
             >
               <PlayIcon className="w-4 h-4" />
               {busy === 'publish'
-                ? 'A iniciar…'
+                ? gc.starting
                 : !selectedDeviceId
-                  ? 'Iniciar ciclo (selecione Core)'
+                  ? gc.startSelectCore
                   : activeInstance
-                    ? 'Reiniciar ciclo'
-                    : 'Iniciar ciclo'}
+                    ? gc.restartCycle
+                    : gc.startCycle}
             </button>
-            <span className="text-[10px] text-dark-textSecondary max-w-xs">
-              Iniciar = S0 + FILL/CO/DRAIN; sem Circ automático
-            </span>
+            <span className="text-[10px] text-dark-textSecondary max-w-xs">{gc.startHint}</span>
           </div>
           {actionError && (
             <p className="text-xs text-amber-300/95 border border-amber-500/30 bg-amber-500/10 rounded-lg px-3 py-2">
@@ -466,9 +492,7 @@ export function GrowCycleTimelinePanel({
             </p>
           )}
           {!selectedDeviceId && (
-            <p className="text-xs text-red-400">
-              Selecione um HydroWave Core no cabeçalho para iniciar o ciclo.
-            </p>
+            <p className="text-xs text-red-400">{gc.selectCoreToStart}</p>
           )}
         </div>
 
@@ -497,6 +521,21 @@ export function GrowCycleTimelinePanel({
             />
             <SimulationRulesPanel log={simLog} />
           </div>
+
+          <section className="space-y-3 border-t border-dark-border pt-6">
+            <SectionHeader
+              title={gc.schedulesSectionTitle}
+              subtitle={gc.schedulesSectionSub}
+              accent="brand"
+            />
+            {selectedDeviceId ? (
+              <ScheduleEditor deviceId={selectedDeviceId} />
+            ) : (
+              <p className="text-sm text-dark-textSecondary rounded-lg border border-dark-border bg-dark-card px-4 py-3">
+                {gc.schedulesSelectCore}
+              </p>
+            )}
+          </section>
         </div>
       </div>
     </div>

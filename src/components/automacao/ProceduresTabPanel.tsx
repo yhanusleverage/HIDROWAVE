@@ -7,7 +7,6 @@ import type { ESPNowSlave } from '@/lib/esp-now-slaves';
 import type { HydraulicRolesMap } from '@/lib/hydraulic-relay-roles';
 import { HydraulicRelaySetupPanel } from '@/components/automacao/HydraulicRelaySetupPanel';
 import { EspNowSlaveNamesPanel } from '@/components/automacao/EspNowSlaveNamesPanel';
-import { ProcedureBuilderPanel } from '@/components/automacao/ProcedureBuilderPanel';
 import { HW_BANNER } from '@/lib/design-tokens';
 
 const WaterLevelSection = dynamic(
@@ -29,13 +28,14 @@ export function ProceduresTabPanel({
   onSlavesRefresh,
 }: ProceduresTabPanelProps) {
   const { t } = useLanguage();
+  const p = t.automacao.procedures;
   const [hydraulicRoles, setHydraulicRoles] = useState<HydraulicRolesMap>({});
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   return (
-    <div className="space-y-6">
-      <div className={`rounded-lg border px-3 py-2 text-center text-xs font-medium ${HW_BANNER.warn}`}>
-        {t.automacao.procedures.banner}
+    <div className="space-y-6 text-[15px] leading-relaxed">
+      <div className={`rounded-lg border px-4 py-3 text-center text-sm font-medium ${HW_BANNER.warn}`}>
+        {p.banner}
       </div>
 
       <EspNowSlaveNamesPanel
@@ -43,6 +43,10 @@ export function ProceduresTabPanel({
         slaves={espnowSlaves}
         onSlavesRefresh={onSlavesRefresh}
       />
+
+      {waterLevelEnabled && (
+        <WaterLevelSection deviceId={deviceId} enabled={waterLevelEnabled} />
+      )}
 
       <HydraulicRelaySetupPanel
         deviceId={deviceId}
@@ -55,41 +59,25 @@ export function ProceduresTabPanel({
       <div className="rounded-xl border border-dark-border bg-dark-card/60 overflow-hidden">
         <button
           type="button"
-          onClick={() => setAdvancedOpen((v) => !v)}
-          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-dark-surface/50 transition-colors"
-          aria-expanded={advancedOpen}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-dark-surface/50"
+          onClick={() => setShowAdvanced((v) => !v)}
+          aria-expanded={showAdvanced}
         >
           <div>
-            <p className="text-sm font-medium text-dark-text">
-              {t.automacao.procedures.advancedToggle}
-            </p>
-            <p className="text-xs text-dark-textSecondary mt-0.5">
-              {t.automacao.procedures.advancedHint}
-            </p>
+            <p className="text-sm font-semibold text-dark-text">{p.advancedToggle}</p>
+            <p className="mt-0.5 text-xs text-dark-textSecondary">{p.advancedHint}</p>
           </div>
-          <span className="text-aqua-400 text-lg leading-none shrink-0">
-            {advancedOpen ? '−' : '+'}
-          </span>
+          <span className="text-dark-textSecondary shrink-0">{showAdvanced ? '▾' : '▸'}</span>
         </button>
 
-        {advancedOpen && (
-          <div className="border-t border-dark-border p-4 space-y-6">
+        {showAdvanced && (
+          <div className="border-t border-dark-border px-4 py-4 space-y-4">
             <HydraulicRelaySetupPanel
               deviceId={deviceId}
               espnowSlaves={espnowSlaves}
               mode="advanced"
               roles={hydraulicRoles}
               onRolesStateChange={setHydraulicRoles}
-            />
-
-            {deviceId && deviceId !== 'default_device' && (
-              <WaterLevelSection deviceId={deviceId} enabled={waterLevelEnabled} />
-            )}
-
-            <ProcedureBuilderPanel
-              deviceId={deviceId}
-              hydraulicRoles={hydraulicRoles}
-              embedded
             />
           </div>
         )}

@@ -4,18 +4,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-export type AutomacaoTabId = 'timeline' | 'procedures' | 'rules' | 'schedules' | 'ec' | 'ph';
+/** `schedules` removido da barra — editor vive dentro de Ciclo de Cultivo (timeline). */
+export type AutomacaoTabId = 'timeline' | 'procedures' | 'rules' | 'ec' | 'ph';
 
-const TAB_IDS: AutomacaoTabId[] = ['procedures', 'ec', 'ph', 'rules', 'schedules', 'timeline'];
+const TAB_IDS: AutomacaoTabId[] = ['procedures', 'ec', 'ph', 'rules', 'timeline'];
 
 function parseTab(value: string | null): AutomacaoTabId {
+  // Legado: ?tab=schedules → Ciclo de Cultivo (schedules embutidos)
+  if (value === 'schedules' || value === 'timeline') {
+    return 'timeline';
+  }
   if (
-    value === 'timeline' ||
     value === 'procedures' ||
     value === 'ec' ||
     value === 'ph' ||
-    value === 'rules' ||
-    value === 'schedules'
+    value === 'rules'
   ) {
     return value;
   }
@@ -42,16 +45,13 @@ export function AutomacaoTabs({ activeTab, onTabChange }: AutomacaoTabsProps) {
     if (id === 'rules') {
       return { id, label: t.automacao.tabs.rules, subtitle: t.automacao.tabs.rulesSub };
     }
-    if (id === 'schedules') {
-      return { id, label: t.automacao.tabs.schedules, subtitle: t.automacao.tabs.schedulesSub };
-    }
     return { id, label: t.automacao.tabs.timeline, subtitle: t.automacao.tabs.timelineSub };
   });
 
   return (
     <div className="mb-6 border-b border-dark-border w-full">
       <nav
-        className="grid grid-cols-6 w-full -mb-px"
+        className="grid grid-cols-5 w-full -mb-px"
         aria-label={t.automacao.tabs.procedures}
       >
         {tabs.map((tab) => {
@@ -88,8 +88,16 @@ export function useAutomacaoTab(): [AutomacaoTabId, (tab: AutomacaoTabId) => voi
   );
 
   useEffect(() => {
-    setActiveTab(parseTab(searchParams.get('tab')));
-  }, [searchParams]);
+    const raw = searchParams.get('tab');
+    const next = parseTab(raw);
+    setActiveTab(next);
+    // Rewrite legacy ?tab=schedules → timeline in the URL
+    if (raw === 'schedules') {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('tab', 'timeline');
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [searchParams, pathname, router]);
 
   const setTab = useCallback(
     (tab: AutomacaoTabId) => {

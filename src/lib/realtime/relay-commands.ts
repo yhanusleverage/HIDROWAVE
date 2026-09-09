@@ -19,11 +19,11 @@ const TERMINAL_STATUSES = new Set(['completed', 'failed']);
 export const PENDING_COMMAND_STATUS_LIST = ['pending', 'sent', 'processing'] as const;
 export const PENDING_COMMAND_STATUSES = new Set<string>(PENDING_COMMAND_STATUS_LIST);
 
-/** Margem após duration_seconds antes de tratar `sent` órfão como não-bloqueante na UI. */
+/** Margem após duration_seconds antes de tratar comando órfão como não-bloqueante na UI. */
 export const SENT_ORPHAN_BUFFER_MS = 30_000;
 
-/** pending/processing sem progresso após isto deixam de bloquear o mapa/locks na UI. */
-export const PENDING_STALE_MS = 10 * 60_000;
+/** Fallback quando não há duration_seconds (ON/OFF sem timer). */
+export const PENDING_STALE_MS = 2 * 60_000;
 
 export type RelayCommandPendingSlice = {
   status?: string | null;
@@ -32,34 +32,41 @@ export type RelayCommandPendingSlice = {
   duration_seconds?: number | null;
 };
 
+function commandAgeMs(cmd: RelayCommandPendingSlice): number | null {
+  const anchor = cmd.sent_at || cmd.created_at;
+  if (!anchor) return null;
+  const ageMs = Date.now() - new Date(anchor).getTime();
+  if (!Number.isFinite(ageMs) || ageMs < 0) return null;
+  return ageMs;
+}
+
+function expectedWindowMs(cmd: RelayCommandPendingSlice): number {
+  const durationSec = Number(cmd.duration_seconds);
+  return (Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 15) * 1000;
+}
+
 /**
- * `sent` sem ACK completed na BD bloqueia a UI; após duration+buffer assume órfão
- * (ESP processou mas PATCH completed falhou).
- * `pending`/`processing` antigos (> PENDING_STALE_MS) também deixam de bloquear.
+ * Comando sem ACK `completed` bloqueia a UI até:
+ * - timed (`duration_seconds` > 0): duration + buffer (pending/sent/processing)
+ * - sem duração: PENDING_STALE_MS (2 min)
+ * Assim dosagem manual órfã (ESP OK, BD stuck) não trava Dosificar por muito tempo.
  */
 export function isRelayCommandOperationallyPending(cmd: RelayCommandPendingSlice): boolean {
   const status = (cmd.status || '').toLowerCase();
   if (!PENDING_COMMAND_STATUSES.has(status)) return false;
 
-  if (status === 'pending' || status === 'processing') {
-    const anchor = cmd.sent_at || cmd.created_at;
-    if (!anchor) return true;
-    const ageMs = Date.now() - new Date(anchor).getTime();
-    if (!Number.isFinite(ageMs) || ageMs < 0) return true;
-    return ageMs < PENDING_STALE_MS;
+  const ageMs = commandAgeMs(cmd);
+  if (ageMs == null) return true;
+
+  const durationSec = Number(cmd.duration_seconds);
+  const hasTimedWindow = Number.isFinite(durationSec) && durationSec > 0;
+
+  if (status === 'sent' || hasTimedWindow) {
+    return ageMs < expectedWindowMs(cmd) + SENT_ORPHAN_BUFFER_MS;
   }
 
-  if (status === 'sent') {
-    const durationSec = Number(cmd.duration_seconds);
-    const expectedMs =
-      (Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 15) * 1000;
-    const anchor = cmd.sent_at || cmd.created_at;
-    if (!anchor) return true;
-    const ageMs = Date.now() - new Date(anchor).getTime();
-    return ageMs < expectedMs + SENT_ORPHAN_BUFFER_MS;
-  }
-
-  return true;
+  // pending/processing sem timer (ON contínuo / sem duration)
+  return ageMs < PENDING_STALE_MS;
 }
 
 /**

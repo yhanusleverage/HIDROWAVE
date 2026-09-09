@@ -77,16 +77,17 @@ export function EspNowSlaveNamesPanel({
         title={p.atlasTitle}
         subtitle={p.atlasSubtitle}
         accent="wait"
+        size="comfortable"
       />
 
       {disabled && (
-        <p className="text-sm text-dark-textSecondary">
+        <p className="text-base text-dark-textSecondary">
           {p.selectCoreAtlas}
         </p>
       )}
 
       {!disabled && slaves.length === 0 && (
-        <p className="text-sm text-dark-textSecondary">
+        <p className="text-base text-dark-textSecondary">
           {p.noAtlas}
         </p>
       )}
@@ -102,13 +103,13 @@ export function EspNowSlaveNamesPanel({
             return (
               <div
                 key={slave.macAddress}
-                className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-dark-border bg-dark-surface/40 p-3"
+                className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-dark-border bg-dark-surface/40 p-3.5 sm:p-4"
               >
-                <div className="flex-1 min-w-0 space-y-1.5">
-                  <label className="block text-xs text-dark-textSecondary">
+                <div className="flex-1 min-w-0 space-y-2">
+                  <label className="block text-sm text-dark-textSecondary">
                     {p.atlasName}
                     <span
-                      className={`ml-2 inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                      className={`ml-2 inline-flex px-2 py-0.5 rounded text-xs font-medium ${
                         slave.status === 'online'
                           ? 'bg-aqua-500/15 text-aqua-400 border border-aqua-500/30'
                           : 'bg-dark-border/50 text-dark-textSecondary'
@@ -125,9 +126,9 @@ export function EspNowSlaveNamesPanel({
                       setDraftNames((prev) => ({ ...prev, [key]: e.target.value }))
                     }
                     placeholder={p.atlasNamePlaceholder}
-                    className="w-full p-2.5 bg-dark-surface border border-violet-500/25 rounded-lg text-sm text-dark-text focus:ring-2 focus:ring-violet-500/40 disabled:opacity-50"
+                    className="w-full p-3 bg-dark-surface border border-violet-500/25 rounded-lg text-base text-dark-text focus:ring-2 focus:ring-violet-500/40 disabled:opacity-50"
                   />
-                  <p className="text-[11px] text-dark-textSecondary">
+                  <p className="text-sm text-dark-textSecondary">
                     {p.relaysAvailable.replace('{n}', String(slave.relays.length))}
                   </p>
                 </div>
@@ -135,7 +136,7 @@ export function EspNowSlaveNamesPanel({
                   type="button"
                   disabled={!dirty || isSaving || !slave.device_id}
                   onClick={() => void handleSave(slave)}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600/80 hover:bg-violet-600 disabled:opacity-40 text-white text-sm font-medium shrink-0"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-violet-600/80 hover:bg-violet-600 disabled:opacity-40 text-white text-sm font-medium shrink-0"
                 >
                   <CheckIcon className="w-4 h-4" />
                   {isSaving ? p.saving : p.saveName}

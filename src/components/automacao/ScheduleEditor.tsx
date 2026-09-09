@@ -9,6 +9,7 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { resolveDecisionRuleDisplayName } from '@/lib/decision-rule-display-name';
 
 interface RuleSchedule {
   id: string;
@@ -312,7 +313,14 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
       ) : (
         <div className="space-y-2">
           {schedules.map((sched) => {
-            const ruleName = rules.find((r) => r.rule_id === sched.rule_id)?.rule_name || sched.rule_id;
+            const ruleMeta = rules.find((r) => r.rule_id === sched.rule_id);
+            const ruleName = resolveDecisionRuleDisplayName(
+              {
+                rule_id: sched.rule_id,
+                rule_name: ruleMeta?.rule_name ?? null,
+              },
+              t
+            );
             return (
               <div
                 key={sched.id}
@@ -323,11 +331,11 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-medium text-dark-text truncate">{ruleName}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-dark-surface border border-dark-border text-dark-textSecondary">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-dark-surface border border-dark-border text-dark-textSecondary shrink-0">
                       {scheduleTypeLabel(sched.schedule_type)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-dark-textSecondary">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dark-textSecondary">
                     <span className="flex items-center gap-1">
                       <ClockIcon className="w-3.5 h-3.5" />
                       {sched.time_start?.slice(0, 5)}
@@ -349,22 +357,30 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-3 shrink-0 pl-3 ml-1 border-l border-dark-border">
                   <button
+                    type="button"
+                    role="switch"
+                    aria-checked={sched.enabled}
+                    aria-label={sched.enabled ? sch.toggleDisable : sch.toggleEnable}
+                    title={sched.enabled ? sch.toggleDisable : sch.toggleEnable}
                     onClick={() => handleToggle(sched)}
-                    className={`w-10 h-6 rounded-full transition-colors relative ${
+                    className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aqua-400 ${
                       sched.enabled ? 'bg-aqua-600' : 'bg-dark-border'
                     }`}
                   >
                     <span
-                      className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-                        sched.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                      className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                        sched.enabled ? 'translate-x-6' : 'translate-x-1'
                       }`}
                     />
                   </button>
                   <button
+                    type="button"
                     onClick={() => handleDelete(sched.id)}
-                    className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded transition-colors"
+                    aria-label={sch.deleteAction}
+                    title={sch.deleteAction}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-500/35 text-red-400 hover:bg-red-500/10 hover:border-red-400/50 transition-colors"
                   >
                     <TrashIcon className="w-4 h-4" />
                   </button>

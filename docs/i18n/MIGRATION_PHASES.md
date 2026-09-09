@@ -52,11 +52,17 @@ Orden de PRs:
 - [x] **5a** Dashboard shell: `dashboard/page.tsx` + Sensors + Charts + `SensorCard` (`t.dashboard` + `common`)
 - [x] **5b** Auto EC/pH cards + `AutoControlStatusMetrics` + CropCalendar chrome (`dashboard.auto` / `dashboard.crop`)
 - [ ] **5b′** CropCalendar modal/CRUD/toasts (opcional)
-- [ ] **5c** Home marketing (`app/page.tsx`) + metadata/`lang` dinámico
+- [x] **5c** Home marketing (`app/page.tsx` → `t.home`); `lang` dinámico ya en LanguageContext
+- [x] **Fase 5 cerrada** (superficies principales Config/Dashboard/Onboarding/Home)
 
 ## Fase 6 — Docs / Processos / Support / Quem somos
 
 Ya tienen namespaces propios; auditar gaps y unificar tono.
+
+- [x] **6a** Quem somos (`getQuemSomosContent`) + timeline cultivo chrome (`getGrowCycleChrome` / fases)
+- [x] **6b** WeekDetail + SimulationRules (`grow-cycle.weekDetail` / `.simulation`) + Informação + Planos
+- [x] **Fase 6 cerrada** (docs/marketing principales + grow-cycle UI)
+- Processos hub + Support: ya i18n vía `useDocsLanguage` (sin cambios en 6a/6b)
 
 ---
 

@@ -38,7 +38,8 @@ export const HYDRAULIC_ROLE_DEFINITIONS: HydraulicRoleDefinition[] = [
     id: 'circulation_pump',
     label: 'Bomba de circulação',
     description: 'Bomba de circulação contínua ou por agendamento P4.',
-    fixedBehavior: 'Ligar/desligar relé (set_relay). Não confundir com tempo_recirculacao do Auto EC/pH.',
+    fixedBehavior:
+      'Ligar/desligar relé (set_relay). Não confundir com tempo_recirculacao do Auto EC/pH. Nível baixo pausa Auto EC/pH — não apaga esta bomba sozinho.',
     stepTypes: ['set_relay'],
     required: true,
   },
@@ -48,7 +49,7 @@ export const HYDRAULIC_ROLE_DEFINITIONS: HydraulicRoleDefinition[] = [
     description: 'Encher tanque até nível alto.',
     fixedBehavior: 'Válvula por sensor até water_level = alto.',
     stepTypes: ['sensor_valve'],
-    required: true,
+    required: false,
   },
   {
     id: 'drain_valve',
@@ -56,7 +57,7 @@ export const HYDRAULIC_ROLE_DEFINITIONS: HydraulicRoleDefinition[] = [
     description: 'Esvaziar tanque até nível vazio.',
     fixedBehavior: 'Válvula por sensor até water_level = vazio.',
     stepTypes: ['sensor_valve'],
-    required: true,
+    required: false,
   },
   {
     id: 'recharge_pump',

@@ -1,9 +1,15 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import BrandLogo from '@/components/BrandLogo';
+import { useLanguage } from '@/contexts/LanguageContext';
+import {
+  getPlanosContent,
+  type PlanId,
+  type PlanosAddonId,
+} from '@/lib/translations/planos';
 import {
   CheckCircleIcon,
   SparklesIcon,
@@ -13,105 +19,25 @@ import {
   SignalIcon,
 } from '@heroicons/react/24/outline';
 
-type PlanId = 'free' | 'premium' | 'enterprise';
-
-const PLAN_LABELS: Record<PlanId, string> = {
-  free: 'Operação Inicial',
-  premium: 'Pro Comercial',
-  enterprise: 'Enterprise Estufa',
+const ADDON_ICONS: Record<
+  PlanosAddonId,
+  React.ComponentType<{ className?: string }>
+> = {
+  install: WrenchScrewdriverIcon,
+  calibration: SparklesIcon,
+  training: AcademicCapIcon,
+  monitoring: SignalIcon,
 };
 
-const TIERS = [
-  {
-    id: 'free' as PlanId,
-    name: 'Operação Inicial',
-    audience: 'Kit + cloud — quantos Cores você comprar',
-    price: 'Incluído na compra do kit',
-    priceNote: 'N devices e multi-site no mesmo dashboard — sem teto artificial',
-    cta: 'Já estou usando',
-    ctaHref: '/dashboard',
-    ctaStyle: 'secondary' as const,
-    highlighted: false,
-    features: [
-      'N HydroWave Core + Atlas no mesmo dashboard (multi-site)',
-      'Auto EC e Auto pH + tipagem da bomba de circulação',
-      'Histórico de sensores: 30 dias',
-      'Suporte por email (resposta em até 48h)',
-    ],
-  },
-  {
-    id: 'premium' as PlanId,
-    name: 'Pro Comercial',
-    audience: 'Operação que precisa de retenção e alertas',
-    price: 'Sob consulta',
-    priceNote: 'A partir de R$ 299/mês por conta — não por Core',
-    cta: 'Solicitar upgrade Pro',
-    ctaHref:
-      'mailto:suporte@hydrowave.com?subject=Upgrade%20HydroWave%20Pro%20Comercial&body=Olá,%20gostaria%20de%20informações%20sobre%20o%20plano%20Pro%20Comercial.',
-    ctaStyle: 'primary' as const,
-    highlighted: true,
-    features: [
-      'Tudo do plano Inicial (flota incluída)',
-      'Histórico completo: 12 meses',
-      'Alertas SMS e email prioritários',
-      'Calibragem de bombas assistida remotamente',
-      'Suporte comercial em horário estendido',
-    ],
-  },
-  {
-    id: 'enterprise' as PlanId,
-    name: 'Enterprise Estufa',
-    audience: 'Integrador / operação com SLA e API',
-    price: 'Falar com vendas',
-    priceNote: 'Contrato anual personalizado',
-    cta: 'Falar com vendas',
-    ctaHref:
-      'mailto:suporte@hydrowave.com?subject=HydroWave%20Enterprise%20Estufa&body=Olá,%20tenho%20interesse%20no%20plano%20Enterprise%20para%20operação%20comercial.',
-    ctaStyle: 'secondary' as const,
-    highlighted: false,
-    features: [
-      'Tudo do Pro + multi-usuário avançado',
-      'API e exportação de relatórios',
-      'SLA de suporte 4h em horário comercial',
-      'Onboarding presencial ou remoto dedicado',
-      'Integração com operação existente',
-    ],
-  },
-];
-
-const ADDON_SERVICES = [
-  {
-    icon: WrenchScrewdriverIcon,
-    title: 'Instalação e comissionamento remoto',
-    description: 'Configuração WiFi, associação de conta e verificação de telemetria com especialista.',
-  },
-  {
-    icon: SparklesIcon,
-    title: 'Calibragem assistida (1 sessão)',
-    description: 'Sessão guiada para calibrar bombas peristálticas e validar dosagem na proveta.',
-  },
-  {
-    icon: AcademicCapIcon,
-    title: 'Treinamento da equipe (2h online)',
-    description: 'Capacitação em Auto EC, Auto pH, calibragem e boas práticas de cultivo hidropônico.',
-  },
-  {
-    icon: SignalIcon,
-    title: 'Monitoramento gerenciado 24/7',
-    description: 'Add-on mensal com alertas proativos e acompanhamento da operação pelo time HydroWave.',
-  },
-];
-
-const COMPARISON_ROWS = [
-  { feature: 'Dispositivos / multi-site', free: 'N Cores (kit)', premium: 'Incluído', enterprise: 'Incluído' },
-  { feature: 'Histórico de dados', free: '30 dias', premium: '12 meses', enterprise: 'Ilimitado*' },
-  { feature: 'Auto EC / Auto pH + circulação', free: 'Sim', premium: 'Sim', enterprise: 'Sim + SLA' },
-  { feature: 'Alertas SMS', free: '—', premium: 'Sim', enterprise: 'Sim' },
-  { feature: 'API / exportação', free: '—', premium: 'Básico', enterprise: 'Completo' },
-  { feature: 'Suporte', free: 'Email 48h', premium: 'Estendido', enterprise: 'SLA 4h' },
-];
-
-function PlanBadge({ type }: { type: PlanId }) {
+function PlanBadge({
+  type,
+  prefix,
+  planName,
+}: {
+  type: PlanId;
+  prefix: string;
+  planName: string;
+}) {
   const styles: Record<PlanId, string> = {
     free: 'bg-dark-surface text-dark-textSecondary border-dark-border',
     premium: 'bg-aqua-500/20 text-aqua-400 border-aqua-500/40',
@@ -122,14 +48,18 @@ function PlanBadge({ type }: { type: PlanId }) {
     <span
       className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border capitalize ${styles[type]}`}
     >
-      Plano atual: {PLAN_LABELS[type]}
+      {prefix} {planName}
     </span>
   );
 }
 
 export default function PlanosPage() {
   const { userProfile } = useAuth();
+  const { locale } = useLanguage();
+  const c = useMemo(() => getPlanosContent(locale), [locale]);
   const currentPlan = (userProfile?.subscription_type || 'free') as PlanId;
+  const currentPlanName =
+    c.tiers.find((t) => t.id === currentPlan)?.name ?? c.tiers[0].name;
 
   return (
     <div className="min-h-screen bg-dark-bg">
@@ -140,23 +70,27 @@ export default function PlanosPage() {
               <BrandLogo variant="gradient" size={40} />
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">
-                  Planos e Serviços
+                  {c.header.title}
                 </h1>
                 <p className="text-dark-textSecondary mt-1 text-sm max-w-xl">
-                  Flota de Cores no cloud com o kit. Assinatura = retenção, alertas e suporte — não o direito de ver o segundo device.
+                  {c.header.subtitle}
                 </p>
               </div>
             </div>
-            <PlanBadge type={currentPlan} />
+            <PlanBadge
+              type={currentPlan}
+              prefix={c.currentPlanPrefix}
+              planName={currentPlanName}
+            />
           </div>
         </div>
       </header>
 
       <div className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-12">
         <section>
-          <h2 className="text-lg font-semibold text-dark-text mb-4">Planos comerciais</h2>
+          <h2 className="text-lg font-semibold text-dark-text mb-4">{c.tiersTitle}</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {TIERS.map((tier) => {
+            {c.tiers.map((tier) => {
               const isCurrent = currentPlan === tier.id;
               return (
                 <div
@@ -169,7 +103,7 @@ export default function PlanosPage() {
                 >
                   {tier.highlighted && (
                     <span className="text-xs font-semibold text-aqua-400 uppercase tracking-wide mb-2">
-                      Recomendado para produção
+                      {c.recommendedBadge}
                     </span>
                   )}
                   <div className="flex items-center gap-2 mb-2">
@@ -200,14 +134,14 @@ export default function PlanosPage() {
                           : 'bg-dark-surface border border-dark-border text-dark-text hover:border-aqua-500/50'
                       }`}
                     >
-                      {isCurrent && tier.id === 'free' ? 'Plano ativo' : tier.cta}
+                      {isCurrent && tier.id === 'free' ? c.planActiveCta : tier.cta}
                     </a>
                   ) : (
                     <Link
                       href={tier.ctaHref}
                       className="block text-center py-3 px-4 rounded-lg font-medium bg-dark-surface border border-dark-border text-dark-text hover:border-aqua-500/50 transition-all"
                     >
-                      {tier.cta}
+                      {isCurrent && tier.id === 'free' ? c.planActiveCta : tier.cta}
                     </Link>
                   )}
                 </div>
@@ -217,16 +151,14 @@ export default function PlanosPage() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-dark-text mb-2">Serviços adicionais</h2>
-          <p className="text-sm text-dark-textSecondary mb-6">
-            Contrate avulso ou como complemento do seu plano — modelo consultivo, sem checkout automático nesta fase.
-          </p>
+          <h2 className="text-lg font-semibold text-dark-text mb-2">{c.addons.title}</h2>
+          <p className="text-sm text-dark-textSecondary mb-6">{c.addons.subtitle}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {ADDON_SERVICES.map((service) => {
-              const Icon = service.icon;
+            {c.addons.services.map((service) => {
+              const Icon = ADDON_ICONS[service.id];
               return (
                 <div
-                  key={service.title}
+                  key={service.id}
                   className="bg-dark-card border border-dark-border rounded-lg p-5 hover:border-aqua-500/30 transition-colors"
                 >
                   <Icon className="w-8 h-8 text-aqua-400 mb-3" />
@@ -238,30 +170,32 @@ export default function PlanosPage() {
           </div>
           <div className="mt-6 text-center">
             <a
-              href="mailto:suporte@hydrowave.com?subject=Serviços%20adicionais%20HydroWave"
+              href={c.addons.requestQuoteHref}
               className="inline-block bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white font-medium py-2 px-6 rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50"
             >
-              Solicitar orçamento de serviços
+              {c.addons.requestQuote}
             </a>
           </div>
         </section>
 
         <section className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-xl overflow-hidden">
           <h2 className="text-lg font-semibold text-dark-text p-6 border-b border-dark-border">
-            Comparativo de planos
+            {c.comparison.title}
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-dark-surface text-dark-textSecondary">
-                  <th className="text-left p-4 font-medium">Recurso</th>
-                  <th className="p-4 font-medium text-center">Operação Inicial</th>
-                  <th className="p-4 font-medium text-center text-aqua-400">Pro Comercial</th>
-                  <th className="p-4 font-medium text-center">Enterprise</th>
+                  <th className="text-left p-4 font-medium">{c.comparison.featureColumn}</th>
+                  <th className="p-4 font-medium text-center">{c.comparison.columnFree}</th>
+                  <th className="p-4 font-medium text-center text-aqua-400">
+                    {c.comparison.columnPremium}
+                  </th>
+                  <th className="p-4 font-medium text-center">{c.comparison.columnEnterprise}</th>
                 </tr>
               </thead>
               <tbody>
-                {COMPARISON_ROWS.map((row, i) => (
+                {c.comparison.rows.map((row, i) => (
                   <tr
                     key={row.feature}
                     className={i % 2 === 0 ? 'bg-dark-card' : 'bg-dark-surface/50'}
@@ -276,28 +210,24 @@ export default function PlanosPage() {
             </table>
           </div>
           <p className="text-xs text-dark-textSecondary p-4 border-t border-dark-border">
-            * Retenção Enterprise e SLA definidos em contrato. Quantidade de Cores acompanha o hardware
-            comprado em todos os planos. Pagamento recorrente (cartão, Pix ou boleto) será disponibilizado
-            em versão futura via portal de assinatura.
+            {c.comparison.footnote}
           </p>
         </section>
 
         <section className="text-center pb-8 space-y-3">
-          <p className="text-dark-textSecondary text-sm">
-            Dúvidas sobre qual plano escolher?
-          </p>
+          <p className="text-dark-textSecondary text-sm">{c.footer.question}</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
               href="/informacao"
               className="text-aqua-400 hover:text-aqua-300 text-sm font-medium transition-colors"
             >
-              Consultar manual de uso →
+              {c.footer.manualCta}
             </Link>
             <Link
               href="/quem-somos"
               className="text-aqua-400 hover:text-aqua-300 text-sm font-medium transition-colors"
             >
-              Conheça a HydroWave →
+              {c.footer.aboutCta}
             </Link>
           </div>
         </section>

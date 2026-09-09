@@ -1,8 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import NavLink from '@/components/NavLink';
 import BrandLogo from '@/components/BrandLogo';
+import { useLanguage } from '@/contexts/LanguageContext';
+import {
+  getInformacaoContent,
+  type InformacaoQuickLinkId,
+} from '@/lib/translations/informacao';
 import {
   QuestionMarkCircleIcon,
   BookOpenIcon,
@@ -15,72 +20,28 @@ import {
   QueueListIcon,
 } from '@heroicons/react/24/outline';
 
-interface FAQ {
-  question: string;
-  answer: React.ReactNode;
-}
+const QUICK_LINK_ICONS: Record<
+  InformacaoQuickLinkId,
+  { Icon: React.ComponentType<{ className?: string }>; className: string }
+> = {
+  automacao: { Icon: Cog6ToothIcon, className: 'w-8 h-8 text-aqua-400 mb-3' },
+  calibragem: { Icon: BeakerIcon, className: 'w-8 h-8 text-yellow-400 mb-3' },
+  fundamentos: { Icon: BookOpenIcon, className: 'w-8 h-8 text-aqua-400 mb-3' },
+};
+
+const FLUXO_BORDERS = [
+  'border-aqua-500',
+  'border-primary-500',
+  'border-emerald-500',
+  'border-violet-500',
+];
+
+const GUIDE_BORDERS = ['border-aqua-500', 'border-primary-500', 'border-yellow-500'];
 
 export default function InformacaoPage() {
+  const { locale } = useLanguage();
+  const c = useMemo(() => getInformacaoContent(locale), [locale]);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
-
-  const faqs: FAQ[] = [
-    {
-      question: 'Como conectar meu dispositivo ESP32?',
-      answer:
-        'Configure o WiFi no firmware do ESP32 e garanta que ele esteja na mesma rede do servidor. Acesse Dispositivos para verificar se o HydroWave Core aparece online e enviando telemetria.',
-    },
-    {
-      question: 'Como usar o Auto EC (passo a passo)?',
-      answer: (
-        <ol className="list-decimal list-inside space-y-2 mt-1">
-          <li>
-            Em <strong>Automação</strong>, abra o controle nutricional (desbloqueie com senha se pedir).
-          </li>
-          <li>
-            <strong>Nutrientes</strong> — cadastre cada parte do plano (A, B, C…), escolha a bomba e a dose em ml por litro de água do tanque. Calibre a vazão em{' '}
-            <NavLink href="/calibragem" className="text-aqua-400 hover:underline">Calibragem</NavLink>.
-          </li>
-          <li>
-            <strong>Alvo de EC</strong> — informe o EC desejado da solução e a faixa de tolerância. O sistema só acrescenta nutrientes quando o EC está abaixo do alvo (fora da faixa, por baixo).
-          </li>
-          <li>
-            <strong>Ritmo</strong> — de quanto em quanto tempo medir o EC, e quanto tempo misturar (recirculação) depois de cada dose.
-          </li>
-          <li>
-            <strong>Salvar Parâmetros</strong> e depois <strong>Ativar Auto EC</strong>. O controlador passa a dosar sozinho conforme o plano.
-          </li>
-          <li>
-            Acompanhe o status: se está na faixa, misturando ou dosando. Se o EC subir demais, configure dreno e reposição de água (diluição) abaixo no mesmo painel.
-          </li>
-        </ol>
-      ),
-    },
-    {
-      question: 'O que é a faixa de tolerância no Auto EC?',
-      answer:
-        'É a “folga” em torno do EC desejado para não dosar a toda hora. Ex.: alvo 1500 µS/cm e tolerância 50 → sem ação entre 1450 e 1550. Nutrientes só entram quando o EC está abaixo do alvo (fora da faixa, por baixo). O mesmo tipo de ideia vale no Auto pH.',
-    },
-    {
-      question: 'Intervalo de medição vs pausa entre nutrientes?',
-      answer:
-        'São coisas diferentes. O intervalo (ex.: 5 minutos) é de quanto em quanto tempo o sistema olha o EC do tanque. A pausa curta entre um nutriente e outro na mesma dose é só para misturar com segurança — o cultivador não precisa ajustar isso.',
-    },
-    {
-      question: 'Por que não consigo ativar o Auto EC?',
-      answer:
-        'É preciso pelo menos um nutriente com dose válida (mín. 0,1 ml/L). Remova linhas vazias ou aumente a dose. Salve os parâmetros antes de ativar.',
-    },
-    {
-      question: 'Como configurar regras de automação?',
-      answer:
-        'Em Automação, crie regras com condições (ex.: pH < 5.5) e ações (ex.: ativar relé). Regras com script usam o editor de instruções.',
-    },
-    {
-      question: 'O que fazer se os sensores não enviam dados?',
-      answer:
-        'Verifique alimentação, WiFi e status em Dispositivos. Recalibre pH/TDS se as leituras estiverem estáveis mas incorretas.',
-    },
-  ];
 
   const toggleFAQ = (index: number) => {
     setOpenFAQ(openFAQ === index ? null : index);
@@ -94,11 +55,9 @@ export default function InformacaoPage() {
             <BrandLogo variant="gradient" size={36} />
             <div>
               <h1 className="text-2xl font-bold bg-gradient-to-r from-aqua-400 to-primary-400 bg-clip-text text-transparent">
-                Informação
+                {c.header.title}
               </h1>
-              <p className="text-dark-textSecondary mt-1">
-                Manual de uso do HydroWave — como operar o sistema com segurança
-              </p>
+              <p className="text-dark-textSecondary mt-1">{c.header.subtitle}</p>
             </div>
           </div>
         </div>
@@ -106,57 +65,42 @@ export default function InformacaoPage() {
 
       <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <NavLink
-            href="/automacao"
-            className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-6 hover:shadow-aqua-500/20 hover:border-aqua-500/50 transition-all"
-          >
-            <Cog6ToothIcon className="w-8 h-8 text-aqua-400 mb-3" />
-            <h3 className="text-lg font-semibold text-dark-text mb-2">Automação</h3>
-            <p className="text-sm text-dark-textSecondary">Auto EC, Auto pH e regras</p>
-          </NavLink>
-
-          <NavLink
-            href="/calibragem"
-            className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-6 hover:shadow-aqua-500/20 hover:border-aqua-500/50 transition-all"
-          >
-            <BeakerIcon className="w-8 h-8 text-yellow-400 mb-3" />
-            <h3 className="text-lg font-semibold text-dark-text mb-2">Calibragem</h3>
-            <p className="text-sm text-dark-textSecondary">Bombas, pH e sensores</p>
-          </NavLink>
-
-          <NavLink
-            href="/fundamentos"
-            className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-6 hover:shadow-aqua-500/20 hover:border-aqua-500/50 transition-all"
-          >
-            <BookOpenIcon className="w-8 h-8 text-aqua-400 mb-3" />
-            <h3 className="text-lg font-semibold text-dark-text mb-2">Fundamentos</h3>
-            <p className="text-sm text-dark-textSecondary">Teoria de cultivo hidropônico</p>
-          </NavLink>
+          {c.quickLinks.map((link) => {
+            const { Icon, className } = QUICK_LINK_ICONS[link.id];
+            return (
+              <NavLink
+                key={link.id}
+                href={link.href}
+                className="bg-dark-card border border-dark-border border-t-2 border-t-aqua-500 rounded-lg shadow-lg p-6 hover:shadow-aqua-500/20 hover:border-aqua-500/50 transition-all"
+              >
+                <Icon className={className} />
+                <h3 className="text-lg font-semibold text-dark-text mb-2">{link.title}</h3>
+                <p className="text-sm text-dark-textSecondary">{link.description}</p>
+              </NavLink>
+            );
+          })}
         </div>
 
         <div className="bg-dark-card border border-dark-border border-l-4 border-l-violet-500 rounded-lg shadow-lg p-6 mb-8">
           <div className="flex items-start gap-4">
             <AcademicCapIcon className="w-8 h-8 text-violet-400 shrink-0" />
             <div className="flex-1">
-              <h2 className="text-lg font-semibold text-dark-text mb-2">Documentação técnica</h2>
-              <p className="text-sm text-dark-textSecondary mb-4">
-                Para hidráulica, regras, engenharia de controle e execuções agendadas — conteúdo
-                avançado que não cabe neste manual operacional.
-              </p>
+              <h2 className="text-lg font-semibold text-dark-text mb-2">{c.technicalDocs.title}</h2>
+              <p className="text-sm text-dark-textSecondary mb-4">{c.technicalDocs.body}</p>
               <div className="flex flex-wrap gap-3">
                 <NavLink
                   href="/support"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-500/15 border border-violet-500/40 text-violet-300 text-sm font-medium hover:bg-violet-500/25 transition-colors"
                 >
                   <AcademicCapIcon className="w-4 h-4" />
-                  Support — Start Here
+                  {c.technicalDocs.supportCta}
                 </NavLink>
                 <NavLink
                   href="/processos"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 text-sm font-medium hover:bg-cyan-500/25 transition-colors"
                 >
                   <QueueListIcon className="w-4 h-4" />
-                  Processos e schedules
+                  {c.technicalDocs.processosCta}
                 </NavLink>
               </div>
             </div>
@@ -166,37 +110,30 @@ export default function InformacaoPage() {
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center space-x-3 mb-4">
             <LightBulbIcon className="w-6 h-6 text-yellow-400" />
-            <h2 className="text-xl font-semibold text-dark-text">Fluxo recomendado (primeira vez)</h2>
+            <h2 className="text-xl font-semibold text-dark-text">{c.fluxo.title}</h2>
           </div>
           <div className="space-y-3 text-sm text-dark-textSecondary">
-            <div className="border-l-4 border-aqua-500 pl-4 py-2">
-              <h3 className="font-semibold text-dark-text mb-1">1. Dispositivo online</h3>
-              <p>HydroWave Core conectado, sensores publicando EC/pH/nível.</p>
-            </div>
-            <div className="border-l-4 border-primary-500 pl-4 py-2">
-              <h3 className="font-semibold text-dark-text mb-1">2. Calibragem</h3>
-              <p>Vazão das bombas peristálticas e sensores antes de confiar no Auto EC/pH.</p>
-            </div>
-            <div className="border-l-4 border-emerald-500 pl-4 py-2">
-              <h3 className="font-semibold text-dark-text mb-1">3. Plano + parâmetros</h3>
-              <p>Tabela nutricional, setpoint, tolerância, intervalos — salvar e ativar.</p>
-            </div>
-            <div className="border-l-4 border-violet-500 pl-4 py-2">
-              <h3 className="font-semibold text-dark-text mb-1">4. Monitorar status</h3>
-              <p>Banda morta, countdown e última dosagem confirmam que o loop está fechado.</p>
-            </div>
+            {c.fluxo.steps.map((step, i) => (
+              <div
+                key={step.title}
+                className={`border-l-4 ${FLUXO_BORDERS[i] ?? 'border-aqua-500'} pl-4 py-2`}
+              >
+                <h3 className="font-semibold text-dark-text mb-1">{step.title}</h3>
+                <p>{step.body}</p>
+              </div>
+            ))}
           </div>
         </div>
 
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center space-x-3 mb-6">
             <QuestionMarkCircleIcon className="w-6 h-6 text-aqua-400" />
-            <h2 className="text-xl font-semibold text-dark-text">Perguntas frequentes</h2>
+            <h2 className="text-xl font-semibold text-dark-text">{c.faq.title}</h2>
           </div>
 
           <div className="space-y-4">
-            {faqs.map((faq, index) => (
-              <div key={index} className="border border-dark-border rounded-lg overflow-hidden">
+            {c.faq.items.map((faq, index) => (
+              <div key={faq.question} className="border border-dark-border rounded-lg overflow-hidden">
                 <button
                   onClick={() => toggleFAQ(index)}
                   className="w-full px-4 py-4 text-left flex items-center justify-between hover:bg-dark-surface transition-colors"
@@ -214,7 +151,28 @@ export default function InformacaoPage() {
                   </svg>
                 </button>
                 {openFAQ === index && (
-                  <div className="px-4 pb-4 text-dark-textSecondary text-sm">{faq.answer}</div>
+                  <div className="px-4 pb-4 text-dark-textSecondary text-sm">
+                    {'answerKind' in faq && faq.answerKind === 'autoEc' ? (
+                      <ol className="list-decimal list-inside space-y-2 mt-1">
+                        {faq.steps.map((step, si) => (
+                          <li key={si}>
+                            {step.text}
+                            {step.link ? (
+                              <NavLink
+                                href={step.link.href}
+                                className="text-aqua-400 hover:underline"
+                              >
+                                {step.link.label}
+                              </NavLink>
+                            ) : null}
+                            {step.textAfter ?? null}
+                          </li>
+                        ))}
+                      </ol>
+                    ) : (
+                      'answer' in faq ? faq.answer : null
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -224,48 +182,37 @@ export default function InformacaoPage() {
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg p-6">
           <div className="flex items-center space-x-3 mb-6">
             <DocumentTextIcon className="w-6 h-6 text-aqua-400" />
-            <h2 className="text-xl font-semibold text-dark-text">Guias rápidos</h2>
+            <h2 className="text-xl font-semibold text-dark-text">{c.guides.title}</h2>
           </div>
 
           <div className="space-y-3">
-            <div className="border-l-4 border-aqua-500 pl-4 py-2">
-              <h3 className="font-semibold text-dark-text mb-1">Auto EC — loop de controle</h3>
-              <p className="text-sm text-dark-textSecondary">
-                Setpoint + tolerância definem quando dosar. Erro = EC − setpoint. Status mostra “Dentro da tolerância” ou “Ajuste necessário”.
-              </p>
-            </div>
-            <div className="border-l-4 border-primary-500 pl-4 py-2">
-              <h3 className="font-semibold text-dark-text mb-1">Calibração de sensores</h3>
-              <p className="text-sm text-dark-textSecondary">
-                pH em dois pontos; TDS/EC conforme solução padrão. Repita após trocar sonda ou solução.
-              </p>
-            </div>
-            <div className="border-l-4 border-yellow-500 pl-4 py-2">
-              <h3 className="font-semibold text-dark-text mb-1">Solução de problemas</h3>
-              <p className="text-sm text-dark-textSecondary">
-                Dispositivo offline → WiFi/alimentação. Auto EC não ativa → nutrientes e total_ml. Equação com k inválido → ml/L zerado.
-              </p>
-            </div>
+            {c.guides.items.map((guide, i) => (
+              <div
+                key={guide.title}
+                className={`border-l-4 ${GUIDE_BORDERS[i] ?? 'border-aqua-500'} pl-4 py-2`}
+              >
+                <h3 className="font-semibold text-dark-text mb-1">{guide.title}</h3>
+                <p className="text-sm text-dark-textSecondary">{guide.body}</p>
+              </div>
+            ))}
           </div>
         </div>
 
         <div className="mt-8 bg-dark-surface border border-dark-border rounded-lg p-6">
           <div className="flex items-center space-x-3 mb-2">
             <ChatBubbleLeftRightIcon className="w-6 h-6 text-aqua-400" />
-            <h3 className="text-lg font-semibold text-dark-text">Suporte</h3>
+            <h3 className="text-lg font-semibold text-dark-text">{c.support.title}</h3>
           </div>
-          <p className="text-dark-textSecondary mb-4 text-sm">
-            Dúvidas não cobertas aqui? Entre em contato:
-          </p>
+          <p className="text-dark-textSecondary mb-4 text-sm">{c.support.intro}</p>
           <div className="space-y-2 text-sm text-dark-textSecondary">
-            <p>📧 Email: suporte@hydrowave.com</p>
-            <p>💬 Chat: horário comercial</p>
+            <p>{c.support.email}</p>
+            <p>{c.support.chat}</p>
           </div>
           <NavLink
             href="/planos"
             className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-aqua-400 hover:text-aqua-300 transition-colors"
           >
-            Ver planos e serviços comerciais →
+            {c.support.plansCta}
           </NavLink>
         </div>
       </div>

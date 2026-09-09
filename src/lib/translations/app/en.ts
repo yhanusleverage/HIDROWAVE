@@ -202,6 +202,20 @@ export const appEn: AppTranslations = {
       ruleInactive: 'inactive rule in Rules engine',
       typePerRoleHint:
         'Per function: pick the Atlas relay and Save typing — creates a simple-action rule in the Rules engine (inactive until you enable it).',
+      protectionTitle: 'Protections tied to typing',
+      protectionIntro:
+        'The controller checks the crop every few seconds. Level and emergency use typed recirculation only when applicable; temperature is monitoring only.',
+      protectionLevelTitle: 'Low level or empty tank',
+      protectionLevelBody:
+        'Pauses Auto EC/pH (no dosing with empty/low tank). Does not turn off the typed recirculation pump and does not enter emergency — drain, fill, and procedures can continue.',
+      protectionTempTitle: 'Temperature out of range',
+      protectionTempBody:
+        'Monitoring warning if the reading is valid and outside the expected band. Does not stop the system — temperature control stays with the thermostat. No reading yet (boot/sensor) is not a fault.',
+      protectionEmergencyTitle: 'Controller emergency',
+      protectionEmergencyBody:
+        'Only on a serious equipment fault (critical internal resources): turns off typed recirculation and blocks new automatic ON commands. Not triggered by an empty tank.',
+      protectionTip:
+        'Tip: typing recirculation tells the controller which pump is circulation (e.g. emergency). Auto EC/pH level interlock does not depend on this typing.',
       fixedFunctionKind: 'Typed procedure',
       sequentialScriptKind: 'Sequential script',
       classicRuleKind: 'Classic rule',
@@ -227,7 +241,8 @@ export const appEn: AppTranslations = {
       waterLevelSub: '4 probes · device_status telemetry',
       circulation: 'Circulation pump',
       circulationDesc: 'Continuous or P4-scheduled circulation pump.',
-      circulationHint: 'Relay on/off (set_relay). Not the Auto EC/pH recirculation timer.',
+      circulationHint:
+        'Relay on/off (set_relay). Continuous/P4 circulation pump. Not the Auto EC/pH recirculation timer. Low level pauses Auto EC/pH — it does not turn this pump off by itself.',
       fill: 'Fill valve',
       fillDesc: 'Fill the tank until high level.',
       fillHint: 'Sensor valve until water_level = high.',
@@ -266,9 +281,9 @@ export const appEn: AppTranslations = {
       stepWait: 'Wait',
       stepHoldChemical: 'Pause Auto EC/pH',
       stepInvokeRule: 'Chained rule',
-      advancedToggle: 'Advanced — drain, fill and builder',
+      advancedToggle: 'Advanced — drain, fill and recharge',
       advancedHint:
-        'Only if you change solution or build a sequence. The essential step is the circulation pump above.',
+        'Typing for level valves/pumps (fill, drain, recharge). The essential step is the circulation pump above.',
     },
     common: {
       cancel: 'Cancel',
@@ -653,6 +668,9 @@ export const appEn: AppTranslations = {
       weekLabel: 'Week {n}',
       lastTriggered: 'Last: {when}',
       confirmDelete: 'Delete this schedule?',
+      toggleEnable: 'Enable schedule',
+      toggleDisable: 'Disable schedule',
+      deleteAction: 'Delete schedule',
       errorCreate: 'Error creating schedule',
       createAction: 'Create Schedule',
       saving: 'Saving...',
@@ -1280,5 +1298,25 @@ export const appEn: AppTranslations = {
         'December',
       ],
     },
+  },
+  home: {
+    tagline:
+      'Control and monitoring system for high-yield hydroponic growing',
+    body:
+      'Our automation system gives you full control over your hydroponic crop, monitoring and automatically adjusting essentials like pH, TDS, water temperature and nutrients.',
+    featureMonitorTitle: 'Real-time monitoring',
+    featureMonitorBody:
+      'Track every crop parameter instantly through our intuitive dashboard.',
+    featureAutoTitle: 'Automated control',
+    featureAutoBody:
+      'Schedule actions based on sensor readings to keep your crop in ideal conditions.',
+    featureDoseTitle: 'Precise dosing',
+    featureDoseBody:
+      'Automatic nutrient dosing and pH adjustment to maximize growth and yield.',
+    featureHistoryTitle: 'History and analysis',
+    featureHistoryBody:
+      'View charts and trends to optimize your crop from historical data.',
+    ctaDashboard: 'Open Dashboard',
+    linkQuemSomos: 'Meet HydroWave — About us →',
   },
 };

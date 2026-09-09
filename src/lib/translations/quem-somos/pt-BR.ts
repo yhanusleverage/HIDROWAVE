@@ -1,0 +1,255 @@
+import type { QuemSomosCopy } from './types';
+
+export const quemSomosPt: QuemSomosCopy = {
+  hero: {
+    eyebrow: 'Quem somos',
+    title: 'Domine os',
+    titleHighlight: 'elementos da hidroponia',
+    subtitle:
+      'pH, EC, temperatura, nível e fluxo são forças silenciosas que decidem sua colheita. O HydroWave nasceu para colocar cada uma delas nas suas mãos — com a clareza de quem precisa colher amanhã, não depois de um doutorado.',
+  },
+  mission: {
+    title: 'Nossa missão, em uma frase',
+    body:
+      'Controlar as nuances das grandezas que governam a hidroponia — concentração nutritiva (EC), acidez (pH), temperatura, volume e tempo — e entregá-las a você como ferramentas de trabalho, não como enigmas de laboratório.',
+    aside:
+      'Pensamos na hidroponia como um sistema de elementos: eletrônica que sente, hidráulica que move, química que equilibra, nutrição que alimenta, ambiente que monitora, telemetria que revela e conectividade que une tudo.',
+  },
+  manifesto: {
+    eyebrow: 'Filosofia',
+    lead: 'Eficiência não é fazer mais.',
+    subtitle: 'É alcançar o melhor resultado com o mínimo necessário.',
+    paragraphs: [
+      'Quando cada ação acontece no momento certo, cada recurso encontra seu propósito. O equilíbrio substitui o excesso, a precisão elimina o desperdício e o desempenho torna-se uma consequência natural.',
+      'O controle nasce da compreensão. A simplicidade nasce da ordem. A excelência nasce da harmonia entre todas as partes.',
+      'Porque todo sistema atinge seu maior potencial quando nada é desperdiçado e tudo tem uma razão para existir.',
+    ],
+  },
+  elements: [
+    {
+      id: 'electronics',
+      element: 'Eletrônica',
+      title: 'O Nervo do Sistema',
+      subtitle: 'Controlador · sensores · bombas · relés',
+      technicalDetail: 'Controlador no tanque · sensores · bombas de dose · interruptores',
+      plain:
+        'Construímos o hardware que mede, decide e age no reservatório — sem depender de você ficar olhando o tanque o dia inteiro.',
+      tagline: 'Cada pulso, cada leitura, cada relé — precisão no campo.',
+      href: '/dispositivos',
+      ctaLabel: 'Ver dispositivos',
+      accent: 'warn',
+    },
+    {
+      id: 'hydraulics',
+      element: 'Hidráulica',
+      title: 'Domínio das Águas',
+      subtitle: 'Nível · recirculação · solução nutritiva',
+      technicalDetail: 'Medição de nível · tempo de recirculação · volume do tanque',
+      plain:
+        'Monitoramos o que entra, o que sai e o que a planta consome — porque hidroponia é equilíbrio líquido, não sorte.',
+      tagline: 'Volume, fluxo e mistura sob controle.',
+      href: '/dispositivos',
+      ctaLabel: 'Ver dispositivos',
+      accent: 'wait',
+    },
+    {
+      id: 'chemistry',
+      element: 'Química',
+      title: 'Equilíbrio Ácido-Base',
+      subtitle: 'Auto pH · calibragem · banda morta',
+      technicalDetail: 'Auto pH · faixa de tolerância · limite de dose por ciclo',
+      plain:
+        'Pequenas variações de acidez mudam tudo. O sistema corrige dentro da tolerância que você define — claro, previsível, seguro.',
+      tagline: 'pH estável é colheita previsível.',
+      href: '/automacao',
+      ctaLabel: 'Configurar Auto pH',
+      accent: 'ph',
+    },
+    {
+      id: 'nutrition',
+      element: 'Nutrição',
+      title: 'Força da Solução',
+      subtitle: 'Auto EC · plano nutricional · dose proporcional',
+      technicalDetail: 'Meta de EC · faixa morta · dose de cada nutriente na ordem certa',
+      plain:
+        'EC é a força nutritiva da sua cultura. Calculamos a dose certa, respeitamos a banda morta e só agimos quando faz sentido.',
+      tagline: 'Nutrientes na medida — nem falta, nem excesso.',
+      href: '/automacao',
+      ctaLabel: 'Configurar Auto EC',
+      accent: 'ec',
+    },
+    {
+      id: 'environment',
+      element: 'Ambiente',
+      title: 'Clima da Solução',
+      subtitle: 'Temperatura da água · alertas · tendências',
+      technicalDetail:
+        'Sensor de temperatura da água · histórico no painel · alertas na faixa que você define',
+      plain:
+        'A temperatura muda a oxigenação e a absorção de nutrientes. Acompanhamos a água e avisamos quando sair da faixa ideal — sem prometer controle climático que ainda não existe.',
+      tagline: 'Monitorar antes de corrigir no escuro.',
+      href: '/dashboard',
+      ctaLabel: 'Ver temperatura',
+      accent: 'ok',
+    },
+    {
+      id: 'telemetry',
+      element: 'Telemetria',
+      title: 'Visão em Tempo Real',
+      subtitle: 'Dashboard · gráficos · status dos ciclos',
+      technicalDetail: 'Atualização ao vivo · gráfico de pH/EC/temp · cartões de sensores',
+      plain:
+        'Tudo o que acontece no campo chega ao seu painel: pH, EC, temperatura e status dos ciclos — num só lugar.',
+      tagline: 'Decisão com dados, não com achismo.',
+      href: '/dashboard',
+      ctaLabel: 'Abrir dashboard',
+      accent: 'brand',
+    },
+    {
+      id: 'connectivity',
+      element: 'Conectividade',
+      title: 'Ponte Campo-Nuvem',
+      subtitle: 'Wi‑Fi · nuvem · alertas no celular',
+      technicalDetail: 'Wi‑Fi · nuvem · leitura contínua · aviso se o equipamento cair',
+      plain:
+        'O equipamento fala com a nuvem em tempo real. Você sabe se está online antes que um problema vire prejuízo.',
+      tagline: 'O tanque nunca fica sozinho.',
+      href: '/informacao',
+      ctaLabel: 'Manual de uso',
+      accent: 'brand',
+    },
+  ],
+  socialProof: [
+    {
+      title: 'Piloto validado',
+      description:
+        'Auto EC em loop fechado, telemetria em tempo real e calibragem assistida — testado em bancada antes de ir para a estufa.',
+      highlight: 'Do sensor à dose confirmada',
+      href: '/informacao',
+      ctaLabel: 'Ver fluxo recomendado',
+      accent: 'ok',
+    },
+    {
+      title: 'Operação comercial',
+      description:
+        'Planos Pro e Enterprise para estufas em produção: histórico estendido, alertas prioritários e suporte dedicado.',
+      highlight: 'Escala com a sua operação',
+      href: '/planos',
+      ctaLabel: 'Ver planos',
+      accent: 'brand',
+    },
+    {
+      title: 'Transparência',
+      description:
+        'Banda morta, limite de dose por ciclo e calibragem antes de confiar no automático — sem surpresas no tanque.',
+      highlight: 'Automação com limites claros',
+      href: '/fundamentos',
+      ctaLabel: 'Fundamentos de cultivo',
+      accent: 'ph',
+    },
+  ],
+  beforeAfter: [
+    {
+      without: 'Medir pH na mão e corrigir no feeling',
+      with: 'Auto pH com tolerância e limite de dose por ciclo',
+    },
+    {
+      without: 'EC oscilando entre visitas ao tanque',
+      with: 'Auto EC proporcional, gráfico no dashboard e consumo diário da EC',
+    },
+    {
+      without: 'Não saber se o equipamento está online',
+      with: 'Status do dispositivo + alertas em tempo real',
+    },
+    {
+      without: 'Dosar nutrientes sem saber se a bomba está calibrada',
+      with: 'Calibragem de bombas e validação antes de ativar o automático',
+    },
+  ],
+  productLine: {
+    title: 'A linha HydroWave',
+    subtitle: 'Três caixas. Um sistema. Nomes claros para o campo.',
+    modules: [
+      {
+        name: 'HydroWave Core',
+        role: 'Controlador central',
+        body: 'O cérebro do tanque. Sensores, regras e rede em uma caixa.',
+        accent: 'brand',
+      },
+      {
+        name: 'HydroWave Atlas',
+        role: 'Relés e válvulas',
+        body: 'Sustenta a carga do campo. Válvulas, bombas e relés sob comando.',
+        accent: 'wait',
+      },
+      {
+        name: 'HydroWave Pulse',
+        role: 'Módulo dosador pH/EC',
+        body: 'O pulso do nutriente. pH e EC na proporção certa.',
+        accent: 'ec',
+      },
+    ],
+  },
+  journey: [
+    {
+      step: '01',
+      layer: 'Campo',
+      detail:
+        'Sensores de pH, EC e nível. Bombas peristálticas calibradas. Relés mapeados por função.',
+    },
+    {
+      step: '02',
+      layer: 'Controlador',
+      detail:
+        'Firmware que lê, compara com setpoint, respeita tolerância e dosifica com lógica de ciclo.',
+    },
+    {
+      step: '03',
+      layer: 'Nuvem',
+      detail: 'Telemetria segura, histórico e comandos remotos — sua estufa conectada ao mundo.',
+    },
+    {
+      step: '04',
+      layer: 'Você',
+      detail:
+        'Dashboard intuitivo, Auto EC, Auto pH, calibragem e regras — controle de alto nível, linguagem simples.',
+    },
+  ],
+  promises: [
+    'Sem jargão desnecessário: explicamos o que importa para a sua colheita.',
+    'Automação que respeita limites — banda morta, intervalos e calibragem antes de confiar.',
+    'Do kit piloto à operação comercial: escalamos com você, não contra você.',
+    'Feito por quem vive hidroponia de verdade, não só slides de marketing.',
+  ],
+  cta: {
+    title: 'Sua estufa merece controle de alto nível',
+    subtitle:
+      'Os instrumentos já estão prontos. Comece pelo dashboard ou fale conosco sobre operação comercial.',
+  },
+  teaser: {
+    title: 'Conheça Core · Atlas · Pulse',
+    subtitle:
+      'Eficiência não é fazer mais — é o melhor resultado com o mínimo necessário. Veja a linha HydroWave e os elementos do cultivo.',
+    cta: 'Quem somos',
+  },
+  ui: {
+    howItWorks: 'Como funciona',
+    promisesTitle: 'O que prometemos — sem letras miúdas',
+    trustTitle: 'Por que cultivadores confiam',
+    trustSubtitle: 'Produto testado, planos para escalar e automação com limites claros.',
+    beforeAfterTitle: 'Antes e depois',
+    beforeAfterSubtitle:
+      'O que muda quando as grandezas da hidroponia passam a ter instrumento.',
+    withoutHw: 'Sem HydroWave',
+    withHw: 'Com HydroWave',
+    elementsTitle: 'Os elementos do controle',
+    elementsSubtitle:
+      'Cada grandeza mapeada a um domínio real do produto — do sensor no tanque ao gráfico no celular.',
+    journeyTitle: 'Do silício ao seu dedo',
+    journeySubtitle: 'A ponte completa — do sensor no tanque ao gráfico no celular.',
+    ctaDashboard: 'Ir para o Dashboard',
+    ctaPlans: 'Ver planos comerciais',
+    ctaManual: 'Manual de uso →',
+    footer: 'HydroWave — nada desperdiçado, tudo com propósito.',
+  },
+};

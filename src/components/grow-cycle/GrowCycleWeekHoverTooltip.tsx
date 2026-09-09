@@ -1,9 +1,10 @@
 'use client';
 
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import type { WeekHoverMetrics } from '@/lib/grow-cycle-timeline/simulation-engine';
-import { PHASE_LABELS } from '@/lib/grow-cycle-timeline/types';
 import { HW_TEXT } from '@/lib/design-tokens';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getGrowCycleChrome } from '@/lib/translations/grow-cycle';
 
 interface GrowCycleWeekHoverTooltipProps {
   metrics: WeekHoverMetrics;
@@ -24,10 +25,15 @@ function formatPh(value: number | null): string {
   return value.toFixed(2);
 }
 
-function formatDailyDrop(value: number | null, digits: number, unit: string): string {
+function formatDailyDrop(
+  value: number | null,
+  digits: number,
+  unit: string,
+  perDay: string
+): string {
   if (value == null) return '—';
   const n = value.toFixed(digits);
-  return unit ? `${n} ${unit}/dia` : `${n}/dia`;
+  return unit ? `${n} ${unit}${perDay}` : `${n}${perDay}`;
 }
 
 function formatMl(value: number): string {
@@ -39,6 +45,10 @@ export function GrowCycleWeekHoverTooltip({
   metrics,
   pointer,
 }: GrowCycleWeekHoverTooltipProps) {
+  const { locale } = useLanguage();
+  const chrome = useMemo(() => getGrowCycleChrome(locale), [locale]);
+  const h = chrome.hover;
+  const phaseLabels = chrome.phaseLabels;
   const [pos, setPos] = useState({ left: 0, top: 0 });
 
   useLayoutEffect(() => {
@@ -59,10 +69,10 @@ export function GrowCycleWeekHoverTooltip({
   const future = metrics.weekKind === 'future';
   const weekLabel =
     metrics.weekKind === 'current'
-      ? 'esta semana'
+      ? h.thisWeek
       : metrics.weekKind === 'past'
-        ? 'nesta semana'
-        : 'ainda não começou';
+        ? h.pastWeek
+        : h.futureWeek;
 
   return (
     <div
@@ -71,10 +81,10 @@ export function GrowCycleWeekHoverTooltip({
       role="tooltip"
     >
       <p className="text-xs font-semibold text-dark-text mb-2">
-        Semana S{metrics.weekIndex}
+        {h.weekTitle.replace('{n}', String(metrics.weekIndex))}
         <span className="text-dark-textSecondary font-normal">
           {' '}
-          · {PHASE_LABELS[metrics.phase]}
+          · {phaseLabels[metrics.phase]}
         </span>
       </p>
 
@@ -82,33 +92,33 @@ export function GrowCycleWeekHoverTooltip({
         <div className="space-y-1.5">
           <p className={`font-semibold ${HW_TEXT.ec}`}>EC</p>
           <div>
-            <p className="text-dark-textSecondary">Alvo</p>
+            <p className="text-dark-textSecondary">{h.target}</p>
             <p className={`font-semibold tabular-nums ${HW_TEXT.ec}`}>
               {metrics.ecSetpoint} µS/cm
             </p>
           </div>
           <div>
-            <p className="text-dark-textSecondary">Inicial</p>
+            <p className="text-dark-textSecondary">{h.initial}</p>
             <p className={`font-semibold tabular-nums ${HW_TEXT.ec}`}>
               {formatEc(metrics.ecFirst)}
             </p>
           </div>
           <div>
-            <p className="text-dark-textSecondary">Final</p>
+            <p className="text-dark-textSecondary">{h.final}</p>
             <p className={`font-semibold tabular-nums ${HW_TEXT.ec}`}>
               {formatEc(metrics.ecLast)}
             </p>
           </div>
           <div>
-            <p className="text-dark-textSecondary">Queda média/dia</p>
+            <p className="text-dark-textSecondary">{h.avgDailyDrop}</p>
             <p className={`font-semibold tabular-nums ${HW_TEXT.ec}`}>
-              {formatDailyDrop(metrics.ecAvgDailyDrop, 0, 'µS')}
+              {formatDailyDrop(metrics.ecAvgDailyDrop, 0, 'µS', h.perDay)}
             </p>
           </div>
           {!future && (
             <>
               <div>
-                <p className="text-dark-textSecondary">ml nutrientes</p>
+                <p className="text-dark-textSecondary">{h.nutrientsMl}</p>
                 <p className="text-dark-text tabular-nums">{formatMl(metrics.ecMlTotal)}</p>
               </div>
               {metrics.byNutrient.length > 0 && (
@@ -121,7 +131,7 @@ export function GrowCycleWeekHoverTooltip({
                 </ul>
               )}
               <div>
-                <p className="text-dark-textSecondary">Ajustes</p>
+                <p className="text-dark-textSecondary">{h.adjustments}</p>
                 <p className="text-dark-text tabular-nums">{metrics.ecAdjustments}</p>
               </div>
             </>
@@ -131,39 +141,39 @@ export function GrowCycleWeekHoverTooltip({
         <div className="space-y-1.5">
           <p className={`font-semibold ${HW_TEXT.ph}`}>pH</p>
           <div>
-            <p className="text-dark-textSecondary">Alvo</p>
+            <p className="text-dark-textSecondary">{h.target}</p>
             <p className={`font-semibold tabular-nums ${HW_TEXT.ph}`}>
               {metrics.phSetpoint.toFixed(1)}
             </p>
           </div>
           <div>
-            <p className="text-dark-textSecondary">Inicial</p>
+            <p className="text-dark-textSecondary">{h.initial}</p>
             <p className={`font-semibold tabular-nums ${HW_TEXT.ph}`}>
               {formatPh(metrics.phFirst)}
             </p>
           </div>
           <div>
-            <p className="text-dark-textSecondary">Final</p>
+            <p className="text-dark-textSecondary">{h.final}</p>
             <p className={`font-semibold tabular-nums ${HW_TEXT.ph}`}>
               {formatPh(metrics.phLast)}
             </p>
           </div>
           <div>
-            <p className="text-dark-textSecondary">Queda média/dia</p>
+            <p className="text-dark-textSecondary">{h.avgDailyDrop}</p>
             <p className={`font-semibold tabular-nums ${HW_TEXT.ph}`}>
-              {formatDailyDrop(metrics.phAvgDailyDrop, 2, '')}
+              {formatDailyDrop(metrics.phAvgDailyDrop, 2, '', h.perDay)}
             </p>
           </div>
           {!future && (
             <>
               <div>
-                <p className="text-dark-textSecondary">ml pH+ / pH−</p>
+                <p className="text-dark-textSecondary">{h.phMl}</p>
                 <p className="text-dark-text tabular-nums">
                   {formatMl(metrics.phMlUp)} / {formatMl(metrics.phMlDown)}
                 </p>
               </div>
               <div>
-                <p className="text-dark-textSecondary">Ajustes</p>
+                <p className="text-dark-textSecondary">{h.adjustments}</p>
                 <p className="text-dark-text tabular-nums">{metrics.phAdjustments}</p>
               </div>
             </>
@@ -173,10 +183,14 @@ export function GrowCycleWeekHoverTooltip({
 
       <p className="text-[9px] text-dark-textSecondary mt-2 pt-2 border-t border-dark-border/50">
         {future
-          ? 'Semana futura — só alvo. Inicial / final / queda média quando a semana começar.'
+          ? h.futureNote
           : metrics.hasWeekData
-            ? `Resumo ${weekLabel} · tanque ${metrics.tankVolumeL} L`
-            : `Sem dados ainda ${weekLabel} · tanque ${metrics.tankVolumeL} L`}
+            ? h.summaryWithData
+                .replace('{weekLabel}', weekLabel)
+                .replace('{L}', String(metrics.tankVolumeL))
+            : h.summaryNoData
+                .replace('{weekLabel}', weekLabel)
+                .replace('{L}', String(metrics.tankVolumeL))}
       </p>
     </div>
   );

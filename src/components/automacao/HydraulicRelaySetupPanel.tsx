@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { CloudArrowUpIcon, LockClosedIcon } from '@heroicons/react/24/outline';
+import {
+  CloudArrowUpIcon,
+  LockClosedIcon,
+  ShieldCheckIcon,
+} from '@heroicons/react/24/outline';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { HwBadge } from '@/components/ui/HwBadge';
 import { HW_BANNER } from '@/lib/design-tokens';
@@ -242,28 +246,54 @@ export function HydraulicRelaySetupPanel({
             title={p.typeTitle}
             subtitle={p.typeSubtitle}
             accent="brand"
+            size="comfortable"
           />
 
-          <div className={`rounded-lg border px-3 py-2 text-xs ${HW_BANNER.wait}`}>
-            <p className="flex items-center gap-1.5 font-medium">
-              <LockClosedIcon className="w-3.5 h-3.5 shrink-0" />
+          <div className={`rounded-lg border px-4 py-3 text-sm leading-relaxed ${HW_BANNER.wait}`}>
+            <p className="flex items-start gap-2 font-medium">
+              <LockClosedIcon className="w-4 h-4 shrink-0 mt-0.5" />
               {p.coreRelaysHint}
             </p>
           </div>
-          <div className={`rounded-lg border px-3 py-2 text-xs ${HW_BANNER.warn}`}>
-            <p className="flex items-center gap-1.5 font-medium">
-              <LockClosedIcon className="w-3.5 h-3.5 shrink-0" />
+          <div className={`rounded-lg border px-4 py-3 text-sm leading-relaxed ${HW_BANNER.warn}`}>
+            <p className="flex items-start gap-2 font-medium">
+              <LockClosedIcon className="w-4 h-4 shrink-0 mt-0.5" />
               {p.recircHint}
             </p>
           </div>
-          <div className={`rounded-lg border px-3 py-2 text-xs ${HW_BANNER.brand}`}>
+          <div className={`rounded-lg border px-4 py-3 text-sm leading-relaxed ${HW_BANNER.brand}`}>
             <p className="font-medium">{p.typePerRoleHint}</p>
+          </div>
+
+          <div className={`rounded-lg border px-4 py-3.5 text-sm space-y-3 leading-relaxed ${HW_BANNER.ok}`}>
+            <p className="flex items-center gap-2 font-semibold text-base text-dark-text">
+              <ShieldCheckIcon className="w-5 h-5 shrink-0 text-green-400" />
+              {p.protectionTitle}
+            </p>
+            <p className="text-dark-textSecondary">{p.protectionIntro}</p>
+            <ul className="space-y-2.5 text-dark-textSecondary">
+              <li>
+                <span className="font-medium text-dark-text">{p.protectionLevelTitle}.</span>{' '}
+                {p.protectionLevelBody}
+              </li>
+              <li>
+                <span className="font-medium text-dark-text">{p.protectionTempTitle}.</span>{' '}
+                {p.protectionTempBody}
+              </li>
+              <li>
+                <span className="font-medium text-dark-text">{p.protectionEmergencyTitle}.</span>{' '}
+                {p.protectionEmergencyBody}
+              </li>
+            </ul>
+            <p className="font-medium text-dark-text/90 pt-1 border-t border-dark-border/60">
+              {p.protectionTip}
+            </p>
           </div>
         </>
       )}
 
       {disabled && (
-        <p className="text-sm text-dark-textSecondary">
+        <p className="text-base text-dark-textSecondary">
           {p.selectCoreType}
         </p>
       )}
@@ -280,16 +310,16 @@ export function HydraulicRelaySetupPanel({
           return (
             <div
               key={def.id}
-              className="rounded-lg border border-dark-border bg-dark-surface/40 p-4 space-y-3"
+              className="rounded-lg border border-dark-border bg-dark-surface/40 p-4 sm:p-5 space-y-3"
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <p className="text-sm font-medium text-dark-text">{copy.label}</p>
-                  <p className="text-xs text-dark-textSecondary mt-0.5">{copy.description}</p>
+                  <p className="text-base font-medium text-dark-text">{copy.label}</p>
+                  <p className="text-sm text-dark-textSecondary mt-1 leading-relaxed">{copy.description}</p>
                 </div>
                 <HwBadge accent="wait">{p.fixedRole}</HwBadge>
               </div>
-              <p className="text-[11px] text-dark-textSecondary/90">{copy.hint}</p>
+              <p className="text-sm text-dark-textSecondary/90 leading-relaxed">{copy.hint}</p>
               <SlaveRelaySelect
                 slaves={espnowSlaves}
                 label={def.required ? `${copy.label} *` : copy.label}
@@ -300,13 +330,13 @@ export function HydraulicRelaySetupPanel({
                 emptyMessage={p.emptyAtlasRelays}
               />
               {conflict && (
-                <p className="text-xs text-amber-300/90">{conflict}</p>
+                <p className="text-sm text-amber-300/90">{conflict}</p>
               )}
               <button
                 type="button"
                 disabled={!canSave}
                 onClick={() => void handleSaveRole(def.id)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-aqua-600 hover:bg-aqua-500 disabled:opacity-50 text-white text-xs font-medium"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-aqua-600 hover:bg-aqua-500 disabled:opacity-50 text-white text-sm font-medium"
               >
                 <CloudArrowUpIcon className="w-3.5 h-3.5" />
                 {saving ? p.saving : p.saveTypeRole}

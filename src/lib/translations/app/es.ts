@@ -204,6 +204,20 @@ export const appEs: AppTranslations = {
       ruleInactive: 'regla inactiva en el Motor',
       typePerRoleHint:
         'En cada función: elija el relé Atlas y Guardar tipado — crea la regla en el Motor (acción simple, inactiva hasta activar).',
+      protectionTitle: 'Protecciones ligadas al tipado',
+      protectionIntro:
+        'El controlador revisa el cultivo cada pocos segundos. Nivel y emergencia usan la recirculación tipada solo cuando aplica; temperatura es solo monitorización.',
+      protectionLevelTitle: 'Nivel bajo o tanque vacío',
+      protectionLevelBody:
+        'Pausa Auto EC/pH (no dosifica con tanque vacío/bajo). No apaga la bomba de recirculación tipada y no entra en emergencia — drenaje, llenado y procedimientos siguen posibles.',
+      protectionTempTitle: 'Temperatura fuera de rango',
+      protectionTempBody:
+        'Aviso de monitorización si la medición es válida y está fuera de lo esperado. No detiene el sistema — el control de temperatura queda en el termostato. Sin lectura (arranque/sensor) no cuenta como fallo.',
+      protectionEmergencyTitle: 'Emergencia del controlador',
+      protectionEmergencyBody:
+        'Solo ante fallo grave del equipo (recursos internos críticos): apaga la recirculación tipada y bloquea nuevos encendidos automáticos. No se dispara por tanque vacío.',
+      protectionTip:
+        'Consejo: tipar la recirculación dice al controlador qué bomba es la de circulación (p. ej. emergencia). El interlock de nivel para Auto EC/pH no depende de este tipado.',
       fixedFunctionKind: 'Procedimiento tipado',
       sequentialScriptKind: 'Script secuencial',
       classicRuleKind: 'Regla clásica',
@@ -230,7 +244,7 @@ export const appEs: AppTranslations = {
       circulation: 'Bomba de circulación',
       circulationDesc: 'Bomba de circulación continua o por agenda P4.',
       circulationHint:
-        'Encender/apagar relé (set_relay). No confundir con tempo_recirculacao de Auto EC/pH.',
+        'Encender/apagar relé (set_relay). Bomba de circulación continua/P4. No confundir con tempo_recirculacao de Auto EC/pH. Nivel bajo pausa Auto EC/pH — no apaga esta bomba solo.',
       fill: 'Válvula de llenado',
       fillDesc: 'Llenar el tanque hasta nivel alto.',
       fillHint: 'Válvula por sensor hasta water_level = alto.',
@@ -269,9 +283,9 @@ export const appEs: AppTranslations = {
       stepWait: 'Esperar',
       stepHoldChemical: 'Pausar Auto EC/pH',
       stepInvokeRule: 'Regla encadenada',
-      advancedToggle: 'Avanzado — drenaje, llenado y builder',
+      advancedToggle: 'Avanzado — drenaje, llenado y recarga',
       advancedHint:
-        'Solo si cambias solución o armas una secuencia. Lo esencial es la bomba de circulación arriba.',
+        'Tipado de válvulas/bombas por nivel (llenado, drenaje, recarga). Lo esencial es la bomba de circulación arriba.',
     },
     common: {
       cancel: 'Cancelar',
@@ -657,6 +671,9 @@ export const appEs: AppTranslations = {
       weekLabel: 'Semana {n}',
       lastTriggered: 'Último: {when}',
       confirmDelete: '¿Eliminar este schedule?',
+      toggleEnable: 'Activar schedule',
+      toggleDisable: 'Desactivar schedule',
+      deleteAction: 'Eliminar schedule',
       errorCreate: 'Error al crear schedule',
       createAction: 'Crear Schedule',
       saving: 'Guardando...',
@@ -1285,5 +1302,25 @@ export const appEs: AppTranslations = {
         'Diciembre',
       ],
     },
+  },
+  home: {
+    tagline:
+      'Sistema de control y monitoreo para cultivo hidropónico de alto rendimiento',
+    body:
+      'Nuestro sistema de automatización ofrece control completo sobre tu cultivo hidropónico, monitoreando y ajustando automáticamente parámetros esenciales como pH, TDS, temperatura del agua y nutrientes.',
+    featureMonitorTitle: 'Monitoreo en tiempo real',
+    featureMonitorBody:
+      'Sigue todos los parámetros de tu cultivo al instante con nuestro dashboard intuitivo.',
+    featureAutoTitle: 'Control automatizado',
+    featureAutoBody:
+      'Programa acciones automáticas según lecturas de sensores para mantener el cultivo en condiciones ideales.',
+    featureDoseTitle: 'Dosificación precisa',
+    featureDoseBody:
+      'Sistema de dosificación automática de nutrientes y ajuste de pH para maximizar crecimiento y productividad.',
+    featureHistoryTitle: 'Historial y análisis',
+    featureHistoryBody:
+      'Visualiza gráficos y tendencias para optimizar el cultivo con datos históricos.',
+    ctaDashboard: 'Acceder al Dashboard',
+    linkQuemSomos: 'Conoce HydroWave — Quiénes somos →',
   },
 };
