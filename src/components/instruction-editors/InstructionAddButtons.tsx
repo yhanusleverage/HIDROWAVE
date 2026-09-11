@@ -8,26 +8,28 @@ import {
 import type { Instruction } from '@/components/SequentialScriptEditor';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-const ADD_TYPES: Instruction['type'][] = [
-  'while',
-  'if',
-  'relay_action',
-  'switch',
-];
+/** UI padrão: sem puzzle Se/LOOP aninhados — só ações planas. */
+const DEFAULT_ADD_TYPES: Instruction['type'][] = ['relay_action', 'switch'];
 
 interface InstructionAddButtonsProps {
   onAdd: (type: Instruction['type']) => void;
   className?: string;
+  /** Override (ex.: modo avançado). Default = só Relé + Switch. */
+  allowedTypes?: Instruction['type'][];
 }
 
-export function InstructionAddButtons({ onAdd, className = '' }: InstructionAddButtonsProps) {
+export function InstructionAddButtons({
+  onAdd,
+  className = '',
+  allowedTypes = DEFAULT_ADD_TYPES,
+}: InstructionAddButtonsProps) {
   const { t } = useLanguage();
   const instrT = t.automacao.instr;
   const hints = getInstructionTypeHints(instrT);
 
   return (
     <div className={`flex gap-2 flex-wrap ${className}`}>
-      {ADD_TYPES.map((type) => (
+      {allowedTypes.map((type) => (
         <button
           key={type}
           type="button"

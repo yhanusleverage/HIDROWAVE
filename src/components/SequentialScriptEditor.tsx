@@ -7,8 +7,6 @@ import { toast } from 'react-hot-toast';
 import { formatInstructionType } from '@/lib/instruction-labels';
 import { InstructionAddButtons } from './instruction-editors/InstructionAddButtons';
 import { BlockAutoProcedureToggle } from './instruction-editors/BlockAutoProcedureToggle';
-import WhileInstructionEditor from './instruction-editors/WhileInstructionEditor';
-import IfInstructionEditor from './instruction-editors/IfInstructionEditor';
 import RelayActionEditor from './instruction-editors/RelayActionEditor';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,6 +17,7 @@ import { resolveDecisionRuleDisplayName } from '@/lib/decision-rule-display-name
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRelayAllocation } from '@/hooks/useRelayAllocation';
 import { getDoserRelaySlots } from '@/lib/relay-allocation';
+import { fetchDosingPumpOptions, type DosingPumpOption } from '@/lib/dosing-pump-options';
 
 export interface Instruction {
   id?: string;
@@ -46,6 +45,8 @@ export interface Instruction {
   target?: 'master' | 'slave';
   slave_mac?: string;
   duration_seconds?: number;
+  /** Dose pedida em ml (UI); o firmware usa duration_seconds derivado do flowRate. */
+  dosage_ml?: number;
   duration_ms?: number;
   delay_ms?: number;
   max_iterations?: number;
@@ -111,6 +112,7 @@ export default function SequentialScriptEditor({
   const [maxIterations, setMaxIterations] = useState(0);
   const [loading, setLoading] = useState(false);
   const [espnowSlaves, setEspnowSlaves] = useState<ESPNowSlave[]>([]);
+  const [dosingPumps, setDosingPumps] = useState<DosingPumpOption[]>([]);
   const [expandedAdvanced, setExpandedAdvanced] = useState(false);
   const [chainedEvents, setChainedEvents] = useState<ChainedEvent[]>([]);
   const [expandedChainedEvents, setExpandedChainedEvents] = useState(false);
@@ -212,6 +214,20 @@ export default function SequentialScriptEditor({
     }
   }, [scriptId, deviceId, userProfile?.email]);
 
+  useEffect(() => {
+    if (!deviceId || deviceId === 'default_device') {
+      setDosingPumps([]);
+      return;
+    }
+    let cancelled = false;
+    void fetchDosingPumpOptions(deviceId).then((pumps) => {
+      if (!cancelled) setDosingPumps(pumps);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [deviceId]);
+
   const loadSlaves = async () => {
     if (!deviceId || !userProfile?.email) {
       console.warn('⚠️ Não é possível carregar slaves: deviceId ou userProfile.email ausente');
@@ -263,6 +279,8 @@ export default function SequentialScriptEditor({
   };
 
   const addInstruction = (type: Instruction['type']) => {
+    // UI padrão: sem puzzle Se/LOOP
+    if (type === 'while' || type === 'if') return;
     const newInstr = createNestedInstruction(type);
     if (type === 'relay_action') {
       newInstr.relay_number = firstFreeMasterRelay;
@@ -600,23 +618,11 @@ export default function SequentialScriptEditor({
                   </div>
                 </div>
 
-                {/* Renderizar editor específico */}
-                {instr.type === 'while' && (
-                  <WhileInstructionEditor
-                    instruction={instr}
-                    onChange={(updated) => updateInstruction(index, updated)}
-                    espnowSlaves={espnowSlaves}
-                    masterRelays={masterRelays}
-                  />
-                )}
-
-                {instr.type === 'if' && (
-                  <IfInstructionEditor
-                    instruction={instr}
-                    onChange={(updated) => updateInstruction(index, updated)}
-                    espnowSlaves={espnowSlaves}
-                    masterRelays={masterRelays}
-                  />
+                {/* while/if: sem puzzle aninhado — só aviso + apagar */}
+                {(instr.type === 'while' || instr.type === 'if') && (
+                  <div className="text-sm text-amber-200/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                    {instrT.legacyNestedBlockHint}
+                  </div>
                 )}
 
                 {instr.type === 'relay_action' && (
@@ -625,6 +631,7 @@ export default function SequentialScriptEditor({
                     onChange={(updated) => updateInstruction(index, updated)}
                     espnowSlaves={espnowSlaves}
                     masterRelays={masterRelays}
+                    dosingPumps={dosingPumps}
                     onDelete={() => removeInstruction(index)}
                   />
                 )}

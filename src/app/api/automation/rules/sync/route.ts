@@ -8,12 +8,14 @@ import {
   notifyDeviceRulesManifest,
   hashRulePayload,
 } from '@/lib/mqtt-rules-publish';
+import { rematerializeRuleJsonForDevice } from '@/lib/rule-procedure/rematerialize-rule-json';
 
 type SyncOp = 'upsert' | 'disable' | 'delete';
 
 /**
  * POST — publica uma decision_rule no Core (MQTT retained) + atualiza manifest.
  * Body: { device_id, rule_id, rule_name?, rule_description?, rule_json?, enabled?, priority?, op? }
+ * Upsert: rematerializa tipagem hidráulica antes do MQTT (corrige R0/sem MAC).
  */
 export async function POST(request: Request) {
   try {
@@ -32,15 +34,64 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'op inválido' }, { status: 400 });
     }
 
+    const writer =
+      getSupabaseWriterForDecisionRules(request.headers.get('authorization')) ??
+      null;
+    const sb = writer?.client ?? getSupabaseServerClient();
+
+    let ruleJson = body.rule_json;
+    let ruleName = body.rule_name ?? undefined;
+    let ruleDescription = body.rule_description ?? undefined;
+    let priority =
+      typeof body.priority === 'number' ? body.priority : undefined;
+
+    if (op === 'upsert') {
+      if (ruleJson == null) {
+        const { data: row } = await sb
+          .from('decision_rules')
+          .select('rule_name, rule_description, rule_json, priority')
+          .eq('device_id', deviceId)
+          .eq('rule_id', ruleId)
+          .maybeSingle();
+        if (row) {
+          ruleJson = row.rule_json;
+          ruleName = ruleName ?? row.rule_name ?? undefined;
+          ruleDescription = ruleDescription ?? row.rule_description ?? undefined;
+          priority = priority ?? row.priority ?? undefined;
+        }
+      }
+
+      const remat = await rematerializeRuleJsonForDevice(
+        deviceId,
+        ruleId,
+        ruleName,
+        ruleJson
+      );
+      if (!remat.ok) {
+        return NextResponse.json({ error: remat.error }, { status: 422 });
+      }
+      ruleJson = remat.ruleJson;
+
+      // Persistir script recompilado (tipagem atual) no banco
+      await sb
+        .from('decision_rules')
+        .update({
+          rule_json: ruleJson,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('device_id', deviceId)
+        .eq('rule_id', ruleId);
+    }
+
     const pub = await notifyDeviceRuleUpsert(
       deviceId,
       {
         rule_id: ruleId,
-        rule_name: body.rule_name ?? undefined,
-        rule_description: body.rule_description ?? undefined,
-        rule_json: body.rule_json,
+        rule_name: ruleName,
+        rule_description: ruleDescription,
+        rule_json: ruleJson,
         enabled: Boolean(body.enabled),
-        priority: typeof body.priority === 'number' ? body.priority : undefined,
+        priority,
       },
       op
     );
@@ -57,10 +108,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const writer =
-      getSupabaseWriterForDecisionRules(request.headers.get('authorization')) ??
-      null;
-    const sb = writer?.client ?? getSupabaseServerClient();
     const { data: rows } = await sb
       .from('decision_rules')
       .select('rule_id, rule_name, rule_description, rule_json, enabled, priority')

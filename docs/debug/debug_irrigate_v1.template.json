@@ -1,0 +1,89 @@
+{
+  "schema": "debug_irrigate_v1",
+  "exported_at": "2026-09-10T00:00:00Z",
+  "device_id": "PEGAR_DEVICE_ID",
+  "device_name": "Prod+ espnow completo",
+  "notes": "Rellenar y pegar en el chat. Separar caja Regla vs Schedule vs Auto EC.",
+
+  "hydraulic_roles": {
+    "circulation_pump": { "slave_mac": "", "relay_index": null, "label": "CO" },
+    "fill_valve": { "slave_mac": "", "relay_index": null, "label": "FILL" },
+    "drain_valve": { "slave_mac": "", "relay_index": null, "label": "DRAIN" },
+    "recharge_pump": { "slave_mac": "", "relay_index": null, "label": "RECHARGE" }
+  },
+
+  "fn_rules": [
+    {
+      "rule_id": "fn_recirculacao_continua",
+      "enabled": null,
+      "priority": null,
+      "rule_json": {}
+    },
+    {
+      "rule_id": "fn_enchimento_ate_alto",
+      "enabled": null,
+      "priority": null,
+      "rule_json": {}
+    },
+    {
+      "rule_id": "fn_dreno_ate_vazio",
+      "enabled": null,
+      "priority": null,
+      "rule_json": {}
+    }
+  ],
+
+  "irrigation_schedules": [
+    {
+      "rule_id": "fn_recirculacao_continua",
+      "schedule_type": "daily",
+      "time_start": "08:00",
+      "time_end": null,
+      "days_of_week": null,
+      "grow_week_index": null,
+      "timezone": "America/Sao_Paulo",
+      "enabled": true
+    }
+  ],
+
+  "plan_snapshot": {
+    "plan_id": "",
+    "week_index": null,
+    "phase": "",
+    "next_tank_event": {
+      "kind": "initial_fill|changeout|drain_full",
+      "ruleIdSuggested": "",
+      "triggerTime": "08:00"
+    }
+  },
+
+  "auto_ec": {
+    "auto_enabled": null,
+    "ec_setpoint": null,
+    "tolerance": null,
+    "volume": null,
+    "intervalo_auto_ec": null,
+    "tempo_recirculacao": null,
+    "pulse_ml": null,
+    "pulse_gap_sec": null,
+    "nutrients": [],
+    "dilution": {
+      "dilution_auto_enabled": null,
+      "dilution_drain_relay": null,
+      "dilution_fill_relay": null
+    },
+    "_debug": {}
+  },
+
+  "interlocks": {
+    "block_auto_in_p1_scripts": null,
+    "water_level_pauses_auto_ec": null,
+    "note": "CO tipada (fn_recirculacao) ≠ tempo_recirculacao post-dose Auto EC"
+  },
+
+  "_audit": {
+    "intent": "Qué debería pasar al regar / llenar / drenar",
+    "expected": "",
+    "conflicts": []
+  }
+}

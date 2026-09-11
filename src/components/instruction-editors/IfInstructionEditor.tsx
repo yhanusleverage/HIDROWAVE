@@ -6,6 +6,7 @@ import { PlusIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { Instruction } from '../SequentialScriptEditor';
 import { ESPNowSlave } from '@/lib/esp-now-slaves';
 import type { MasterRelayOption } from '@/lib/master-relay-options';
+import type { DosingPumpOption } from '@/lib/dosing-pump-options';
 import RelayActionEditor from './RelayActionEditor';
 import ConditionFields from './ConditionFields';
 import { createNestedInstruction } from '@/lib/instruction-factory';
@@ -19,6 +20,7 @@ interface IfInstructionEditorProps {
   onChange: (updated: Instruction) => void;
   espnowSlaves: ESPNowSlave[];
   masterRelays: MasterRelayOption[];
+  dosingPumps?: DosingPumpOption[];
 }
 
 export default function IfInstructionEditor({
@@ -26,6 +28,7 @@ export default function IfInstructionEditor({
   onChange,
   espnowSlaves,
   masterRelays,
+  dosingPumps = [],
 }: IfInstructionEditorProps) {
   const { t } = useLanguage();
   const instrT = t.automacao.instr;
@@ -148,6 +151,7 @@ export default function IfInstructionEditor({
                   onChange={(updated) => updateThenInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
                   masterRelays={masterRelays}
+                  dosingPumps={dosingPumps}
                 />
               )}
 
@@ -312,6 +316,7 @@ export default function IfInstructionEditor({
                   onChange={(updated) => updateThenInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
                   masterRelays={masterRelays}
+                  dosingPumps={dosingPumps}
                 />
               )}
 
@@ -321,6 +326,7 @@ export default function IfInstructionEditor({
                   onChange={(updated) => updateThenInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
                   masterRelays={masterRelays}
+                  dosingPumps={dosingPumps}
                 />
               )}
 
@@ -405,6 +411,7 @@ export default function IfInstructionEditor({
                   onChange={(updated) => updateElseInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
                   masterRelays={masterRelays}
+                  dosingPumps={dosingPumps}
                 />
               )}
 
@@ -569,6 +576,7 @@ export default function IfInstructionEditor({
                   onChange={(updated) => updateElseInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
                   masterRelays={masterRelays}
+                  dosingPumps={dosingPumps}
                 />
               )}
 
@@ -578,6 +586,7 @@ export default function IfInstructionEditor({
                   onChange={(updated) => updateElseInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
                   masterRelays={masterRelays}
+                  dosingPumps={dosingPumps}
                 />
               )}
 

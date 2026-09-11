@@ -22,10 +22,11 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import { formatInstructionPreview } from '@/lib/instruction-labels';
+import { formatProcedureStepsPreviewList } from '@/lib/rule-procedure/procedure-step-preview';
+import type { ProcedureStep } from '@/lib/rule-procedure/types';
 import { getDecisionRules, createDecisionRule, updateDecisionRule, deleteDecisionRule, DecisionRule } from '@/lib/automation';
 import {
   requestDecisionRuleMqttSync,
-  requestDecisionRulesResync,
 } from '@/lib/decision-rules-mqtt-client';
 import {
   isFixedFunctionMacroRule,
@@ -33,6 +34,7 @@ import {
   resolveDecisionRuleDisplayName,
 } from '@/lib/decision-rule-display-name';
 import { RuleExecutionHistoryPanel } from '@/components/automacao/RuleExecutionHistoryPanel';
+import { appendRuleConfigEvent } from '@/lib/rule-config-history';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import {
   getDeviceDisplayStatus,
@@ -1192,6 +1194,15 @@ export default function AutomacaoPageClient() {
     }
 
     if (selectedDeviceId && selectedDeviceId !== 'default_device' && rule.rule_id) {
+      void appendRuleConfigEvent({
+        deviceId: selectedDeviceId,
+        ruleId: rule.rule_id,
+        ruleName: rule.rule_name || rule.name,
+        enabled: nextEnabled,
+      });
+      if (!nextEnabled) {
+        toast(ap.toast.ruleDisabledRelayHint, { icon: '⚠️' });
+      }
       const sync = await requestDecisionRuleMqttSync({
         device_id: selectedDeviceId,
         rule_id: rule.rule_id,
@@ -1204,23 +1215,23 @@ export default function AutomacaoPageClient() {
       });
       if (!sync.ok) {
         console.warn('[toggleRule] MQTT sync:', sync.error);
+        const err = sync.error ?? '';
+        const tipagem =
+          /tipagem|recircul|circulation_pump|bomba de recircul/i.test(err);
+        if (tipagem && nextEnabled) {
+          await updateDecisionRule(String(dbId), { enabled: false });
+          setRules((prev) =>
+            prev.map((r) =>
+              r.id === id || r.supabase_id === id ? { ...r, enabled: false } : r
+            )
+          );
+        }
         toast.error(
-          `Regra salva no banco, mas MQTT falhou: ${sync.error ?? 'erro'}. Use Resync ↻`
+          tipagem
+            ? ap.toast.mqttSyncTipagem
+            : ap.toast.mqttSyncFail.replace('{error}', err || 'erro')
         );
       }
-    }
-  };
-
-  const handleResyncRulesToDevice = async () => {
-    if (!selectedDeviceId || selectedDeviceId === 'default_device') {
-      toast.error(ap.toast.selectDevice);
-      return;
-    }
-    const result = await requestDecisionRulesResync(selectedDeviceId);
-    if (result.ok) {
-      toast.success(ap.toast.resyncOk.replace('{n}', String(result.republished ?? 0)));
-    } else {
-      toast.error(result.error ?? ap.toast.resyncFail);
     }
   };
 
@@ -1287,7 +1298,7 @@ export default function AutomacaoPageClient() {
       ) {
         ruleJson = (newRule.rule_json ?? editingRule.rule_json) as RuleJson;
       } else if (newRule.script && newRule.script.instructions && newRule.script.instructions.length > 0) {
-        // ✅ Formato de Sequential Script (Nova Função)
+        // ✅ Formato de Sequential Script / procedure builder
         ruleJson = {
           script: {
             instructions: newRule.script.instructions as ScriptInstruction[],
@@ -1296,7 +1307,19 @@ export default function AutomacaoPageClient() {
             cooldown: newRule.script.cooldown || newRule.cooldown || 60,
             max_executions_per_hour: newRule.script.max_executions_per_hour || newRule.maxExecutionsPerHour || 10,
           },
-        };
+          ...(Array.isArray(newRule.procedure_steps)
+            ? { procedure_steps: newRule.procedure_steps }
+            : {}),
+          ...(newRule.procedure_ref && typeof newRule.procedure_ref === 'object'
+            ? { procedure_ref: newRule.procedure_ref }
+            : {}),
+          ...(newRule.execution_class
+            ? { execution_class: newRule.execution_class }
+            : {}),
+          ...(newRule.procedure_kind
+            ? { procedure_kind: newRule.procedure_kind }
+            : {}),
+        } as RuleJson;
       } else {
         // ✅ Formato tradicional (Nova Regra)
         ruleJson = {
@@ -1363,10 +1386,16 @@ export default function AutomacaoPageClient() {
         }),
         ...(ruleJson.script ? { script: ruleJson.script } : {}),
         ...(ruleJson.circadian_cycle ? { circadian_cycle: ruleJson.circadian_cycle } : {}),
+        ...((ruleJson as { procedure_steps?: unknown }).procedure_steps
+          ? { procedure_steps: (ruleJson as { procedure_steps: unknown }).procedure_steps }
+          : {}),
+        ...((ruleJson as { procedure_ref?: unknown }).procedure_ref
+          ? { procedure_ref: (ruleJson as { procedure_ref: unknown }).procedure_ref }
+          : {}),
         delay_before_execution: ruleJson.delay_before_execution,
         interval_between_executions: ruleJson.interval_between_executions,
         priority: ruleJson.priority,
-      };
+      } as DecisionRule['rule_json'];
 
       const decisionRule: DecisionRule = {
         device_id: selectedDeviceId,
@@ -1446,6 +1475,14 @@ export default function AutomacaoPageClient() {
         });
         if (!mqtt.ok) {
           console.warn('[handleSaveRule] MQTT sync:', mqtt.error);
+          const err = mqtt.error ?? '';
+          const tipagem =
+            /tipagem|recircul|circulation_pump|bomba de recircul/i.test(err);
+          toast.error(
+            tipagem
+              ? ap.toast.mqttSyncTipagem
+              : ap.toast.mqttSyncFail.replace('{error}', err || 'erro')
+          );
         }
         await loadRules(); // Recarregar regras
         setEditingRule(null); // ✅ Resetar regra de edição após salvar
@@ -1711,22 +1748,55 @@ export default function AutomacaoPageClient() {
           )}
           <p className="text-xs text-dark-textSecondary/80 mt-1">{motorRuleKindLabel(script)}</p>
 
-          {script.rule_json?.script?.instructions && (
-            <div className="mt-2 text-xs text-dark-textSecondary space-y-1 font-mono">
-              {script.rule_json.script.instructions.slice(0, 2).map((instr: ScriptInstruction, idx: number) => (
+          {Array.isArray(
+            (script.rule_json as { procedure_steps?: ProcedureStep[] } | undefined)?.procedure_steps
+          ) &&
+          ((script.rule_json as { procedure_steps: ProcedureStep[] }).procedure_steps?.length ??
+            0) > 0 ? (
+            <div className="mt-2 text-xs text-dark-textSecondary space-y-1">
+              {formatProcedureStepsPreviewList(
+                (script.rule_json as { procedure_steps: ProcedureStep[] }).procedure_steps,
+                t.automacao.instr,
+                t.automacao.procedures,
+                3
+              ).map((line, idx) => (
                 <div key={idx} className="text-aqua-300">
-                  {idx + 1}. {formatInstructionPreview(instr, t.automacao.instr)}
+                  {idx + 1}. {line}
                 </div>
               ))}
-              {script.rule_json.script.instructions.length > 2 && (
+              {(script.rule_json as { procedure_steps: ProcedureStep[] }).procedure_steps.length >
+                3 && (
                 <div className="text-dark-textSecondary/80 italic">
                   {ap.scripts.moreInstr.replace(
                     '{n}',
-                    String(script.rule_json.script.instructions.length - 2)
+                    String(
+                      (script.rule_json as { procedure_steps: ProcedureStep[] }).procedure_steps
+                        .length - 3
+                    )
                   )}
                 </div>
               )}
             </div>
+          ) : (
+            script.rule_json?.script?.instructions && (
+              <div className="mt-2 text-xs text-dark-textSecondary space-y-1 font-mono">
+                {script.rule_json.script.instructions
+                  .slice(0, 2)
+                  .map((instr: ScriptInstruction, idx: number) => (
+                    <div key={idx} className="text-aqua-300">
+                      {idx + 1}. {formatInstructionPreview(instr, t.automacao.instr)}
+                    </div>
+                  ))}
+                {script.rule_json.script.instructions.length > 2 && (
+                  <div className="text-dark-textSecondary/80 italic">
+                    {ap.scripts.moreInstr.replace(
+                      '{n}',
+                      String(script.rule_json.script.instructions.length - 2)
+                    )}
+                  </div>
+                )}
+              </div>
+            )
           )}
           {!script.rule_json?.script?.instructions &&
             (script.condition || script.action) && (
@@ -2928,20 +2998,6 @@ export default function AutomacaoPageClient() {
                 ) : (
                   <LockOpenIcon className="w-4 h-4" />
                 )}
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!decisionEngineLocked) void handleResyncRulesToDevice();
-                }}
-                disabled={decisionEngineLocked}
-                className={`p-1.5 rounded transition-colors bg-dark-surface text-dark-textSecondary hover:text-aqua-400 border border-dark-border hover:border-aqua-500/40 ${
-                  decisionEngineLocked ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                title={ap.engine.resync}
-              >
-                <ArrowPathIcon className="w-4 h-4" />
               </button>
               <div
                 onClick={(e) => {

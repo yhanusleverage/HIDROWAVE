@@ -66,27 +66,41 @@ function validateStep(
   if (!step.id?.trim()) errors.push(`${p}.id e obrigatorio`);
 
   switch (step.type) {
-    case 'sensor_valve':
-      if (step.roleId) {
-        if (!hydraulicRoles?.[step.roleId]) {
-          errors.push(`${p}: tipagem em falta para ${step.roleId}`);
-        }
-      } else {
-        validateActuator(step.actuator, p, errors);
-      }
+    case 'sensor_valve': {
+      // Tipagem avançada removida — só valida forma do actuador (MAC pode herdar da circulação no sync)
+      validateActuator(step.actuator, p, errors);
       if (!step.sensor.sensor?.trim()) errors.push(`${p}.sensor.sensor e obrigatorio`);
+      if (
+        step.sensor.sensor === 'water_level' &&
+        step.sensor.operator !== '==' &&
+        step.sensor.operator !== '!='
+      ) {
+        errors.push(
+          `${p}.sensor.operator deve ser "==" (enquanto for) ou "!=" (enquanto nao for)`
+        );
+      }
       if (step.maxDurationMs <= 0) errors.push(`${p}.maxDurationMs deve ser > 0`);
+      if (step.valveStart === 'closed' && step.valveFinish === 'open') {
+        errors.push(
+          `${p}: para dreno/encher use ON enquanto a condicao for verdadeira e OFF ao sair dela (nao o inverso)`
+        );
+      }
       break;
-    case 'set_relay':
-      if (step.roleId) {
-        if (!hydraulicRoles?.[step.roleId]) {
-          errors.push(`${p}: tipagem em falta para ${step.roleId}`);
+    }
+    case 'set_relay': {
+      if (step.roleId === 'circulation_pump') {
+        if (!hydraulicRoles?.circulation_pump) {
+          validateActuator(step.actuator, p, errors);
+          if (step.actuator.target !== 'slave' || !step.actuator.slaveMac?.trim()) {
+            errors.push(`${p}: tipagem da bomba de recirculação em falta`);
+          }
         }
       } else {
         validateActuator(step.actuator, p, errors);
       }
       if (step.state !== 'on' && step.state !== 'off') errors.push(`${p}.state invalido`);
       break;
+    }
     case 'wait':
       if (step.durationMs <= 0) errors.push(`${p}.durationMs deve ser > 0`);
       break;
@@ -130,8 +144,11 @@ export function validateProcedure(
     errors.push('steps deve ter pelo menos um item');
   } else {
     procedure.steps.forEach((s, i) => validateStep(s, i, errors, hydraulicRoles));
+    // Tipagem P1 avançada (dreno/fill) removida — só exigir circulação se o procedimento a usa
     if (hydraulicRoles && procedure.layer === 'P1') {
-      const usedRoles = rolesUsedByProcedure(procedure.steps);
+      const usedRoles = rolesUsedByProcedure(procedure.steps).filter(
+        (id) => id === 'circulation_pump'
+      );
       errors.push(...isHydraulicRolesMapCompleteForProcedure(hydraulicRoles, usedRoles));
     }
   }

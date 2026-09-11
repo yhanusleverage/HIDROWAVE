@@ -253,6 +253,8 @@ export interface AppTranslations {
       triggersSub: string;
       steps: string;
       stepsSub: string;
+      stepsSubModal: string;
+      emptyStepsModal: string;
       waterLevel: string;
       waterLevelSub: string;
       circulation: string;
@@ -276,12 +278,33 @@ export interface AppTranslations {
       stepLabel: string;
       hydraulicFunction: string;
       waterCondition: string;
+      waterConditionHint: string;
+      /** Enquanto for este nível (==) */
+      waterOpWhileIs: string;
+      /** Enquanto não for este nível (!=) */
+      waterOpWhileNot: string;
       timeoutMin: string;
+      timeoutHint: string;
+      valveDuring: string;
+      valveOnReach: string;
+      valveOpen: string;
+      valveClosed: string;
+      sensorValveActuationHint: string;
       target: string;
       relay: string;
       atlasMac: string;
       state: string;
       durationSec: string;
+      /** Toggle: usar duración temporizada en set_relay */
+      useDurationToggle: string;
+      useDurationHint: string;
+      actuatorSelect: string;
+      optgroupCoreRelays: string;
+      optgroupDosingPumps: string;
+      optgroupAtlasRelays: string;
+      emptyActuatorLists: string;
+      /** Relé Core sin flowRate: UI en segundos + aviso */
+      uncalibratedPumpHint: string;
       noTimeWindow: string;
       triggerStart: string;
       triggerEnd: string;
@@ -354,6 +377,8 @@ export interface AppTranslations {
       hintUnblockAuto: string;
       blockAutoHelp: string;
       unblockAutoHelp: string;
+      /** Regra antiga com while/if — UI sem puzzle aninhado */
+      legacyNestedBlockHint: string;
       toggleBlockAuto: string;
       toggleBlockAutoHint: string;
       sensorWaterLevel: string;
@@ -390,6 +415,18 @@ export interface AppTranslations {
       valuePlaceholder: string;
       valuePercent: string;
       valueCelsius: string;
+      modeDoseMl: string;
+      modeRelayTimed: string;
+      modeDoseMlHint: string;
+      modeRelayTimedHint: string;
+      doseMlLabel: string;
+      doseMlPreview: string;
+      emptyDosingPumps: string;
+      emptyRelays: string;
+      calibrateDosingHint: string;
+      actionOn: string;
+      actionOff: string;
+      deleteAction: string;
     };
     ruleModal: {
       title: {
@@ -609,6 +646,21 @@ export interface AppTranslations {
         badgeRule: string;
         stateOn: string;
         stateOff: string;
+        actionOn: string;
+        actionOff: string;
+        actionRan: string;
+        collapsedLabel: string;
+        collapsedHint: string;
+        badgeEnabled: string;
+        badgeDisabled: string;
+        configEnabled: string;
+        configDisabled: string;
+        unnamedRule: string;
+        badgeCompleted: string;
+        badgeAborted: string;
+        procedureCompleted: string;
+        procedureAborted: string;
+        procedureTimeout: string;
       };
       delete: {
         title: string;
@@ -627,9 +679,12 @@ export interface AppTranslations {
         relayNameSaveError: string;
         ruleUuidMissing: string;
         ruleUpdateDbFail: string;
+        ruleDisabledRelayHint: string;
         selectDevice: string;
         resyncOk: string;
         resyncFail: string;
+        mqttSyncTipagem: string;
+        mqttSyncFail: string;
         ruleJsonEmpty: string;
         selectDeviceCreate: string;
         nameRequired: string;

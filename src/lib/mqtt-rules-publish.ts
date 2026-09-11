@@ -77,18 +77,29 @@ export function hashRulePayload(rule: Record<string, unknown>): string {
   return createHash('sha256').update(JSON.stringify(rule)).digest('hex').slice(0, 16);
 }
 
-/** Remove campos só-UI / lixo que quebra o DE (conditions:[] sem script). */
+/**
+ * Remove campos só-UI / pesados que o ESP não precisa executar.
+ * procedure_steps / procedure_canonical ficam no Supabase; no Master basta script + fsm.
+ * Reduz envelope MQTT (Full recharge) e evita overflow do doc 16k.
+ */
 function slimRuleJsonForMqtt(ruleJson: unknown): Record<string, unknown> {
   if (!ruleJson || typeof ruleJson !== 'object' || Array.isArray(ruleJson)) {
     return {};
   }
   const src = { ...(ruleJson as Record<string, unknown>) };
   delete src.description_note;
+  delete src.procedure_steps;
+  delete src.procedure_canonical;
 
   const conditions = src.conditions;
   if (Array.isArray(conditions) && conditions.length === 0) {
     delete src.conditions;
   }
+  const actions = src.actions;
+  if (Array.isArray(actions) && actions.length === 0) {
+    delete src.actions;
+  }
+
   // Preferir condition singular; se conditions vazio já removido
   return src;
 }
@@ -119,7 +130,7 @@ export function buildRuleUpsertMqttPayload(
     ruleBody.conditions = ruleJson.conditions;
   }
   if (ruleJson.actions != null) ruleBody.actions = ruleJson.actions;
-  if (ruleJson.script != null) ruleBody.script = ruleJson.script;
+  // Script/fsm só dentro de rule_json (evitar duplicar no envelope → metade da RAM ArduinoJson)
   if (ruleJson.interval_between_executions != null) {
     ruleBody.interval_between_executions = ruleJson.interval_between_executions;
   }

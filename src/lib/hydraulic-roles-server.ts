@@ -22,6 +22,7 @@ import {
   hashRulePayload,
 } from '@/lib/mqtt-rules-publish';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { republishAllDecisionRulesForDevice } from '@/lib/rule-procedure/republish-decision-rules';
 
 export type HydraulicRolesSaveOptions = {
   /** Authorization Bearer JWT — necessário se não houver SUPABASE_SERVICE_ROLE_KEY */
@@ -231,6 +232,13 @@ export async function saveHydraulicRoleForDevice(
   if (!deviceId?.trim()) {
     return { ok: false, error: 'device_id ausente' };
   }
+  // Tipagem P1 na UI: apenas recirculação contínua
+  if (roleId !== 'circulation_pump') {
+    return {
+      ok: false,
+      error: 'Tipagem P1 só para bomba de recirculação contínua',
+    };
+  }
   if (!HYDRAULIC_ROLE_DEFINITIONS.some((d) => d.id === roleId)) {
     return { ok: false, error: `role_id inválido: ${roleId}` };
   }
@@ -291,6 +299,8 @@ export async function saveHydraulicRoleForDevice(
       rulesSb,
       ruleResult.retiredRuleIds ?? []
     );
+    // MAC da recirculação → herança nos procedimentos de tanque
+    await republishAllDecisionRulesForDevice(deviceId.trim(), rulesSb);
   }
 
   return {
@@ -301,7 +311,7 @@ export async function saveHydraulicRoleForDevice(
   };
 }
 
-/** Guarda mapa completo (legado) + sincroniza todas as fn_*. */
+/** Guarda tipagem P1 — só recirculação (legado bulk). */
 export async function saveHydraulicRolesForDevice(
   deviceId: string,
   roles: HydraulicRolesMap,
@@ -311,56 +321,59 @@ export async function saveHydraulicRolesForDevice(
     return { ok: false, error: 'device_id ausente' };
   }
 
-  const validationErrors = validateHydraulicRolesMap(roles);
+  const circOnly: HydraulicRolesMap = roles.circulation_pump
+    ? { circulation_pump: roles.circulation_pump }
+    : {};
+
+  const validationErrors = validateHydraulicRolesMap(circOnly);
   if (validationErrors.length > 0) {
     return { ok: false, error: validationErrors.join('; ') };
   }
 
-  const persisted = await persistRolesMap(deviceId.trim(), roles);
+  const persisted = await persistRolesMap(deviceId.trim(), circOnly);
   if (!persisted.ok) return persisted;
 
-  for (const def of HYDRAULIC_ROLE_DEFINITIONS) {
-    const binding = roles[def.id];
-    if (!binding) continue;
-    await renameRoleRelay(deviceId.trim(), def.id, binding);
+  if (circOnly.circulation_pump) {
+    await renameRoleRelay(deviceId.trim(), 'circulation_pump', circOnly.circulation_pump);
   }
 
   const rulesSb = decisionRulesClient(options?.authorization);
 
-  for (const def of HYDRAULIC_ROLE_DEFINITIONS) {
-    const ruleResult = await upsertFixedFunctionRule(
-      deviceId.trim(),
-      def.id,
-      roles[def.id],
-      {
-        authorization: options?.authorization,
-        supabase: rulesSb ?? undefined,
-      }
-    );
-    if (!ruleResult.ok) {
-      return {
-        ok: false,
-        error: `Tipagem salva, mas regra ${def.id} falhou: ${ruleResult.error}`,
-      };
+  const ruleResult = await upsertFixedFunctionRule(
+    deviceId.trim(),
+    'circulation_pump',
+    circOnly.circulation_pump,
+    {
+      authorization: options?.authorization,
+      supabase: rulesSb ?? undefined,
     }
-    if (rulesSb) {
-      await publishFnRuleMqtt(
-        deviceId.trim(),
-        ruleResult.ruleId,
-        ruleResult.action,
-        rulesSb,
-        ruleResult.retiredRuleIds ?? []
-      );
-    }
+  );
+  if (!ruleResult.ok) {
+    return {
+      ok: false,
+      error: `Tipagem salva, mas regra ${FN_RULE_IDS.circulation_pump} falhou: ${ruleResult.error}`,
+    };
   }
 
-  const circBinding = roles.circulation_pump
+  const circBinding = circOnly.circulation_pump
     ? {
-        slaveMac: roles.circulation_pump.slaveMac,
-        relayIndex: roles.circulation_pump.relayIndex,
+        slaveMac: circOnly.circulation_pump.slaveMac,
+        relayIndex: circOnly.circulation_pump.relayIndex,
       }
     : null;
   await notifyDeviceCircConfig(deviceId.trim(), circBinding);
+
+  if (rulesSb) {
+    await publishFnRuleMqtt(
+      deviceId.trim(),
+      ruleResult.ruleId,
+      ruleResult.action,
+      rulesSb,
+      ruleResult.retiredRuleIds ?? []
+    );
+    // Recirculação tipada → DRENO/fill herdam MAC do slave no rematerialize
+    await republishAllDecisionRulesForDevice(deviceId.trim(), rulesSb);
+  }
 
   return { ok: true };
 }

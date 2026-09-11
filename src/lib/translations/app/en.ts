@@ -237,6 +237,8 @@ export const appEn: AppTranslations = {
       triggersSub: 'Circadian window',
       steps: 'Steps',
       stepsSub: 'Procedural order (by hydraulic role)',
+      stepsSubModal: 'Top-to-bottom order. No block programming.',
+      emptyStepsModal: 'No steps yet. Add sensor valve, relay, wait, or pause Auto EC/pH.',
       waterLevel: 'Water level',
       waterLevelSub: '4 probes · device_status telemetry',
       circulation: 'Circulation pump',
@@ -260,13 +262,34 @@ export const appEn: AppTranslations = {
       step: 'Step {n}',
       stepLabel: 'Label',
       hydraulicFunction: 'Hydraulic role',
-      waterCondition: 'Condition (water level)',
-      timeoutMin: 'Timeout (min)',
+      waterCondition: 'Condition while the relay acts',
+      waterConditionHint:
+        'Drain: “while not” empty. Fill: “while not” high. Relay stays ON under that condition and OFF when it exits.',
+      waterOpWhileIs: 'While it is (=)',
+      waterOpWhileNot: 'While it is not (≠)',
+      timeoutMin: 'Max time (min)',
+      timeoutHint: 'If the condition does not exit in time, the step fails.',
+      valveDuring: 'While the condition is true (relay)',
+      valveOnReach: 'When the condition is no longer true (relay)',
+      valveOpen: 'ON (open / turn on)',
+      valveClosed: 'OFF (close / turn off)',
+      sensorValveActuationHint:
+        'Drain/fill pattern: ON while the condition is true, then OFF. Pick the right relay (e.g. pump = R2).',
       target: 'Target',
       relay: 'Relay',
       atlasMac: 'Atlas MAC',
       state: 'State',
       durationSec: 'Duration (seconds)',
+      useDurationToggle: 'Use duration',
+      useDurationHint: 'Off = stays in that state until another step changes it.',
+      actuatorSelect: 'Relay / pump',
+      optgroupCoreRelays: 'Core',
+      optgroupDosingPumps: 'Dosing pumps (Core)',
+      optgroupAtlasRelays: 'Atlas',
+      emptyActuatorLists:
+        'No calibrated pumps or Atlas on this Core. Calibrate pumps or check paired Atlas devices.',
+      uncalibratedPumpHint:
+        'This pump has no calibrated flow → duration is in seconds. Calibrate under Calibration (EC/pH) to dose in ml.',
       noTimeWindow: 'No time_window trigger configured.',
       triggerStart: 'Start',
       triggerEnd: 'End',
@@ -342,6 +365,8 @@ export const appEn: AppTranslations = {
         'Pauses Auto EC/pH while the script runs. Put this as the first step of the procedure.',
       unblockAutoHelp:
         'Resumes Auto EC/pH. Optional: the Core also releases when the script finishes.',
+      legacyNestedBlockHint:
+        'Legacy If/LOOP block (read-only). Remove it and use FILL/CO/DRAIN tipagem, simple conditions + actions, or the procedure builder.',
       toggleBlockAuto: 'Block Auto EC/pH for this procedure',
       toggleBlockAutoHint:
         'Recommended for drain/fill. Pauses dosing until the script ends.',
@@ -379,6 +404,21 @@ export const appEn: AppTranslations = {
       valuePlaceholder: 'Value',
       valuePercent: 'Value (%)',
       valueCelsius: 'Value (°C)',
+      modeDoseMl: 'Dosing (ml)',
+      modeRelayTimed: 'Relay (seconds)',
+      modeDoseMlHint:
+        'Only Core pumps with calibrated flow. Enter ml — relay time is computed for you.',
+      modeRelayTimedHint:
+        'Core + Atlas: on/off with optional duration in seconds (circulation, valves…).',
+      doseMlLabel: 'Dose (ml)',
+      doseMlPreview: '≈ {sec} s pump time → command {cmd} s',
+      emptyDosingPumps: 'No calibrated pumps',
+      emptyRelays: 'No relays available',
+      calibrateDosingHint:
+        'No pump with flow rate. Calibrate in Calibration (nutrient or pH) to dose by ml.',
+      actionOn: 'Turn on (ON)',
+      actionOff: 'Turn off (OFF)',
+      deleteAction: 'Remove action',
     },
     ruleModal: {
       title: {
@@ -423,10 +463,8 @@ export const appEn: AppTranslations = {
       hint: {
         openProcedureBuilder: 'Prefer guided steps (fill, drain, changeout)?',
         openProcedureBuilderLink: 'Open procedural Rule Builder',
-        scriptOrder:
-          'Execution order on the ESP32. e.g. auto drain = LOOP + Relay.',
-        preferScript:
-          'Use only if the rule has no script steps above. For drain/fill, prefer LOOP + Relay.',
+        scriptOrder: 'Execution order on the ESP32, top to bottom.',
+        preferScript: '',
         chainedEvents: 'When this rule runs, fire other rules:',
         priority: 'Higher = more important. Default 50.',
         cooldown: 'Minimum time between runs of the same rule.',
@@ -594,7 +632,7 @@ export const appEn: AppTranslations = {
       executionHistory: {
         title: 'Execution history',
         subtitle:
-          'Decision Engine rules confirmed by the Core (OK = ACK, Fail = timeout or error).',
+          'Enable/disable, simple acts, and procedure results (e.g. Full recharge). Repeated recirculation confirmations stay as one line.',
         empty: 'No automatic executions recorded yet.',
         selectCore: 'Select a HydroWave Core to view history.',
         refresh: 'Refresh history',
@@ -604,6 +642,21 @@ export const appEn: AppTranslations = {
         badgeRule: 'Rule',
         stateOn: 'ON',
         stateOff: 'OFF',
+        actionOn: 'Turned on',
+        actionOff: 'Turned off',
+        actionRan: 'Ran',
+        collapsedLabel: '×{n}',
+        collapsedHint: '{n} identical confirmations grouped (e.g. continuous recirculation)',
+        badgeEnabled: 'Enabled',
+        badgeDisabled: 'Disabled',
+        configEnabled: 'Rule enabled',
+        configDisabled: 'Rule disabled',
+        unnamedRule: 'Rule',
+        badgeCompleted: 'Completed',
+        badgeAborted: 'Failed',
+        procedureCompleted: 'Procedure completed',
+        procedureAborted: 'Procedure interrupted',
+        procedureTimeout: 'Timed out before reaching level',
       },
       delete: {
         title: '⚠️ Confirm Delete',
@@ -622,9 +675,14 @@ export const appEn: AppTranslations = {
         relayNameSaveError: 'Failed to save relay name',
         ruleUuidMissing: 'Error: rule UUID not found to enable/disable',
         ruleUpdateDbFail: 'Failed to update rule in database',
+        ruleDisabledRelayHint:
+          'Rule disabled. With new firmware script relays turn off; if still ON, turn them off manually on Atlas.',
         selectDevice: 'Select a device',
         resyncOk: 'Rules synced with Core ({n})',
         resyncFail: 'Failed to resync rules',
+        mqttSyncTipagem:
+          'Configure continuous recirculation pump tipagem and activate again.',
+        mqttSyncFail: 'Rule saved, but MQTT failed: {error}',
         ruleJsonEmpty:
           'Error: rule_json cannot be empty. Add conditions/actions or sequential instructions.',
         selectDeviceCreate: 'Error: Select a device before creating the rule.',
@@ -947,7 +1005,7 @@ export const appEn: AppTranslations = {
   calibragem: {
     selectDevice: 'Select a device.',
     assignedOnly:
-      'Assigned pumps only. Tap to open: prime, timed test (measure flow), and ml test.',
+      'All 6 peristaltic pumps (relays 0–5) are calibrated here, even if not yet in Auto EC/pH. Tap to open: prime, timed test, and ml test.',
     procedureTitle: 'Step-by-step procedure',
     procedureHint: '5 steps — tap to expand',
     whenTitle: 'When to recalibrate?',
@@ -991,10 +1049,10 @@ export const appEn: AppTranslations = {
     flow: {
       availablePumps: 'Available pumps',
       emptyAssigned:
-        'No pumps assigned. Add nutrients or pH+ / pH− in Automation.',
+        'Could not load pumps. Check the device and try again.',
       goAutomacao: 'Go to Automation →',
       sectionHint:
-        'Tap to open. Prime, measure and save flow. pH chemical gains are on the Gains map tab.',
+        'You always see the 6 pumps (0–5). Calibrate flow here; then use them in Auto EC, Auto pH, rules, or schedules.',
       loading: 'Loading pumps…',
       noCalib: 'no calib',
       relayN: 'Relay {n}',

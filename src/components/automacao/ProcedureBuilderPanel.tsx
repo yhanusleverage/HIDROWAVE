@@ -199,23 +199,13 @@ export function ProcedureBuilderPanel({
       <div className="space-y-3">
         <SectionHeader title={p.steps} subtitle={p.stepsSub} accent="brand" />
         <div className="flex flex-wrap gap-2">
-          {(
-            [
-              ['circulation_pump', FN_RULE_IDS.circulation_pump],
-              ['fill_valve', FN_RULE_IDS.fill_valve],
-              ['drain_valve', FN_RULE_IDS.drain_valve],
-              ['recharge_pump', FN_RULE_IDS.recharge_pump],
-            ] as const
-          ).map(([roleId, ruleId]) => (
-            <button
-              key={ruleId}
-              type="button"
-              onClick={() => addInvokeMacro(ruleId)}
-              className="text-xs px-2.5 py-1 rounded-lg border border-dark-border bg-dark-surface hover:bg-aqua-500/10 text-dark-text"
-            >
-              + {p.stepInvokeRule}: {FN_RULE_NAME_PT[roleId]}
-            </button>
-          ))}
+          <button
+            type="button"
+            onClick={() => addInvokeMacro(FN_RULE_IDS.circulation_pump)}
+            className="text-xs px-2.5 py-1 rounded-lg border border-dark-border bg-dark-surface hover:bg-aqua-500/10 text-dark-text"
+          >
+            + {p.stepInvokeRule}: {FN_RULE_NAME_PT.circulation_pump}
+          </button>
         </div>
         <div className="grid md:grid-cols-2 gap-3">
           {procedure.steps.map((step, index) => (
@@ -223,7 +213,7 @@ export function ProcedureBuilderPanel({
               key={step.id}
               step={step}
               index={index}
-              useHydraulicRoles
+              useHydraulicRoles={false}
               onChange={(s) => updateStep(index, s)}
             />
           ))}

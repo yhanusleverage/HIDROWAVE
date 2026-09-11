@@ -6,6 +6,7 @@ import { PlusIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { Instruction } from '../SequentialScriptEditor';
 import { ESPNowSlave } from '@/lib/esp-now-slaves';
 import type { MasterRelayOption } from '@/lib/master-relay-options';
+import type { DosingPumpOption } from '@/lib/dosing-pump-options';
 import RelayActionEditor from './RelayActionEditor';
 import ConditionFields from './ConditionFields';
 import { createNestedInstruction } from '@/lib/instruction-factory';
@@ -19,6 +20,7 @@ interface WhileInstructionEditorProps {
   onChange: (updated: Instruction) => void;
   espnowSlaves: ESPNowSlave[];
   masterRelays: MasterRelayOption[];
+  dosingPumps?: DosingPumpOption[];
 }
 
 export default function WhileInstructionEditor({
@@ -26,6 +28,7 @@ export default function WhileInstructionEditor({
   onChange,
   espnowSlaves,
   masterRelays,
+  dosingPumps = [],
 }: WhileInstructionEditorProps) {
   const { t } = useLanguage();
   const instrT = t.automacao.instr;
@@ -130,6 +133,7 @@ export default function WhileInstructionEditor({
                   onChange={(updated) => updateBodyInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
                   masterRelays={masterRelays}
+                  dosingPumps={dosingPumps}
                 />
               )}
 
@@ -258,6 +262,7 @@ export default function WhileInstructionEditor({
                   onChange={(updated) => updateBodyInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
                   masterRelays={masterRelays}
+                  dosingPumps={dosingPumps}
                 />
               )}
 
@@ -267,6 +272,7 @@ export default function WhileInstructionEditor({
                   onChange={(updated) => updateBodyInstruction(idx, updated)}
                   espnowSlaves={espnowSlaves}
                   masterRelays={masterRelays}
+                  dosingPumps={dosingPumps}
                 />
               )}
 

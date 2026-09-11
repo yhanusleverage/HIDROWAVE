@@ -239,6 +239,8 @@ export const appEs: AppTranslations = {
       triggersSub: 'Ventana circadiana',
       steps: 'Pasos',
       stepsSub: 'Orden del procedimiento (por función hidráulica)',
+      stepsSubModal: 'Orden de arriba abajo. Sin programación en bloques.',
+      emptyStepsModal: 'Aún no hay pasos. Añade válvula por sensor, relé, espera o pausa Auto EC/pH.',
       waterLevel: 'Nivel de agua',
       waterLevelSub: '4 sondas · telemetría device_status',
       circulation: 'Bomba de circulación',
@@ -262,13 +264,34 @@ export const appEs: AppTranslations = {
       step: 'Paso {n}',
       stepLabel: 'Etiqueta',
       hydraulicFunction: 'Función hidráulica',
-      waterCondition: 'Condición (nivel de agua)',
-      timeoutMin: 'Timeout (min)',
+      waterCondition: 'Condición mientras el relé actúa',
+      waterConditionHint:
+        'Dreno: “mientras no sea” vacío. Llenar: “mientras no sea” alto. El relé queda ON en esa condición y OFF al salir de ella.',
+      waterOpWhileIs: 'Mientras sea (=)',
+      waterOpWhileNot: 'Mientras no sea (≠)',
+      timeoutMin: 'Tiempo máximo (min)',
+      timeoutHint: 'Si la condición no sale a tiempo, se cancela (falla).',
+      valveDuring: 'Mientras la condición sea verdadera (relé)',
+      valveOnReach: 'Cuando la condición deje de ser verdadera (relé)',
+      valveOpen: 'ON (abrir / encender)',
+      valveClosed: 'OFF (cerrar / apagar)',
+      sensorValveActuationHint:
+        'Patrón dreno/llenar: ON mientras la condición sea verdadera, luego OFF. Relé correcto (ej.: bomba = R2).',
       target: 'Destino',
       relay: 'Relé',
       atlasMac: 'MAC Atlas',
       state: 'Estado',
       durationSec: 'Duración (segundos)',
+      useDurationToggle: 'Usar duración',
+      useDurationHint: 'Apagado = queda en ese estado hasta que otro paso lo cambie.',
+      actuatorSelect: 'Relé / bomba',
+      optgroupCoreRelays: 'Core',
+      optgroupDosingPumps: 'Bombas dosificadoras (Core)',
+      optgroupAtlasRelays: 'Atlas',
+      emptyActuatorLists:
+        'Ninguna bomba calibrada ni Atlas en este Core. Calibra bombas o revisa los Atlas vinculados.',
+      uncalibratedPumpHint:
+        'Esta bomba no tiene caudal calibrado → se usa duración en segundos. Calibra en Calibragem (EC/pH) para dosificar en ml.',
       noTimeWindow: 'Ningún disparo time_window configurado.',
       triggerStart: 'Inicio',
       triggerEnd: 'Fin',
@@ -344,6 +367,8 @@ export const appEs: AppTranslations = {
         'Pausa Auto EC/pH mientras corre el script. Ponlo como primer paso del procedimiento.',
       unblockAutoHelp:
         'Libera Auto EC/pH. Opcional: al terminar el script el Core ya libera solo.',
+      legacyNestedBlockHint:
+        'Bloque Se/LOOP antiguo (solo lectura). Elimínalo y usa tipagem FILL/CO/DRAIN, condiciones + acciones simples, o el constructor de procedimiento.',
       toggleBlockAuto: 'Bloquear Auto EC/pH en este procedimiento',
       toggleBlockAutoHint:
         'Recomendado en drenaje/llenado. Pausa la dosificación hasta que termine el script.',
@@ -381,6 +406,21 @@ export const appEs: AppTranslations = {
       valuePlaceholder: 'Valor',
       valuePercent: 'Valor (%)',
       valueCelsius: 'Valor (°C)',
+      modeDoseMl: 'Dosificación (ml)',
+      modeRelayTimed: 'Relé (segundos)',
+      modeDoseMlHint:
+        'Solo bombas Core con caudal calibrado. Indica ml — el tiempo del relé se calcula solo.',
+      modeRelayTimedHint:
+        'Core + Atlas: encender/apagar con duración opcional en segundos (circulación, válvulas…).',
+      doseMlLabel: 'Dosis (ml)',
+      doseMlPreview: '≈ {sec} s de bomba → comando {cmd} s',
+      emptyDosingPumps: 'Ninguna bomba calibrada',
+      emptyRelays: 'Ningún relé disponible',
+      calibrateDosingHint:
+        'Ninguna bomba con caudal. Calibra en Calibragem (nutriente o pH) para dosar por ml.',
+      actionOn: 'Encender (ON)',
+      actionOff: 'Apagar (OFF)',
+      deleteAction: 'Eliminar acción',
     },
     ruleModal: {
       title: {
@@ -425,10 +465,8 @@ export const appEs: AppTranslations = {
       hint: {
         openProcedureBuilder: '¿Prefieres pasos guiados (llenado, drenaje, changeout)?',
         openProcedureBuilderLink: 'Abrir Rule Builder procedural',
-        scriptOrder:
-          'Orden de ejecución en el ESP32. Ej.: drenaje automático = LOOP + Relé.',
-        preferScript:
-          'Úsalo solo si la regla no tiene pasos de script arriba. Para drenaje/llenado, prefiere LOOP + Relé.',
+        scriptOrder: 'Orden de ejecución en el ESP32, de arriba abajo.',
+        preferScript: '',
         chainedEvents: 'Cuando esta regla se ejecute, disparar otras reglas:',
         priority: 'Valor + más importante. Default 50.',
         cooldown: 'Tiempo mínimo entre ejecuciones de la misma regla.',
@@ -596,7 +634,7 @@ export const appEs: AppTranslations = {
       executionHistory: {
         title: 'Historial de ejecuciones',
         subtitle:
-          'Reglas del Decision Engine confirmadas por el Core (OK = ACK, Fallo = timeout o error).',
+          'Activar/desactivar, actos simples y resultado de procedimientos (p. ej. Full recharge). Las confirmaciones repetidas de recirculación quedan en una línea.',
         empty: 'Todavía no hay ejecuciones automáticas registradas.',
         selectCore: 'Selecciona un HydroWave Core para ver el historial.',
         refresh: 'Actualizar historial',
@@ -606,6 +644,21 @@ export const appEs: AppTranslations = {
         badgeRule: 'Regla',
         stateOn: 'ON',
         stateOff: 'OFF',
+        actionOn: 'Encendió',
+        actionOff: 'Apagó',
+        actionRan: 'Ejecutó',
+        collapsedLabel: '×{n}',
+        collapsedHint: '{n} confirmaciones iguales agrupadas (p. ej. recirculación continua)',
+        badgeEnabled: 'Activó',
+        badgeDisabled: 'Desactivó',
+        configEnabled: 'Regla activada',
+        configDisabled: 'Regla desactivada',
+        unnamedRule: 'Regla',
+        badgeCompleted: 'Concluyó',
+        badgeAborted: 'Falló',
+        procedureCompleted: 'Procedimiento completado',
+        procedureAborted: 'Procedimiento interrumpido',
+        procedureTimeout: 'Tiempo agotado sin alcanzar el nivel',
       },
       delete: {
         title: '⚠️ Confirmar eliminación',
@@ -624,9 +677,14 @@ export const appEs: AppTranslations = {
         relayNameSaveError: 'Error al guardar el nombre del relé',
         ruleUuidMissing: 'Error: UUID de la regla no encontrado para activar/desactivar',
         ruleUpdateDbFail: 'Error al actualizar la regla en la base de datos',
+        ruleDisabledRelayHint:
+          'Regla desactivada. Con firmware nuevo los relés del script se apagan; si quedan ON, apaga manualmente en el Atlas.',
         selectDevice: 'Selecciona un dispositivo',
         resyncOk: 'Reglas sincronizadas con el Core ({n})',
         resyncFail: 'Fallo al resync de reglas',
+        mqttSyncTipagem:
+          'Configura la tipagem de la bomba de recirculación continua y vuelve a activar.',
+        mqttSyncFail: 'Regla guardada, pero MQTT falló: {error}',
         ruleJsonEmpty:
           'Error: rule_json no puede estar vacío. Añade condiciones/acciones o instrucciones secuenciales.',
         selectDeviceCreate: 'Error: Selecciona un dispositivo antes de crear la regla.',
@@ -950,7 +1008,7 @@ export const appEs: AppTranslations = {
   calibragem: {
     selectDevice: 'Selecciona un dispositivo.',
     assignedOnly:
-      'Solo bombas asignadas. Toca para abrir: cebar, prueba por tiempo (medir caudal) y prueba por ml.',
+      'Las 6 bombas peristálticas (relés 0–5) se calibran aquí, aunque aún no estén en Auto EC/pH. Toca para abrir: cebar, prueba por tiempo y prueba por ml.',
     procedureTitle: 'Procedimiento paso a paso',
     procedureHint: '5 pasos — toca para abrir',
     whenTitle: '¿Cuándo recalibrar?',
@@ -994,10 +1052,10 @@ export const appEs: AppTranslations = {
     flow: {
       availablePumps: 'Bombas disponibles',
       emptyAssigned:
-        'Ninguna bomba asignada. Registra nutrientes o pH+ / pH− en Automatización.',
+        'No se pudieron cargar las bombas. Revisa el dispositivo e inténtalo de nuevo.',
       goAutomacao: 'Ir a Automatización →',
       sectionHint:
-        'Toca para abrir. Cebar, medir y guardar el caudal. Las ganancias químicas de pH están en la pestaña Mapa de ganancias.',
+        'Siempre ves las 6 bombas (0–5). Calibra el caudal aquí; luego úsalas en Auto EC, Auto pH, reglas o schedules.',
       loading: 'Cargando bombas…',
       noCalib: 'sin calib',
       relayN: 'Relé {n}',

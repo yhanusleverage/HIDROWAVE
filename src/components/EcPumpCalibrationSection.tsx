@@ -24,6 +24,11 @@ import {
   upsertPumpFlowRate,
   nutrientRelayNumber,
 } from '@/lib/pump-calibration';
+import {
+  isPeristalticDosingRelay,
+  PERISTALTIC_RELAY_MIN,
+  PERISTALTIC_RELAY_MAX,
+} from '@/lib/dosing-pump-registry';
 import { PumpPrimeHoldControl } from '@/components/PumpPrimeHoldControl';
 import { HW_TEXT } from '@/lib/design-tokens';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -555,6 +560,9 @@ export function EcPumpCalibrationSection({
 
   const load = useCallback(async () => {
     setLoading(true);
+    const nameOf = (relay: number, fallback: string) =>
+      relayOptions.find((o) => o.number === relay)?.name || fallback;
+
     try {
       const [ecRes, phRes] = await Promise.all([
         fetch(`/api/ec-controller/config?device_id=${encodeURIComponent(deviceId)}`),
@@ -566,45 +574,60 @@ export function EcPumpCalibrationSection({
       const rows = parseNutrientsJson(config.nutrients);
       const phUp = Number(ph.relay_ph_up);
       const phDown = Number(ph.relay_ph_down);
-      const slots: AvailablePump[] = [];
 
-      const nameOf = (relay: number, fallback: string) =>
-        relayOptions.find((o) => o.number === relay)?.name || fallback;
+      // Solo tras API OK: exactamente 6 slots (0–5), libres incluidos
+      const byRelay = new Map<number, AvailablePump>();
+      for (let relay = PERISTALTIC_RELAY_MIN; relay <= PERISTALTIC_RELAY_MAX; relay++) {
+        byRelay.set(relay, {
+          kind: 'ec',
+          name: nameOf(relay, `Bomba ${relay + 1}`),
+          relay,
+          flowRate: undefined,
+        });
+      }
 
       for (const n of rows) {
-        if (!isAssignedNutrient(n)) continue;
         const relay = nutrientRelayNumber(n);
-        if (relay == null || relay > 7) continue;
-        slots.push({
+        if (relay == null || !isPeristalticDosingRelay(relay)) continue;
+        const flowRate = parseNutrientFlowRate(n);
+        if (!isAssignedNutrient(n) && !(flowRate && flowRate > 0)) continue;
+        byRelay.set(relay, {
           kind: 'ec',
           name: (n.name && String(n.name).trim()) || nameOf(relay, `Bomba ${relay + 1}`),
           relay,
-          flowRate: parseNutrientFlowRate(n),
+          flowRate,
         });
       }
 
-      if (Number.isInteger(phUp) && phUp >= 0 && phUp <= 7) {
-        slots.push({
+      if (Number.isFinite(phUp) && isPeristalticDosingRelay(phUp)) {
+        const r = Math.trunc(phUp);
+        byRelay.set(r, {
           kind: 'ph_up',
-          name: nameOf(phUp, 'pH+ (base)'),
-          relay: phUp,
+          name: nameOf(r, 'pH+ (base)'),
+          relay: r,
           flowRate: Number(ph.flow_rate_ph_up) > 0 ? Number(ph.flow_rate_ph_up) : undefined,
         });
       }
-      if (Number.isInteger(phDown) && phDown >= 0 && phDown <= 7 && phDown !== phUp) {
-        slots.push({
+      if (
+        Number.isFinite(phDown) &&
+        isPeristalticDosingRelay(phDown) &&
+        Math.trunc(phDown) !== Math.trunc(phUp)
+      ) {
+        const r = Math.trunc(phDown);
+        byRelay.set(r, {
           kind: 'ph_down',
-          name: nameOf(phDown, 'pH− (ácido)'),
-          relay: phDown,
+          name: nameOf(r, 'pH− (ácido)'),
+          relay: r,
           flowRate: Number(ph.flow_rate_ph_down) > 0 ? Number(ph.flow_rate_ph_down) : undefined,
         });
       }
 
-      setPumps(slots);
+      setPumps(Array.from(byRelay.values()).sort((a, b) => a.relay - b.relay));
       setGlobalFlowRate(1);
     } catch (e) {
       console.error(e);
       toast.error(flow.toastLoadError);
+      setPumps([]);
     } finally {
       setLoading(false);
     }
@@ -647,7 +670,12 @@ export function EcPumpCalibrationSection({
   return (
     <section className="space-y-2">
       <div className="mb-3">
-        <h2 className="text-lg font-semibold text-cyan-400">{flow.availablePumps}</h2>
+        <h2 className="text-lg font-semibold text-cyan-400">
+          {flow.availablePumps}
+          <span className="ml-2 text-sm font-normal text-dark-textSecondary tabular-nums">
+            ({pumps.length}/6)
+          </span>
+        </h2>
         <p className="text-sm text-dark-textSecondary mt-1">{flow.sectionHint}</p>
       </div>
       {pumps.map((p) => {

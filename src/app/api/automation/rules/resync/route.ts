@@ -3,15 +3,11 @@ import {
   getSupabaseServerClient,
   getSupabaseWriterForDecisionRules,
 } from '@/lib/supabase-server';
-import {
-  notifyDeviceRuleUpsert,
-  notifyDeviceRulesManifest,
-  hashRulePayload,
-} from '@/lib/mqtt-rules-publish';
+import { republishAllDecisionRulesForDevice } from '@/lib/rule-procedure/republish-decision-rules';
 
 /**
- * POST { device_id } — republica todas as decision_rules (upsert retained + manifest).
- * Usar após boot / “Resync regras” na UI.
+ * POST { device_id } — republica decision_rules (MQTT retained + manifest).
+ * Rematerializa tipagem; procedimentos de tanque sem tipagem são ignorados (não empurram R0).
  */
 export async function POST(request: Request) {
   try {
@@ -25,52 +21,17 @@ export async function POST(request: Request) {
       request.headers.get('authorization')
     );
     const sb = writer?.client ?? getSupabaseServerClient();
-    const { data, error } = await sb
-      .from('decision_rules')
-      .select('rule_id, rule_name, rule_description, rule_json, enabled, priority')
-      .eq('device_id', deviceId);
+    const result = await republishAllDecisionRulesForDevice(deviceId, sb);
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 500 });
     }
-
-    const rows = data ?? [];
-    for (const row of rows) {
-      const enabled = Boolean(row.enabled);
-      await notifyDeviceRuleUpsert(
-        deviceId,
-        {
-          rule_id: String(row.rule_id),
-          rule_name: row.rule_name ?? undefined,
-          rule_description: row.rule_description ?? undefined,
-          rule_json: row.rule_json,
-          enabled,
-          priority: row.priority ?? undefined,
-        },
-        enabled ? 'upsert' : 'disable'
-      );
-    }
-
-    await notifyDeviceRulesManifest(
-      deviceId,
-      rows.map((r) => ({
-        rule_id: String(r.rule_id),
-        hash: hashRulePayload({
-          rule_id: r.rule_id,
-          rule_name: r.rule_name,
-          rule_description: r.rule_description,
-          enabled: Boolean(r.enabled),
-          priority: r.priority ?? 50,
-          rule_json: r.rule_json ?? {},
-        }),
-        enabled: Boolean(r.enabled),
-      }))
-    );
 
     return NextResponse.json({
       success: true,
       device_id: deviceId,
-      republished: rows.length,
+      republished: result.republished,
+      skipped_tipagem: result.skippedTipagem,
     });
   } catch (e) {
     console.error('[rules/resync]', e);

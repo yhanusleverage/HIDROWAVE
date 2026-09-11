@@ -20,6 +20,10 @@ interface ConditionFieldsProps {
   condition: ConditionValue;
   onChange: (condition: ConditionValue) => void;
   sensors: Array<{ value: string; label: string }>;
+  /** Limita operadores (ex.: "==" / "!=" em válvula por sensor). */
+  allowedOperators?: string[];
+  /** Labels custom (ex.: “Até chegar” / “Até deixar de ser”). */
+  operatorLabels?: Record<string, string>;
 }
 
 export default function ConditionFields({
@@ -27,18 +31,29 @@ export default function ConditionFields({
   condition,
   onChange,
   sensors,
+  allowedOperators,
+  operatorLabels,
 }: ConditionFieldsProps) {
   const { t } = useLanguage();
   const instrT = t.automacao.instr;
   const levelSensor = isLevelSensor(condition.sensor);
-  const operators = getOperatorsForSensor(condition.sensor, instrT);
+  const allOps = getOperatorsForSensor(condition.sensor, instrT);
+  const operators = (allowedOperators?.length
+    ? allOps.filter((o) => allowedOperators.includes(o.value))
+    : allOps
+  ).map((o) => ({
+    ...o,
+    label: operatorLabels?.[o.value] ?? o.label,
+  }));
   const waterLevels = getWaterLevelOptions(instrT);
 
   const handleSensorChange = (newSensor: string) => {
     const defaults = defaultConditionForSensor(newSensor);
+    const operator =
+      allowedOperators?.length === 1 ? allowedOperators[0] : defaults.operator;
     onChange({
       sensor: newSensor,
-      operator: defaults.operator,
+      operator,
       value: isLevelSensor(newSensor) ? defaults.value : 0,
     });
   };

@@ -17,8 +17,9 @@ const STEP_ACCENT: Record<ProcedureStep['type'], HwAccent> = {
 function formatActuator(step: ProcedureStep): string | null {
   if (step.type === 'sensor_valve' || step.type === 'set_relay') {
     const a = step.actuator;
-    const who = a.target === 'master' ? 'Master' : `Slave ${a.slaveMac ?? ''}`;
-    return `${who} R${a.relayIndex}${a.label ? ` (${a.label})` : ''}`;
+    if (a.label) return a.label;
+    const who = a.target === 'master' ? 'Core' : 'Atlas';
+    return `${who} · Relé ${a.relayIndex}`;
   }
   return null;
 }

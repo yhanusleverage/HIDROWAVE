@@ -1,5 +1,8 @@
 /**
  * Histórico de execuções DE — filas relay_commands com created_by decision_engine_local#*
+ *
+ * UX: colapsa keepalive (mesma regra + relé + estado) — recirculação contínua
+ * não deve gerar uma linha por minuto.
  */
 
 import { supabase } from '@/lib/supabase';
@@ -23,6 +26,14 @@ export type RuleExecutionRow = {
   error_message: string | null;
 };
 
+/** Linha para UI após colapsar ticks iguais. */
+export type RuleExecutionDisplayRow = RuleExecutionRow & {
+  /** Quantas confirmações iguais foram fundidas (inclui esta). Só interno. */
+  collapsedCount: number;
+  /** Início do tramo (primeiro Ligou/Desligou), não o último keepalive. */
+  startedAt: string;
+};
+
 export function ruleIdFromCreatedBy(createdBy: string | null | undefined): string | null {
   if (!createdBy?.startsWith(DE_CREATED_BY_PREFIX)) return null;
   const id = createdBy.slice(DE_CREATED_BY_PREFIX.length).trim();
@@ -35,7 +46,61 @@ export function displayNameForExecution(
 ): string {
   const ruleId = ruleIdFromCreatedBy(row.created_by);
   if (!ruleId) return row.created_by ?? '—';
-  return resolveDecisionRuleDisplayName({ rule_id: ruleId, rule_name: ruleId }, t);
+  const name = resolveDecisionRuleDisplayName(
+    { rule_id: ruleId, rule_name: ruleId },
+    t
+  );
+  // Evita mostrar RULE_<timestamp> cru na UI
+  if (/^RULE_\d+$/i.test(name)) {
+    return t.automacao.page.executionHistory.unnamedRule;
+  }
+  return name;
+}
+
+function rowWhen(row: RuleExecutionRow): string {
+  return row.completed_at ?? row.created_at ?? '';
+}
+
+function stateKey(row: RuleExecutionRow): string {
+  const ruleId = ruleIdFromCreatedBy(row.created_by) ?? row.created_by ?? '';
+  const action = (row.action ?? '').toLowerCase();
+  const state =
+    row.current_state === true ? '1' : row.current_state === false ? '0' : 'x';
+  const ok = row.status === 'completed' ? 'ok' : row.status === 'failed' ? 'fail' : row.status;
+  return `${ruleId}|${row.relay_number}|${action}|${state}|${ok}|${row.target_device_id ?? ''}`;
+}
+
+/**
+ * Entrada newest-first: funde sequências iguais (keepalive ON).
+ * Timestamp da UI = início do tramo (tick mais antigo), para não “subir” a cada minuto.
+ */
+export function collapseKeepaliveExecutions(
+  rows: RuleExecutionRow[]
+): RuleExecutionDisplayRow[] {
+  if (rows.length === 0) return [];
+  const out: RuleExecutionDisplayRow[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    const newest = rows[i];
+    const key = stateKey(newest);
+    let count = 1;
+    let j = i + 1;
+    while (j < rows.length && stateKey(rows[j]) === key) {
+      count += 1;
+      j += 1;
+    }
+    const oldest = rows[j - 1];
+    const startedAt = rowWhen(oldest) || rowWhen(newest);
+    out.push({
+      ...newest,
+      completed_at: oldest.completed_at ?? newest.completed_at,
+      created_at: oldest.created_at ?? newest.created_at,
+      collapsedCount: count,
+      startedAt,
+    });
+    i = j;
+  }
+  return out;
 }
 
 export async function fetchRuleExecutions(
@@ -46,6 +111,8 @@ export async function fetchRuleExecutions(
     return { rows: [], error: null };
   }
 
+  const fetchLimit = Math.min(Math.max(limit * 5, 40), 100);
+
   const { data, error } = await supabase
     .from('relay_commands')
     .select(
@@ -54,7 +121,7 @@ export async function fetchRuleExecutions(
     .eq('device_id', deviceId)
     .like('created_by', `${DE_CREATED_BY_PREFIX}%`)
     .order('id', { ascending: false })
-    .limit(limit);
+    .limit(fetchLimit);
 
   if (error) {
     return { rows: [], error: error.message };

@@ -89,7 +89,7 @@ export function HwModal({
     >
       <button
         type="button"
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 z-0 bg-black/60 backdrop-blur-sm"
         aria-label="Fechar modal"
         onClick={onClose}
       />
@@ -99,6 +99,8 @@ export function HwModal({
         aria-modal="true"
         aria-labelledby={titleId}
         className={`relative z-10 w-full ${SIZE_CLASSES[size]} max-h-[90vh] flex flex-col rounded-xl border border-dark-border bg-dark-card shadow-2xl`}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-dark-border px-5 py-4">
           <h2 id={titleId} className="text-lg font-semibold text-dark-text">

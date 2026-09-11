@@ -150,6 +150,22 @@ export function collectSlaveRelaysFromRule(
     if (hit) add(hit.mac, hit.relay);
   });
 
+  // procedure_steps (builder) — candado aunque script viejo esté desfasado
+  const procSteps = rule.rule_json?.procedure_steps;
+  if (Array.isArray(procSteps)) {
+    for (const raw of procSteps) {
+      if (!raw || typeof raw !== 'object') continue;
+      const step = raw as Record<string, unknown>;
+      const actuator = step.actuator as Record<string, unknown> | undefined;
+      if (!actuator || typeof actuator !== 'object') continue;
+      const mac = sanitizeSlaveMac(
+        String(actuator.slaveMac || actuator.slave_mac || '')
+      );
+      const relay = Number(actuator.relayIndex ?? actuator.relay_index ?? NaN);
+      if (mac && Number.isFinite(relay)) add(mac, relay);
+    }
+  }
+
   // Macros fn_*: se actions vazias / só tipagem, trava via hydraulic_roles
   if (out.length === 0 && rule.rule_id) {
     const roleId = roleIdFromFnRuleId(rule.rule_id);

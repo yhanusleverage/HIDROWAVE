@@ -15,6 +15,9 @@
 | 05 | [Definition of Done](05_DEFINITION_OF_DONE.md) | `dod-capas` | Por capa |
 | 06 | [Top 5 cambios estructurales](06_CAMBIOS_ESTRUCTURALES_TOP5.md) | entregable | Priorizado |
 | — | [Ecuaciones Auto EC / pH](EQUACOES_AUTO_EC_PH.md) | lazo | Canónico 25/08/2026 |
+| — | [Registro bombas dosadoras](DOSING_PUMP_REGISTRY_MODEL.md) | calibragem | Fase 0 modelado (sin breaking) |
+| — | [Simple vs Full recharge / historial](PROCEDURE_SIMPLE_VS_FULL_RECHARGE.md) | historial | Contrato Complete/Aborted |
+| — | [Procedure FSM v2 cutover](PROCEDURE_FSM_V2.md) | procedure-fsm | Fase 0 modelado (Armed/Start/chain) |
 | — | [HMI ↔ Web paridad F0](../handoffs/HMI_WEB_PARITY_F0.md) | `hmi-web-parity` | Congelado 12/08/2026 |
 
 Plantilla de medición: [`p-baseline-log.csv`](p-baseline-log.csv)

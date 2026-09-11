@@ -1,20 +1,23 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon, Cog6ToothIcon, PaperClipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import {
+  XMarkIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ArrowDownIcon,
+  PlusIcon,
+  Cog6ToothIcon,
+  PaperClipIcon,
+  ArrowPathIcon,
+} from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import {
-  formatInstructionType,
   getConditionSensors,
   isLevelSensor,
   normalizeCondition,
 } from '@/lib/instruction-labels';
 import NavLink from '@/components/NavLink';
-import { InstructionAddButtons } from './instruction-editors/InstructionAddButtons';
-import { BlockAutoProcedureToggle } from './instruction-editors/BlockAutoProcedureToggle';
-import WhileInstructionEditor from './instruction-editors/WhileInstructionEditor';
-import IfInstructionEditor from './instruction-editors/IfInstructionEditor';
-import RelayActionEditor from './instruction-editors/RelayActionEditor';
 import { Instruction } from './SequentialScriptEditor';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,22 +27,29 @@ import { HwModal } from '@/components/ui/HwModal';
 import { HwButton } from '@/components/ui/HwButton';
 import { DEFAULT_MASTER_RELAYS, type MasterRelayOption } from '@/lib/master-relay-options';
 import ConditionFields from './instruction-editors/ConditionFields';
-import { createNestedInstruction, ensureInstructionIds } from '@/lib/instruction-factory';
+import { ensureInstructionIds } from '@/lib/instruction-factory';
 import { isFixedFunctionMacroRule } from '@/lib/decision-rule-display-name';
 import { resolveDecisionRuleDisplayName } from '@/lib/decision-rule-display-name';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { hwToast } from '@/lib/control-toast';
+import { buildActuatorRelayOptions } from '@/lib/actuator-relay-options';
+import { fetchDosingPumpOptions, type DosingPumpOption } from '@/lib/dosing-pump-options';
+import { ActuatorRelaySelect } from '@/components/rule-procedure/ActuatorRelaySelect';
+import { RuleModalProcedureBuilder } from '@/components/rule-procedure/RuleModalProcedureBuilder';
+import { compileProcedureToPayload } from '@/lib/rule-procedure/compile-procedure';
+import { repairProcedureSteps } from '@/lib/rule-procedure/repair-sensor-valve';
+import { validateProcedure } from '@/lib/rule-procedure/validate-procedure';
+import type { ProcedureStep } from '@/lib/rule-procedure/types';
 
 /** Flecha vertical entre bloques del flujo procedural (Condiciones → Ações → …). */
 function ProceduralFlowArrow({ label }: { label: string }) {
   return (
     <div
-      className="flex flex-col items-center gap-0.5 py-1 select-none"
+      className="flex flex-col items-center gap-1 py-2 select-none"
       aria-hidden="true"
     >
-      <div className="h-3 w-px bg-gradient-to-b from-transparent via-aqua-500/50 to-aqua-400/80" />
-      <ArrowDownIcon className="w-6 h-6 text-aqua-400" />
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-aqua-400/90">
+      <div className="h-5 w-0.5 bg-gradient-to-b from-transparent via-aqua-500/50 to-aqua-400/80" />
+      <ArrowDownIcon className="w-10 h-10 sm:w-12 sm:h-12 text-aqua-400" strokeWidth={2.25} />
+      <span className="text-xs sm:text-sm font-semibold uppercase tracking-wide text-aqua-400">
         {label}
       </span>
     </div>
@@ -64,6 +74,9 @@ interface Action {
   relayId: number;
   relayName: string;
   action: 'on' | 'off';
+  duration?: number;
+  target?: 'master' | 'slave';
+  slaveMac?: string;
 }
 
 interface ChainedEvent {
@@ -177,11 +190,6 @@ export default function CreateRuleModal({
   const ac = t.automacao.common;
   const rm = t.automacao.ruleModal;
   const instrT = t.automacao.instr;
-  const relayLabel = (relay: { id: number; name?: string }, slave?: { name?: string; device_id?: string }) => {
-    const name = relay.name || ac.relayFallback.replace('{id}', String(relay.id));
-    if (!slave) return name;
-    return `${slave.name || slave.device_id || 'HydroWave Atlas'}: ${relay.id} - ${name}`;
-  };
   const masterRelays = useMemo<MasterRelayOption[]>(() => {
     const fromRelays = relays
       .filter((r) => r.device !== 'slave')
@@ -209,13 +217,21 @@ export default function CreateRuleModal({
   const [maxExecutionsPerHour, setMaxExecutionsPerHour] = useState(10);
   // ✅ Funcionalidades de Nova Função (Sequential Script) - COMPLETO
   const [instructions, setInstructions] = useState<Instruction[]>([]);
+  const [procedureSteps, setProcedureSteps] = useState<ProcedureStep[]>([]);
   const [loopInterval, setLoopInterval] = useState(5000);
   const [maxIterations, setMaxIterations] = useState(0);
   const [espnowSlaves, setEspnowSlaves] = useState<ESPNowSlave[]>([]);
+  const [dosingPumps, setDosingPumps] = useState<DosingPumpOption[]>([]);
   const [chainedEventsSequential, setChainedEventsSequential] = useState<ChainedEventSequential[]>([]);
   const [expandedChainedEventsSequential, setExpandedChainedEventsSequential] = useState(false);
   const modalInitKeyRef = useRef<string | null>(null);
   const prevOpenRef = useRef(false);
+  const procedureStepsDirtyRef = useRef(false);
+
+  const unifiedRelayOptions = useMemo(
+    () => buildActuatorRelayOptions(masterRelays, espnowSlaves),
+    [masterRelays, espnowSlaves]
+  );
   const [availableRules, setAvailableRules] = useState<Array<{ rule_id: string; rule_name: string }>>([]);
   const [loadingAvailableRules, setLoadingAvailableRules] = useState(false);
 
@@ -257,19 +273,7 @@ export default function CreateRuleModal({
   };
 
   const addAction = () => {
-    // ✅ Verificar se há relay slaves disponíveis
-    const relayOptions: Array<{ value: string; label: string; slaveMac: string; relayId: number }> = [];
-    
-    espnowSlaves.forEach((slave) => {
-      slave.relays.forEach((relay) => {
-        relayOptions.push({
-          value: `slave_${slave.macAddress}_${relay.id}`,
-          label: relayLabel(relay, slave),
-          slaveMac: slave.macAddress,
-          relayId: relay.id,
-        });
-      });
-    });
+    const relayOptions = unifiedRelayOptions;
 
     if (relayOptions.length === 0) {
       toast.error(rm.toast.noAtlasRelays);
@@ -279,7 +283,14 @@ export default function CreateRuleModal({
     const firstOption = relayOptions[0];
     setActions([
       ...actions,
-      { relayId: firstOption.relayId, relayName: firstOption.label, action: 'on' },
+      {
+        relayId: firstOption.relayId,
+        relayName: firstOption.label,
+        action: 'on',
+        duration: 60,
+        target: firstOption.kind,
+        slaveMac: firstOption.slaveMac,
+      },
     ]);
   };
 
@@ -317,20 +328,6 @@ export default function CreateRuleModal({
     setChainedEvents(updated);
   };
 
-  // ✅ Funções auxiliares para conversão de tempo
-  const msToTime = (ms: number): string => {
-    const totalSeconds = Math.floor(ms / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  };
-
-  const timeToMs = (time: string): number => {
-    const [hours, minutes, seconds] = time.split(':').map(Number);
-    return (hours * 3600 + minutes * 60 + seconds) * 1000;
-  };
-
   // Carregar / resetar formulário só ao abrir o modal ou trocar de regra (evita apagar edição em re-renders)
   useEffect(() => {
     const wasOpen = prevOpenRef.current;
@@ -338,6 +335,7 @@ export default function CreateRuleModal({
 
     if (!isOpen) {
       modalInitKeyRef.current = null;
+      procedureStepsDirtyRef.current = false;
       return;
     }
 
@@ -354,6 +352,7 @@ export default function CreateRuleModal({
     }
 
     modalInitKeyRef.current = initKey;
+    procedureStepsDirtyRef.current = false;
 
     setExpandedConditions(true);
     setExpandedActions(true);
@@ -368,18 +367,28 @@ export default function CreateRuleModal({
       setPriority(typeof editingRule.priority === 'number' ? editingRule.priority : 50);
       setEnabled(editingRule.enabled !== undefined ? editingRule.enabled : true);
       
-      // Carregar rule_json se existir (Sequential Script)
+      // Carregar rule_json se existir (Sequential Script / procedure builder)
       if (editingRule.rule_json) {
-        const ruleJson = editingRule.rule_json;
-        
-        // Carregar instruções sequenciais
+        const ruleJson = editingRule.rule_json as {
+          script?: {
+            instructions?: Instruction[];
+            max_iterations?: number;
+            chained_events?: ChainedEventSequential[];
+          };
+          procedure_steps?: ProcedureStep[];
+        };
+
+        const savedSteps = Array.isArray(ruleJson.procedure_steps)
+          ? ruleJson.procedure_steps
+          : [];
+        setProcedureSteps(repairProcedureSteps(savedSteps));
+
         if (ruleJson.script?.instructions && Array.isArray(ruleJson.script.instructions)) {
           setInstructions(ensureInstructionIds(ruleJson.script.instructions as Instruction[]));
         } else {
           setInstructions([]);
         }
-        
-        // Carregar configurações de loop
+
         if (typeof ruleJson.script?.max_iterations === 'number') {
           setMaxIterations(ruleJson.script.max_iterations);
         }
@@ -387,6 +396,9 @@ export default function CreateRuleModal({
         if (ruleJson.script?.chained_events && Array.isArray(ruleJson.script.chained_events)) {
           setChainedEventsSequential(ruleJson.script.chained_events as ChainedEventSequential[]);
         }
+      } else {
+        setProcedureSteps([]);
+        setInstructions([]);
       }
       
       // Carregar condições e ações tradicionais (se não for Sequential Script)
@@ -433,6 +445,7 @@ export default function CreateRuleModal({
     setActions([]);
     setChainedEvents([]);
     setInstructions([]);
+    setProcedureSteps([]);
     setLoopInterval(5000);
     setMaxIterations(0);
     setChainedEventsSequential([]);
@@ -499,42 +512,19 @@ export default function CreateRuleModal({
     }
   };
 
-  const addInstruction = (type: Instruction['type']) => {
-    const newInstr = createNestedInstruction(type);
-    if (type === 'relay_action') {
-      newInstr.relay_number = 5;
+  useEffect(() => {
+    if (!isOpen || !deviceId || deviceId === 'default_device') {
+      setDosingPumps([]);
+      return;
     }
-    setInstructions((prev) => {
-      if (type === 'block_auto') {
-        const without = prev.filter((i) => i.type !== 'block_auto');
-        return [newInstr, ...without];
-      }
-      return [...prev, newInstr];
+    let cancelled = false;
+    void fetchDosingPumpOptions(deviceId).then((pumps) => {
+      if (!cancelled) setDosingPumps(pumps);
     });
-  };
-
-  const removeInstruction = (index: number) => {
-    setInstructions((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const moveInstruction = (index: number, direction: 'up' | 'down') => {
-    setInstructions((prev) => {
-      const newInstrs = [...prev];
-      const targetIndex = direction === 'up' ? index - 1 : index + 1;
-      if (targetIndex >= 0 && targetIndex < newInstrs.length) {
-        [newInstrs[index], newInstrs[targetIndex]] = [newInstrs[targetIndex], newInstrs[index]];
-      }
-      return newInstrs;
-    });
-  };
-
-  const updateInstruction = (index: number, updated: Instruction) => {
-    setInstructions((prev) => {
-      const newInstrs = [...prev];
-      newInstrs[index] = updated;
-      return newInstrs;
-    });
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, deviceId]);
 
   const handleSave = async () => {
     if (!ruleName.trim()) {
@@ -549,20 +539,71 @@ export default function CreateRuleModal({
         rule_json: editingRule.rule_json,
       });
 
-    // Macros da tipagem já têm condition/actions no rule_json (formato DE) — não exigir UI de condições.
+    let compiledInstructions: Instruction[] = instructions;
+    let procedureMeta: {
+      procedure_steps?: ProcedureStep[];
+      procedure_ref?: { id: string; layer: string };
+      execution_class?: 'simple' | 'procedure';
+      procedure_kind?: string;
+    } = {};
+
+    if (procedureSteps.length > 0) {
+      try {
+        const repaired = repairProcedureSteps(procedureSteps);
+        const validation = validateProcedure({
+          id: 'tmp',
+          name: ruleName,
+          priority,
+          layer: 'general',
+          enabled,
+          triggers: [{ type: 'manual' }],
+          steps: repaired,
+        });
+        if (!validation.valid) {
+          toast.error(validation.errors[0] || t.automacao.procedures.invalidProcedure);
+          return;
+        }
+        const procId =
+          (typeof editingRule?.rule_id === 'string' && editingRule.rule_id) ||
+          `RULE_${Date.now()}`;
+        const payload = compileProcedureToPayload({
+          id: procId,
+          name: ruleName,
+          description: description || ruleName,
+          priority,
+          layer: 'general',
+          enabled,
+          triggers: [{ type: 'manual' }],
+          steps: repaired,
+        });
+        compiledInstructions = payload.rule_json.script.instructions as Instruction[];
+        procedureMeta = {
+          procedure_steps: payload.rule_json.procedure_steps ?? repaired,
+          procedure_ref: payload.rule_json.procedure_ref,
+          execution_class: payload.rule_json.execution_class,
+          procedure_kind: payload.rule_json.procedure_kind,
+        };
+        setProcedureSteps(repaired);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : t.automacao.procedures.invalidProcedure);
+        return;
+      }
+    }
+
+    const hasCompiledScript = compiledInstructions.length > 0;
+
     if (!isTypedMacro) {
-      if (instructions.length === 0 && conditions.length === 0) {
+      if (!hasCompiledScript && conditions.length === 0) {
         toast.error(rm.error.needConditionOrInstr);
         return;
       }
-      if (instructions.length === 0 && actions.length === 0) {
+      if (!hasCompiledScript && actions.length === 0) {
         toast.error(rm.error.needActionOrInstr);
         return;
       }
     }
 
     const rule = {
-      // ✅ Incluir ID da regra se estiver editando
       ...(editingRule && {
         id: editingRule.id,
         supabase_id: editingRule.supabase_id,
@@ -570,38 +611,45 @@ export default function CreateRuleModal({
       }),
       name: ruleName,
       description: description || ruleName,
-      // ✅ Converter conditions para RuleCondition[] (value debe ser number)
-      conditions: instructions.length > 0 ? [] : conditions.map((c) => {
-        const norm = normalizeCondition(c);
-        return {
-          sensor: norm.sensor,
-          operator: norm.operator,
-          value: norm.value,
-          logic: c.logic,
-        };
-      }),
-      // ✅ Converter actions para el formato esperado
-      actions: instructions.length > 0 ? [] : actions.map(a => ({
-        relayId: a.relayId,
-        relayName: a.relayName,
-        action: a.action,
-        duration: a.action === 'on' ? 60 : 0, // Default duration
-      })),
-      chainedEvents: chainedEventsSequential.length > 0 ? chainedEventsSequential : chainedEvents, // Usar formato sequencial se houver
+      conditions: hasCompiledScript
+        ? []
+        : conditions.map((c) => {
+            const norm = normalizeCondition(c);
+            return {
+              sensor: norm.sensor,
+              operator: norm.operator,
+              value: norm.value,
+              logic: c.logic,
+            };
+          }),
+      actions: hasCompiledScript
+        ? []
+        : actions.map((a) => ({
+            relayId: a.relayId,
+            relayName: a.relayName,
+            action: a.action,
+            duration: a.duration ?? (a.action === 'on' ? 60 : 0),
+            target_device_id: a.target === 'slave' ? undefined : undefined,
+            slave_mac_address: a.target === 'slave' ? a.slaveMac : undefined,
+          })),
+      chainedEvents:
+        chainedEventsSequential.length > 0 ? chainedEventsSequential : chainedEvents,
       enabled,
       priority,
       cooldown,
       maxExecutionsPerHour,
-      // ✅ Funcionalidades de Nova Função
-      script: instructions.length > 0 ? {
-        instructions,
-        loop_interval_ms: loopInterval,
-        max_iterations: maxIterations,
-        chained_events: chainedEventsSequential.length > 0 ? chainedEventsSequential : undefined,
-        cooldown,
-        max_executions_per_hour: maxExecutionsPerHour,
-      } : undefined,
-      // Preservar JSON tipado (condition singular + relay_on) ao ativar/editar no Motor
+      script: hasCompiledScript
+        ? {
+            instructions: compiledInstructions,
+            loop_interval_ms: loopInterval,
+            max_iterations: maxIterations,
+            chained_events:
+              chainedEventsSequential.length > 0 ? chainedEventsSequential : undefined,
+            cooldown,
+            max_executions_per_hour: maxExecutionsPerHour,
+          }
+        : undefined,
+      ...procedureMeta,
       ...(isTypedMacro && editingRule?.rule_json
         ? { preserve_rule_json: true as const, rule_json: editingRule.rule_json }
         : {}),
@@ -610,7 +658,6 @@ export default function CreateRuleModal({
     const ok = await Promise.resolve(onSave(rule));
     if (ok === false) return;
 
-    // Toast de sucesso vem do parent (após DB); aqui só fecha se salvou
     setRuleName('');
     setDescription('');
     setPriority(50);
@@ -621,6 +668,7 @@ export default function CreateRuleModal({
     setCooldown(60);
     setMaxExecutionsPerHour(10);
     setInstructions([]);
+    setProcedureSteps([]);
     setLoopInterval(5000);
     setMaxIterations(0);
     setChainedEventsSequential([]);
@@ -766,265 +814,24 @@ export default function CreateRuleModal({
 
           <ProceduralFlowArrow label={rm.flow.arrowActions} />
 
-          {/* Passos do script — sempre visível (não esconder em Ações) */}
+          {/* Builder de procedimento */}
           <div className="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
             <div className="p-4 border-b border-dark-border">
-              <h3 className="text-lg font-semibold text-dark-text">{rm.section.scriptSteps}</h3>
+              <h3 className="text-lg font-semibold text-dark-text">{t.automacao.procedures.steps}</h3>
               <p className="text-xs text-dark-textSecondary mt-1">
-                {rm.hint.scriptOrder}
+                {t.automacao.procedures.stepsSubModal}
               </p>
             </div>
-            <div className="p-4 space-y-4">
-              <BlockAutoProcedureToggle
-                instructions={instructions}
-                onChange={setInstructions}
+            <div className="p-4 relative z-20">
+              <RuleModalProcedureBuilder
+                steps={procedureSteps}
+                actuatorOptions={unifiedRelayOptions}
+                dosingPumps={dosingPumps}
+                onChange={(next) => {
+                  procedureStepsDirtyRef.current = true;
+                  setProcedureSteps(next);
+                }}
               />
-              <InstructionAddButtons onAdd={addInstruction} />
-
-              <div className="space-y-3">
-                {instructions.map((instr, index) => (
-                <div
-                  key={instr.id ?? index}
-                  className={`border rounded-lg p-3 ${
-                    instr.type === 'block_auto'
-                      ? 'border-amber-500/30 bg-amber-500/5'
-                      : 'border-dark-border bg-dark-surface/50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-mono text-sm font-semibold text-aqua-400">
-                      {index + 1}. {formatInstructionType(instr.type, instrT)}
-                    </span>
-                    <div className="flex gap-1">
-                      {instr.type !== 'block_auto' && (
-                        <>
-                      <button
-                        onClick={() => moveInstruction(index, 'up')}
-                        disabled={index === 0 || instructions[index - 1]?.type === 'block_auto'}
-                        className="p-1 hover:bg-dark-surface rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={ac.moveUp}
-                      >
-                        <ArrowUpIcon className="w-4 h-4 text-dark-textSecondary" />
-                      </button>
-                      <button
-                        onClick={() => moveInstruction(index, 'down')}
-                        disabled={index === instructions.length - 1}
-                        className="p-1 hover:bg-dark-surface rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={ac.moveDown}
-                      >
-                        <ArrowDownIcon className="w-4 h-4 text-dark-textSecondary" />
-                      </button>
-                        </>
-                      )}
-                      <button
-                        onClick={() => removeInstruction(index)}
-                        className="p-1 hover:bg-dark-surface rounded"
-                        title={ac.remove}
-                      >
-                        <XMarkIcon className="w-4 h-4 text-red-400" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Renderizar editor específico */}
-                  {instr.type === 'while' && (
-                    <WhileInstructionEditor
-                      instruction={instr}
-                      onChange={(updated) => updateInstruction(index, updated)}
-                      espnowSlaves={espnowSlaves}
-                      masterRelays={masterRelays}
-                    />
-                  )}
-
-                  {instr.type === 'if' && (
-                    <IfInstructionEditor
-                      instruction={instr}
-                      onChange={(updated) => updateInstruction(index, updated)}
-                      espnowSlaves={espnowSlaves}
-                      masterRelays={masterRelays}
-                    />
-                  )}
-
-                  {instr.type === 'relay_action' && (
-                    <RelayActionEditor
-                      instruction={instr}
-                      onChange={(updated) => updateInstruction(index, updated)}
-                      espnowSlaves={espnowSlaves}
-                      masterRelays={masterRelays}
-                    />
-                  )}
-
-                  {instr.type === 'switch' && (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-xs text-dark-textSecondary mb-2">{instrT.switchLabel}</label>
-                        
-                        {/* Seleção de Modo: Ciclo ou Timer */}
-                        <div className="mb-3">
-                          <label className="block text-xs text-dark-textSecondary mb-1">{instrT.switchMode}</label>
-                          <select
-                            value={instr.switch_mode || 'timer'}
-                            onChange={(e) => {
-                              const updated = { ...instr, switch_mode: e.target.value as 'cycle' | 'timer' };
-                              if (e.target.value === 'cycle') {
-                                updated.cycle_on_ms = updated.cycle_on_ms || 5000;
-                                updated.cycle_off_ms = updated.cycle_off_ms || 5000;
-                                updated.cycle_count = updated.cycle_count || 1;
-                              } else {
-                                updated.duration_ms = updated.duration_ms || 1000;
-                              }
-                              updateInstruction(index, updated);
-                            }}
-                            className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
-                          >
-                            <option value="timer">{instrT.modeTimer}</option>
-                            <option value="cycle">{instrT.modeCycle}</option>
-                          </select>
-                        </div>
-
-                        {/* Configuração de Timer */}
-                        {instr.switch_mode === 'timer' && (
-                          <div>
-                            <label className="block text-xs text-dark-textSecondary mb-1">{instrT.durationMs}</label>
-                            <input
-                              type="number"
-                              min="0"
-                              value={instr.duration_ms || 1000}
-                              onChange={(e) => {
-                                updateInstruction(index, {
-                                  ...instr,
-                                  duration_ms: parseInt(e.target.value) || 1000,
-                                });
-                              }}
-                              className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
-                              placeholder="1000"
-                            />
-                            <p className="text-xs text-dark-textSecondary/80 mt-1">{instrT.switchDurationHint}</p>
-                          </div>
-                        )}
-
-                        {/* Configuração de Ciclo - Compacto */}
-                        {instr.switch_mode === 'cycle' && (
-                          <div className="space-y-2">
-                            <div className="grid grid-cols-3 gap-2 items-end">
-                              <div>
-                                <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cycleOn}</label>
-                                <input
-                                  type="text"
-                                  value={instr.cycle_on_time || msToTime(instr.cycle_on_ms || 5000)}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    // Permitir edición libre, pero convertir cuando tenga formato válido
-                                    if (/^\d{2}:\d{2}:\d{2}$/.test(value)) {
-                                      const ms = timeToMs(value);
-                                      updateInstruction(index, {
-                                        ...instr,
-                                        cycle_on_ms: ms,
-                                        cycle_on_time: value,
-                                      });
-                                    } else {
-                                      // Guardar el valor temporal mientras el usuario escribe
-                                      updateInstruction(index, {
-                                        ...instr,
-                                        cycle_on_time: value,
-                                      });
-                                    }
-                                  }}
-                                  onBlur={(e) => {
-                                    // Al perder el foco, si no es válido, restaurar el valor por defecto
-                                    const value = e.target.value;
-                                    if (!/^\d{2}:\d{2}:\d{2}$/.test(value)) {
-                                      const defaultTime = msToTime(instr.cycle_on_ms || 5000);
-                                      updateInstruction(index, {
-                                        ...instr,
-                                        cycle_on_time: defaultTime,
-                                      });
-                                    }
-                                  }}
-                                  placeholder="00:00:05"
-                                  className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500 font-mono text-center"
-                                />
-                              </div>
-                              <div className="flex items-center justify-center pb-1">
-                                <ArrowPathIcon className="w-8 h-8 text-aqua-400 animate-spin-slow" />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cycleOff}</label>
-                                <input
-                                  type="text"
-                                  value={instr.cycle_off_time || msToTime(instr.cycle_off_ms || 5000)}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    // Permitir edición libre, pero convertir cuando tenga formato válido
-                                    if (/^\d{2}:\d{2}:\d{2}$/.test(value)) {
-                                      const ms = timeToMs(value);
-                                      updateInstruction(index, {
-                                        ...instr,
-                                        cycle_off_ms: ms,
-                                        cycle_off_time: value,
-                                      });
-                                    } else {
-                                      // Guardar el valor temporal mientras el usuario escribe
-                                      updateInstruction(index, {
-                                        ...instr,
-                                        cycle_off_time: value,
-                                      });
-                                    }
-                                  }}
-                                  onBlur={(e) => {
-                                    // Al perder el foco, si no es válido, restaurar el valor por defecto
-                                    const value = e.target.value;
-                                    if (!/^\d{2}:\d{2}:\d{2}$/.test(value)) {
-                                      const defaultTime = msToTime(instr.cycle_off_ms || 5000);
-                                      updateInstruction(index, {
-                                        ...instr,
-                                        cycle_off_time: defaultTime,
-                                      });
-                                    }
-                                  }}
-                                  placeholder="00:00:05"
-                                  className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500 font-mono text-center"
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <label className="block text-xs text-dark-textSecondary mb-1">{instrT.cyclesLabel} <span className="text-aqua-400">{instrT.cyclesPerpetual}</span></label>
-                              <input
-                                type="number"
-                                min="0"
-                                value={instr.cycle_count ?? 0}
-                                onChange={(e) => {
-                                  updateInstruction(index, {
-                                    ...instr,
-                                    cycle_count: parseInt(e.target.value) || 0,
-                                  });
-                                }}
-                                className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500"
-                                placeholder="0"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {instr.type === 'return' && (
-                    <div className="text-sm text-dark-textSecondary italic">{instrT.returnFromLoop}</div>
-                  )}
-                  {instr.type === 'block_auto' && (
-                    <div className="text-sm text-amber-200/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
-                      {instrT.blockAutoHelp}
-                    </div>
-                  )}
-                  {instr.type === 'unblock_auto' && (
-                    <div className="text-sm text-green-300/90 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2">
-                      {instrT.unblockAutoHelp}
-                    </div>
-                  )}
-                    </div>
-                    ))}
-              </div>
             </div>
           </div>
 
@@ -1049,9 +856,6 @@ export default function CreateRuleModal({
 
             {expandedActions && (
               <div className="p-4 border-t border-dark-border space-y-4">
-                <p className="text-xs text-dark-textSecondary">
-                  {rm.hint.preferScript}
-                </p>
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-dark-textSecondary">{rm.label.then}</p>
                   <button
@@ -1064,53 +868,45 @@ export default function CreateRuleModal({
                 </div>
                 <div className="space-y-3">
                   {actions.map((action, index) => {
-                    const relayOptions: Array<{ value: string; label: string; slaveMac: string; relayId: number }> = [];
+                    const relayOptions = unifiedRelayOptions;
+                    const currentRelayValue =
+                      relayOptions.find((opt) => opt.label === action.relayName)?.value ||
+                      (action.target === 'slave' && action.slaveMac
+                        ? relayOptions.find(
+                            (o) =>
+                              o.kind === 'slave' &&
+                              o.slaveMac === action.slaveMac &&
+                              o.relayId === action.relayId
+                          )?.value
+                        : relayOptions.find(
+                            (o) => o.kind === 'master' && o.relayId === action.relayId
+                          )?.value) ||
+                      relayOptions[0]?.value ||
+                      '';
 
-                    espnowSlaves.forEach((slave) => {
-                      slave.relays.forEach((relay) => {
-                        relayOptions.push({
-                          value: `slave_${slave.macAddress}_${relay.id}`,
-                          label: relayLabel(relay, slave),
-                          slaveMac: slave.macAddress,
-                          relayId: relay.id,
-                        });
-                      });
-                    });
-
-                    const currentRelayValue = action.relayName && action.relayName.includes(':')
-                      ? relayOptions.find(opt => opt.label === action.relayName)?.value || (relayOptions.length > 0 ? relayOptions[0].value : '')
-                      : relayOptions.length > 0 ? relayOptions[0].value : '';
-
-                    const handleRelayChange = (value: string) => {
-                      const [type, ...parts] = value.split('_');
-                      if (type === 'slave') {
-                        const [, relayNum] = parts;
-                        const selectedOption = relayOptions.find(opt => opt.value === value);
-                        if (selectedOption) {
-                          updateAction(index, 'relayId', parseInt(relayNum));
-                          updateAction(index, 'relayName', selectedOption.label);
-                        }
-                      }
+                    const handleRelayChange = (value: string, selectedOption: (typeof relayOptions)[number]) => {
+                      const updated = [...actions];
+                      updated[index] = {
+                        ...updated[index],
+                        relayId: selectedOption.relayId,
+                        relayName: selectedOption.label,
+                        target: selectedOption.kind,
+                        slaveMac: selectedOption.slaveMac,
+                      };
+                      setActions(updated);
                     };
 
                     return (
                       <div key={index} className="bg-dark-card p-4 rounded-lg border border-dark-border space-y-3">
                         <div className="flex items-center space-x-2">
-                          <select
+                          <ActuatorRelaySelect
+                            options={relayOptions}
                             value={currentRelayValue}
-                            onChange={(e) => handleRelayChange(e.target.value)}
-                            className="flex-1 p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
-                          >
-                            {relayOptions.length === 0 ? (
-                              <option value="">{rm.empty.noAtlasRelays}</option>
-                            ) : (
-                              relayOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))
-                            )}
-                          </select>
+                            onChangeValue={handleRelayChange}
+                            hideLabel
+                            className="flex-1"
+                            selectClassName="w-full p-2 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
+                          />
                           <select
                             value={action.action}
                             onChange={(e) => updateAction(index, 'action', e.target.value)}
@@ -1126,6 +922,26 @@ export default function CreateRuleModal({
                           >
                             {ac.remove}
                           </button>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-dark-textSecondary mb-1">
+                            {instrT.durationSecOptional}
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={action.duration ?? ''}
+                            onChange={(e) => {
+                              const updated = [...actions];
+                              updated[index] = {
+                                ...updated[index],
+                                duration: e.target.value ? parseInt(e.target.value, 10) : 0,
+                              };
+                              setActions(updated);
+                            }}
+                            placeholder="Ex: 60"
+                            className="w-full px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                          />
                         </div>
                       </div>
                     );

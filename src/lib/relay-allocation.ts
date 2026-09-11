@@ -1,6 +1,9 @@
 /**
  * Registro derivado de relés dosificadores master (0–7).
  * Fonte de verdade: ph_config_view + ec_config_view + relay_master runtime.
+ *
+ * Produto peristáltico (dosagem ml): só 0–5 — ver
+ * `docs/engineering/DOSING_PUMP_REGISTRY_MODEL.md` e `dosing-pump-registry`.
  */
 
 import {

@@ -28,6 +28,7 @@ export const INITIAL_FILL_DEMO: RuleProcedure = {
         label: 'Válvula de enchimento',
       },
       sensor: { sensor: 'water_level', operator: '!=', value: 'alto' },
+      conditionSemantics: 'while',
       valveStart: 'open',
       valveFinish: 'closed',
       maxDurationMs: 10 * 60 * 1000,

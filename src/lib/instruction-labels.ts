@@ -98,6 +98,7 @@ export interface InstructionPreviewInput {
   relay_number?: number;
   duration_ms?: number;
   duration_seconds?: number;
+  body?: InstructionPreviewInput[];
 }
 
 export function isLevelSensor(sensor: string): boolean {
@@ -325,7 +326,16 @@ export function formatInstructionPreview(
       preview.condition ? normalizeCondition(preview.condition) : undefined,
       instr
     );
-    return phrase ? `${label}: ${phrase}` : label;
+    const body = Array.isArray(preview.body) ? preview.body : [];
+    const firstRelay = body.find((b) => b?.type === 'relay_action');
+    const bodyBit =
+      firstRelay && typeof firstRelay === 'object'
+        ? ` · ${formatInstructionPreview(firstRelay as InstructionPreviewInput, instr)}`
+        : '';
+    if (preview.type === 'while') {
+      return phrase ? `${label} enquanto ${phrase}${bodyBit}` : `${label}${bodyBit}`;
+    }
+    return phrase ? `${label}: ${phrase}${bodyBit}` : label;
   }
 
   if (preview.type === 'relay_action') {

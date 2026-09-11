@@ -35,6 +35,11 @@ export type ProcedureStep =
       roleId?: HydraulicRoleId;
       actuator: ActuatorRef;
       sensor: SensorCondition;
+      /**
+       * Condición = while del loop (v2).
+       * Ausente = datos antiguos “até chegar” → repair invierte ==/!= una vez.
+       */
+      conditionSemantics?: 'while';
       valveStart: 'open' | 'closed';
       valveFinish: 'open' | 'closed';
       maxDurationMs: number;
@@ -47,6 +52,8 @@ export type ProcedureStep =
       actuator: ActuatorRef;
       state: 'on' | 'off';
       durationSeconds?: number;
+      /** Dose em ml (bomba Core calibrada); durationSeconds = ml/flowRate */
+      dosageMl?: number;
     }
   | { type: 'wait'; id: string; label?: string; durationMs: number }
   | { type: 'hold_chemical'; id: string; enabled: boolean }
