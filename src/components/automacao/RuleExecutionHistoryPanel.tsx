@@ -11,6 +11,8 @@ import {
   collapseKeepaliveExecutions,
   displayNameForExecution,
   fetchRuleExecutions,
+  isFnCirculationRuleId,
+  isNearProcedureFinished,
   prependExecution,
   ruleIdFromCreatedBy,
   type RuleExecutionRow,
@@ -239,6 +241,7 @@ export function RuleExecutionHistoryPanel({ deviceId }: RuleExecutionHistoryPane
     const procedureRuleIdsWithEvents = new Set(
       procedureEvents.map((e) => e.rule_id).filter(Boolean)
     );
+    const procedureAts = procedureEvents.map((e) => e.created_at).filter(Boolean);
     const execItems: TimelineItem[] = collapseKeepaliveExecutions(rawRows)
       .filter((row) => {
         if (!procedureStoreReady) return true;
@@ -246,6 +249,11 @@ export function RuleExecutionHistoryPanel({ deviceId }: RuleExecutionHistoryPane
         if (!rid) return true;
         if (procedureRuleIds.has(rid)) return false;
         if (procedureRuleIdsWithEvents.has(rid)) return false;
+        // Noise: ACK fn_recirc pegado ao Sucesso/Desativou (sem pausar a bomba)
+        if (isFnCirculationRuleId(rid)) {
+          const when = row.startedAt || row.completed_at || row.created_at || '';
+          if (isNearProcedureFinished(when, procedureAts)) return false;
+        }
         return true;
       })
       .map((row) => ({

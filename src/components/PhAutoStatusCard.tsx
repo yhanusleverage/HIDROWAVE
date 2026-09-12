@@ -11,13 +11,17 @@ import { usePhOperationState } from '@/hooks/usePhOperationState';
 import { useHydroEcReading } from '@/hooks/useHydroEcReading';
 import { useLevelSensors } from '@/hooks/useLevelSensors';
 import { MixInterlockBadge } from '@/components/MixInterlockBadge';
-import { phErrorAbs } from '@/lib/ph-control-display';
+import { phErrorAbs, previewPhDoseOperatorMl } from '@/lib/ph-control-display';
+import {
+  estimatePhCycleBreakdown,
+  formatCyclePreview,
+} from '@/lib/dose-cycle-eta';
 import { formatSensorValue } from '@/lib/format-sensor-value';
 import { supabase } from '@/lib/supabase';
 import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
 import { subscribePhDosageInserts } from '@/lib/realtime/ph-dosages';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface PhAutoStatusCardProps {
   deviceId: string;
@@ -37,6 +41,7 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
     isDosando,
     isAguardandoRecirculacao,
     operationRemainingSec,
+    operationCycleRemainingSec,
     nextCheckInSec,
     operationInterrupted,
   } = usePhOperationState(deviceId, configReady, {
@@ -117,6 +122,38 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
     return subscribeRelayStateUpdates(deviceId.trim(), applyDoserStates, () => {});
   }, [deviceId]);
 
+  const idleCyclePreview = useMemo(() => {
+    if (
+      !phConfig.auto_enabled ||
+      isDosando ||
+      isAguardandoRecirculacao ||
+      phAtual == null
+    ) {
+      return null;
+    }
+    const needUp = phAtual < phConfig.ph_setpoint - phConfig.ph_tolerance;
+    const needDown = phAtual > phConfig.ph_setpoint + phConfig.ph_tolerance;
+    if (!needUp && !needDown) return null;
+    const s = needUp ? phConfig.s_up : phConfig.s_down;
+    const flow = needUp ? phConfig.flow_rate_ph_up : phConfig.flow_rate_ph_down;
+    const doseMl = previewPhDoseOperatorMl(
+      phConfig.ph_setpoint,
+      phAtual,
+      phConfig.aggressiveness,
+      s,
+      phConfig.ph_tolerance
+    );
+    if (doseMl == null || flow < 0.01) return null;
+    const breakdown = estimatePhCycleBreakdown({
+      doseMl,
+      flowRateMlPerSec: flow,
+      pulseMl: phConfig.pulse_ml,
+      pulseGapSec: phConfig.pulse_gap_sec,
+      recircSec: phConfig.tempo_recirculacao,
+    });
+    return breakdown ? formatCyclePreview(breakdown.totalSec) : null;
+  }, [phConfig, phAtual, isDosando, isAguardandoRecirculacao]);
+
   if (!active) {
     return null;
   }
@@ -163,6 +200,8 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
           }
           isAguardandoRecirculacao={isAguardandoRecirculacao}
           operationRemainingSec={operationRemainingSec}
+          cycleRemainingSec={operationCycleRemainingSec}
+          cycleLabel={ph.cycleBadge}
           showNextCheck={showNextCheck}
           nextCheckInSec={nextCheckInSec}
           nextCheckLabel={ph.nextCheck}
@@ -200,6 +239,7 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
             bandLabel: `± ${phConfig.ph_tolerance.toFixed(2)} · ${phConfig.intervalo_auto_ph}s`,
             recircSec: phConfig.tempo_recirculacao,
             limitHint,
+            nextCyclePreview: idleCyclePreview,
           }}
         />
       </InstrumentCard>

@@ -19,6 +19,7 @@ export type PhOperationState =
 export interface PhOperationSnapshot {
   state: PhOperationState;
   operationRemainingSec: number;
+  operationCycleRemainingSec: number;
   nextCheckInSec: number;
   syncedAt: number;
 }
@@ -30,6 +31,7 @@ const ORPHAN_ZERO_REMAINING_MS = 5_000;
 type PhOperationRow = RelayMasterRow & {
   ph_operation_state?: string;
   ph_operation_remaining_sec?: number;
+  ph_operation_cycle_remaining_sec?: number;
   ph_next_check_in_sec?: number;
   last_operation_interrupted?: boolean;
 };
@@ -50,6 +52,11 @@ function tickRemaining(snapshot: PhOperationSnapshot, now: number): number {
   return Math.max(0, snapshot.operationRemainingSec - elapsedSec);
 }
 
+function tickCycleRemaining(snapshot: PhOperationSnapshot, now: number): number {
+  const elapsedSec = Math.floor((now - snapshot.syncedAt) / 1000);
+  return Math.max(0, snapshot.operationCycleRemainingSec - elapsedSec);
+}
+
 function tickNextCheck(snapshot: PhOperationSnapshot, now: number): number {
   const elapsedSec = Math.floor((now - snapshot.syncedAt) / 1000);
   return Math.max(0, snapshot.nextCheckInSec - elapsedSec);
@@ -63,6 +70,10 @@ function extractPhFields(row: RelayMasterRow) {
   return {
     state: parsePhState(r.ph_operation_state),
     operationRemainingSec: Math.max(0, Number(r.ph_operation_remaining_sec) || 0),
+    operationCycleRemainingSec: Math.max(
+      0,
+      Number(r.ph_operation_cycle_remaining_sec) || 0
+    ),
     nextCheckInSec: Math.max(0, Number(r.ph_next_check_in_sec) || 0),
   };
 }
@@ -158,6 +169,7 @@ function initialSnapshot(): PhOperationSnapshot {
   return {
     state: 'idle',
     operationRemainingSec: 0,
+    operationCycleRemainingSec: 0,
     nextCheckInSec: 0,
     syncedAt: Date.now(),
   };
@@ -217,6 +229,7 @@ export function usePhOperationState(
     const idle: PhOperationSnapshot = {
       state: 'idle',
       operationRemainingSec: 0,
+      operationCycleRemainingSec: 0,
       nextCheckInSec: 0,
       syncedAt: Date.now(),
     };
@@ -290,6 +303,7 @@ export function usePhOperationState(
     const next: PhOperationSnapshot = {
       state: extracted.state,
       operationRemainingSec: extracted.operationRemainingSec,
+      operationCycleRemainingSec: extracted.operationCycleRemainingSec,
       nextCheckInSec,
       syncedAt,
     };
@@ -297,6 +311,7 @@ export function usePhOperationState(
     if (
       next.state === current.state &&
       next.operationRemainingSec === current.operationRemainingSec &&
+      next.operationCycleRemainingSec === current.operationCycleRemainingSec &&
       next.nextCheckInSec === current.nextCheckInSec &&
       next.syncedAt === current.syncedAt
     ) {
@@ -311,7 +326,9 @@ export function usePhOperationState(
     if (!enabled || !deviceId?.trim()) return;
     const { data, error } = await supabase
       .from('relay_master')
-      .select('device_id, ph_operation_state, ph_operation_remaining_sec, ph_next_check_in_sec, last_operation_interrupted')
+      .select(
+        'device_id, ph_operation_state, ph_operation_remaining_sec, ph_operation_cycle_remaining_sec, ph_next_check_in_sec, last_operation_interrupted'
+      )
       .eq('device_id', deviceId.trim())
       .maybeSingle();
     if (error || !data) return;
@@ -370,6 +387,7 @@ export function usePhOperationState(
   }, [snapshot.state, snapshot.nextCheckInSec]);
 
   const operationRemainingSec = tickRemaining(snapshot, nowTick);
+  const operationCycleRemainingSec = tickCycleRemaining(snapshot, nowTick);
   const nextCheckInSec = tickNextCheck(snapshot, nowTick);
 
   useEffect(() => {
@@ -407,6 +425,7 @@ export function usePhOperationState(
   return {
     state: autoOn ? snapshot.state : 'idle',
     operationRemainingSec: autoOn ? operationRemainingSec : 0,
+    operationCycleRemainingSec: autoOn ? operationCycleRemainingSec : 0,
     nextCheckInSec: autoOn ? nextCheckInSec : 0,
     isDosando,
     isAguardandoRecirculacao,

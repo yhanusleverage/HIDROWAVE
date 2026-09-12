@@ -3,6 +3,15 @@ import { getSupabaseServerClient } from '@/lib/supabase-server';
 
 const VALID_TYPES = ['daily', 'weekly', 'grow_week'] as const;
 
+function isFnCirculationRuleId(ruleId: string): boolean {
+  const id = String(ruleId || '');
+  return (
+    id === 'fn_recirculacao_continua' ||
+    id === 'fn_circulation' ||
+    id.toLowerCase().startsWith('fn_recircul')
+  );
+}
+
 // GET — listar schedules de um device
 export async function GET(request: Request) {
   try {
@@ -53,6 +62,15 @@ export async function POST(request: Request) {
     }
     if (!rule_id || rule_id.length < 3) {
       return NextResponse.json({ error: 'rule_id required (min 3 chars)' }, { status: 400 });
+    }
+    if (isFnCirculationRuleId(rule_id)) {
+      return NextResponse.json(
+        {
+          error:
+            'fn_recirculacao não pode ser agendada (tipagem/Motor). Use Ativar no Motor.',
+        },
+        { status: 400 }
+      );
     }
     if (!VALID_TYPES.includes(schedule_type)) {
       return NextResponse.json(

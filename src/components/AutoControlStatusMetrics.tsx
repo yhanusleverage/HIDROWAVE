@@ -14,6 +14,8 @@ export type AutoControlMetricsFooter = {
   bandLabel: string;
   recircSec?: number;
   limitHint?: string;
+  /** Preview idle del ciclo completo, ya formateado (ej. "~1h45") */
+  nextCyclePreview?: string | null;
 };
 
 type AutoControlStatusMetricsProps = {
@@ -53,12 +55,19 @@ export function AutoControlStatusMetrics({
       <div className="border-t border-dark-border/40 pt-3 mt-4 text-sm">
         <p className="text-dark-textSecondary mb-0.5">{auto.deadbandInterval}</p>
         <p className={`font-semibold tabular-nums ${valueClass}`}>{footer.bandLabel}</p>
-        {(footer.recircSec != null && footer.recircSec > 0) || footer.limitHint ? (
+        {(footer.recircSec != null && footer.recircSec > 0) ||
+        footer.limitHint ||
+        footer.nextCyclePreview ? (
           <p className="text-xs text-dark-textSecondary mt-1 space-x-3">
             {footer.recircSec != null && footer.recircSec > 0 ? (
               <span>{auto.recirculation.replace('{n}', String(footer.recircSec))}</span>
             ) : null}
             {footer.limitHint ? <span>{footer.limitHint}</span> : null}
+            {footer.nextCyclePreview ? (
+              <span className="text-aqua-300/90">
+                {auto.nextCyclePreview.replace('{n}', footer.nextCyclePreview)}
+              </span>
+            ) : null}
           </p>
         ) : null}
       </div>

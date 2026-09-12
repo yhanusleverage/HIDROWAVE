@@ -60,6 +60,10 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { MetricRow } from '@/components/ui/MetricRow';
 import ControllerMetricsPanel from '@/components/ControllerMetricsPanel';
 import { PhGrowerSummaryCard } from '@/components/GrowerSummaryCards';
+import {
+  estimatePhCycleBreakdown,
+  formatCycleDuration,
+} from '@/lib/dose-cycle-eta';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toBcp47 } from '@/lib/locale';
 
@@ -593,6 +597,7 @@ export default function PhControllerPanel({
           .update({
             ph_operation_state: 'idle',
             ph_operation_remaining_sec: 0,
+            ph_operation_cycle_remaining_sec: 0,
             ph_next_check_in_sec: 0,
           })
           .eq('device_id', deviceId);
@@ -675,12 +680,7 @@ export default function PhControllerPanel({
     flowRatePhDown
   );
 
-  const formatCountdown = (totalSec: number): string => {
-    const minutes = Math.floor(totalSec / 60);
-    const seconds = totalSec % 60;
-    if (minutes > 0) return `${minutes}:${String(seconds).padStart(2, '0')}`;
-    return `${seconds}s`;
-  };
+  const formatCountdown = (totalSec: number): string => formatCycleDuration(totalSec);
 
   const showNextCheck =
     autoEnabled &&
@@ -772,6 +772,17 @@ export default function PhControllerPanel({
     if (previewDoseMl == null || activeFlowRate <= 0) return null;
     return previewDoseMl / activeFlowRate;
   }, [previewDoseMl, activeFlowRate]);
+
+  const phCycleBreakdown = useMemo(() => {
+    if (previewDoseMl == null || activeFlowRate <= 0) return null;
+    return estimatePhCycleBreakdown({
+      doseMl: previewDoseMl,
+      flowRateMlPerSec: activeFlowRate,
+      pulseMl,
+      pulseGapSec,
+      recircSec: tempoRecirculacao,
+    });
+  }, [previewDoseMl, activeFlowRate, pulseMl, pulseGapSec, tempoRecirculacao]);
 
   const firmwareDoseBlockReason = useMemo(
     () =>
@@ -984,6 +995,8 @@ export default function PhControllerPanel({
             }
             isAguardandoRecirculacao={phOp.isAguardandoRecirculacao}
             operationRemainingSec={phOp.operationRemainingSec}
+            cycleRemainingSec={phOp.operationCycleRemainingSec}
+            cycleLabel={ph.cycleBadge}
             showNextCheck={showNextCheck}
             nextCheckInSec={phOp.nextCheckInSec}
             nextCheckLabel={ph.nextCheck}
@@ -1133,6 +1146,14 @@ export default function PhControllerPanel({
               formatCountdown={formatCountdown}
               calibBaseLine={calibBaseLine}
               calibAcidLine={calibAcidLine}
+              cycleBreakdown={phCycleBreakdown}
+              cycleRemainingSec={phOp.operationCycleRemainingSec}
+              cycleLabels={{
+                cycleTime: ph.cycleTime,
+                dosing: ph.cycleDosing,
+                homogen: ph.cycleHomogen,
+                inProgress: ph.cycleInProgress,
+              }}
             />
           </div>
 

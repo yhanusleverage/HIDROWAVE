@@ -19,22 +19,32 @@ export function cadenceToTimeStart(cadence: string): string {
   return '08:00';
 }
 
-function scheduleRow(deviceId: string, block: ScheduleBlock) {
+function scheduleRow(deviceId: string, block: ScheduleBlock, timezone: string) {
   return {
     device_id: deviceId,
     rule_id: block.ruleId,
     schedule_type: 'grow_week' as const,
     time_start: cadenceToTimeStart(block.cadence),
     grow_week_index: block.weekIndex,
-    timezone: 'America/Sao_Paulo',
+    timezone,
     enabled: true,
     created_by: GROW_CYCLE_SCHEDULE_CREATED_BY,
   };
 }
 
+function isFnCirculationRuleId(ruleId: string): boolean {
+  const id = String(ruleId || '');
+  return (
+    id === 'fn_recirculacao_continua' ||
+    id === 'fn_circulation' ||
+    id.toLowerCase().startsWith('fn_recircul')
+  );
+}
+
 export async function syncGrowCycleSchedulesFromPlan(
   deviceId: string,
-  plan: GrowCyclePlan
+  plan: GrowCyclePlan,
+  timezone = 'America/Sao_Paulo'
 ): Promise<{ upserted: number; warnings: string[] }> {
   const warnings: string[] = [];
   const sb = getSupabaseServerClient();
@@ -50,12 +60,18 @@ export async function syncGrowCycleSchedulesFromPlan(
     warnings.push(`schedules cleanup: ${delErr.message}`);
   }
 
-  const blocks = plan.schedules ?? [];
+  const blocks = (plan.schedules ?? []).filter((b) => {
+    if (isFnCirculationRuleId(b.ruleId)) {
+      warnings.push(`skip fn schedule: ${b.ruleId}`);
+      return false;
+    }
+    return true;
+  });
   if (blocks.length === 0) {
     return { upserted: 0, warnings };
   }
 
-  const rows = blocks.map((b) => scheduleRow(id, b));
+  const rows = blocks.map((b) => scheduleRow(id, b, timezone));
   const { error: insErr } = await sb.from('rule_schedules').insert(rows);
   if (insErr) {
     warnings.push(`schedules insert: ${insErr.message}`);

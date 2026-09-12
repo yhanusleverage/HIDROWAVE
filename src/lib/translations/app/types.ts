@@ -767,6 +767,12 @@ export interface AppTranslations {
       autoActive: string;
       autoInactive: string;
       nextCheck: string;
+      cycleBadge: string;
+      nextCyclePreview: string;
+      cycleTime: string;
+      cycleDosing: string;
+      cycleHomogen: string;
+      cycleInProgress: string;
       statusCard: string;
       lockSection: string;
       lock: string;
@@ -843,6 +849,12 @@ export interface AppTranslations {
       autoActive: string;
       autoInactive: string;
       nextCheck: string;
+      cycleBadge: string;
+      nextCyclePreview: string;
+      cycleTime: string;
+      cycleDosing: string;
+      cycleHomogen: string;
+      cycleInProgress: string;
       statusCard: string;
       lockSection: string;
       lock: string;
@@ -1254,6 +1266,8 @@ export interface AppTranslations {
       recirculation: string;
       dosing: string;
       deadbandInterval: string;
+      nextCyclePreview: string;
+      cycleBadge: string;
     };
     crop: {
       title: string;

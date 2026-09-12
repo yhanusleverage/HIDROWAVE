@@ -49,6 +49,14 @@ export type EcGrowerSummaryCardProps = {
   showNextCheck: boolean;
   nextCheckInSec: number;
   formatCountdown: (sec: number) => string;
+  cycleBreakdown?: { dosingSec: number; recircSec: number; totalSec: number } | null;
+  cycleRemainingSec?: number;
+  cycleLabels?: {
+    cycleTime: string;
+    dosing: string;
+    homogen: string;
+    inProgress: string;
+  };
 };
 
 export function EcGrowerSummaryCard({
@@ -64,10 +72,48 @@ export function EcGrowerSummaryCard({
   showNextCheck,
   nextCheckInSec,
   formatCountdown,
+  cycleBreakdown = null,
+  cycleRemainingSec = 0,
+  cycleLabels,
 }: EcGrowerSummaryCardProps) {
   const { data, loading } = useEc24hSnapshot(deviceId, consumo24h);
   const gap = ecNow != null ? setpoint - ecNow : null;
   const inBand = gap != null && Math.abs(gap) <= tolerance;
+
+  const cycleRows = (
+    <>
+      {cycleRemainingSec > 0 ? (
+        <MetricRow
+          label={cycleLabels?.cycleTime ?? 'Tempo do ciclo:'}
+          value={(cycleLabels?.inProgress ?? 'em curso · restam {n}').replace(
+            '{n}',
+            formatCountdown(cycleRemainingSec)
+          )}
+          variant="live"
+          domain="ec"
+        />
+      ) : cycleBreakdown && cycleBreakdown.totalSec > 0 && !inBand ? (
+        <>
+          <MetricRow
+            label={cycleLabels?.cycleTime ?? 'Tempo do ciclo:'}
+            value={`~${formatCountdown(cycleBreakdown.totalSec)}`}
+            variant="preview"
+            domain="ec"
+          />
+          <MetricRow
+            label={`· ${cycleLabels?.dosing ?? 'Dosagem'}`}
+            value={`~${formatCountdown(cycleBreakdown.dosingSec)}`}
+            variant="preview"
+          />
+          <MetricRow
+            label={`· ${cycleLabels?.homogen ?? 'Homogeneização'}`}
+            value={formatCountdown(cycleBreakdown.recircSec)}
+            variant="preview"
+          />
+        </>
+      ) : null}
+    </>
+  );
 
   if (!consumo24h) {
     const gapLabel =
@@ -98,6 +144,7 @@ export function EcGrowerSummaryCard({
             variant="preview"
             domain="ec"
           />
+          {cycleRows}
           <MetricRow
             label="Última dose:"
             value={
@@ -210,6 +257,14 @@ export type PhGrowerSummaryCardProps = {
   formatCountdown: (sec: number) => string;
   calibBaseLine?: string;
   calibAcidLine?: string;
+  cycleBreakdown?: { dosingSec: number; recircSec: number; totalSec: number } | null;
+  cycleRemainingSec?: number;
+  cycleLabels?: {
+    cycleTime: string;
+    dosing: string;
+    homogen: string;
+    inProgress: string;
+  };
 };
 
 export function PhGrowerSummaryCard({
@@ -228,10 +283,48 @@ export function PhGrowerSummaryCard({
   formatCountdown,
   calibBaseLine,
   calibAcidLine,
+  cycleBreakdown = null,
+  cycleRemainingSec = 0,
+  cycleLabels,
 }: PhGrowerSummaryCardProps) {
   const { data, loading } = usePh24hSnapshot(deviceId, consumo24h);
   const gap = phNow != null ? phNow - setpoint : null;
   const inBand = gap != null && Math.abs(gap) <= tolerance;
+
+  const cycleRows = (
+    <>
+      {cycleRemainingSec > 0 ? (
+        <MetricRow
+          label={cycleLabels?.cycleTime ?? 'Tempo do ciclo:'}
+          value={(cycleLabels?.inProgress ?? 'em curso · restam {n}').replace(
+            '{n}',
+            formatCountdown(cycleRemainingSec)
+          )}
+          variant="live"
+          domain="ph"
+        />
+      ) : cycleBreakdown && cycleBreakdown.totalSec > 0 && !inBand ? (
+        <>
+          <MetricRow
+            label={cycleLabels?.cycleTime ?? 'Tempo do ciclo:'}
+            value={`~${formatCountdown(cycleBreakdown.totalSec)}`}
+            variant="preview"
+            domain="ph"
+          />
+          <MetricRow
+            label={`· ${cycleLabels?.dosing ?? 'Dosagem'}`}
+            value={`~${formatCountdown(cycleBreakdown.dosingSec)}`}
+            variant="preview"
+          />
+          <MetricRow
+            label={`· ${cycleLabels?.homogen ?? 'Homogeneização'}`}
+            value={formatCountdown(cycleBreakdown.recircSec)}
+            variant="preview"
+          />
+        </>
+      ) : null}
+    </>
+  );
 
   const calibFooter =
     calibBaseLine || calibAcidLine ? (
@@ -271,6 +364,7 @@ export function PhGrowerSummaryCard({
             }
             variant="preview"
           />
+          {cycleRows}
           <MetricRow
             label="Última dose:"
             value={

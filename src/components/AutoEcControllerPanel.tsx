@@ -52,6 +52,11 @@ import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { MetricRow } from '@/components/ui/MetricRow';
 import ControllerMetricsPanel from '@/components/ControllerMetricsPanel';
 import { EcGrowerSummaryCard } from '@/components/GrowerSummaryCards';
+import {
+  estimateEcCycleBreakdown,
+  formatCycleDuration,
+} from '@/lib/dose-cycle-eta';
+import { estimateEcDoseSplit } from '@/lib/ec-dose-preview';
 import { showLockUnlockToast } from '@/lib/automacao/admin-lock';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -306,6 +311,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     isDosando: firmwareDosando,
     isAguardandoRecirculacao,
     operationRemainingSec: recirculacaoRestanteSec,
+    operationCycleRemainingSec: ecCycleRemainingSec,
     nextCheckInSec: ecNextCheckInSec,
     isEcCheckPending,
     isDiluting,
@@ -394,13 +400,48 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     (isEcCheckPending || ecNextCheckInSec > 0);
 
   const formatRecircCountdown = useCallback((totalSec: number) => {
-    const minutes = Math.floor(totalSec / 60);
-    const seconds = totalSec % 60;
-    if (minutes > 0) {
-      return `${minutes}:${String(seconds).padStart(2, '0')}`;
-    }
-    return `${seconds}s`;
+    return formatCycleDuration(totalSec);
   }, []);
+
+  const ecCycleBreakdown = useMemo(() => {
+    if (ecAtual == null) return null;
+    const split = estimateEcDoseSplit({
+      volumeL: totalVolume,
+      baseDose,
+      ecSetpoint,
+      ecActual: ecAtual,
+      tolerance: ecTolerance,
+      aggressiveness,
+      nutrients: nutrientsState.map((n) => ({
+        mlPerLiter: n.mlPerLiter,
+        flowRate: nutrientFlowRateMlPerSec(n) || null,
+      })),
+    });
+    if (!split) return null;
+    return estimateEcCycleBreakdown({
+      nutrients: split.parts,
+      pulseMl,
+      pulseGapSec,
+      recircSec: (() => {
+        // tempoRecirculacao is HH:MM string in form — parse like save path
+        const m = String(tempoRecirculacao || '').match(/^(\d+):(\d+)$/);
+        if (m) return parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60;
+        const n = Number(tempoRecirculacao);
+        return Number.isFinite(n) && n > 0 ? Math.floor(n) : 60;
+      })(),
+    });
+  }, [
+    ecAtual,
+    totalVolume,
+    baseDose,
+    ecSetpoint,
+    ecTolerance,
+    aggressiveness,
+    nutrientsState,
+    pulseMl,
+    pulseGapSec,
+    tempoRecirculacao,
+  ]);
 
   const loadLocalRelayNames = useCallback(async () => {
     if (!deviceId || deviceId === 'default_device') return;
@@ -1130,6 +1171,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
           .update({
             ec_operation_state: 'idle',
             ec_operation_remaining_sec: 0,
+            ec_operation_cycle_remaining_sec: 0,
             ec_next_check_in_sec: 0,
           })
           .eq('device_id', deviceId);
@@ -1187,6 +1229,8 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
               replacingLabel={ec.replacing}
               isAguardandoRecirculacao={isAguardandoRecirculacao}
               operationRemainingSec={recirculacaoRestanteSec}
+              cycleRemainingSec={isDiluting ? 0 : ecCycleRemainingSec}
+              cycleLabel={ec.cycleBadge}
               showNextCheck={showEcNextCheck}
               nextCheckInSec={ecNextCheckInSec}
               nextCheckLabel={ec.nextCheck}
@@ -1361,6 +1405,14 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                               showNextCheck={showEcNextCheck}
                               nextCheckInSec={ecNextCheckInSec}
                               formatCountdown={formatRecircCountdown}
+                              cycleBreakdown={ecCycleBreakdown}
+                              cycleRemainingSec={isDiluting ? 0 : ecCycleRemainingSec}
+                              cycleLabels={{
+                                cycleTime: ec.cycleTime,
+                                dosing: ec.cycleDosing,
+                                homogen: ec.cycleHomogen,
+                                inProgress: ec.cycleInProgress,
+                              }}
                             />
                           </div>
                           

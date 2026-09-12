@@ -12,6 +12,14 @@ export interface PhConfigSnapshot {
   tempo_recirculacao: number;
   relay_ph_up: number;
   relay_ph_down: number;
+  aggressiveness: number;
+  pulse_ml: number;
+  pulse_gap_sec: number;
+  volume: number;
+  s_up: number;
+  s_down: number;
+  flow_rate_ph_up: number;
+  flow_rate_ph_down: number;
   isLoading: boolean;
 }
 
@@ -25,6 +33,14 @@ const DEFAULT: PhConfigSnapshot = {
   tempo_recirculacao: 60,
   relay_ph_up: 1,
   relay_ph_down: 0,
+  aggressiveness: 0.5,
+  pulse_ml: 2,
+  pulse_gap_sec: 2,
+  volume: 0,
+  s_up: 0,
+  s_down: 0,
+  flow_rate_ph_up: 0,
+  flow_rate_ph_down: 0,
   isLoading: true,
 };
 
@@ -52,6 +68,14 @@ export function usePhConfig(deviceId: string, enabled = true): PhConfigSnapshot 
         tempo_recirculacao: Number(data.tempo_recirculacao) || 60,
         relay_ph_up: Number(data.relay_ph_up) ?? 1,
         relay_ph_down: Number(data.relay_ph_down) ?? 0,
+        aggressiveness: Number(data.aggressiveness) || 0.5,
+        pulse_ml: Number(data.pulse_ml) || 2,
+        pulse_gap_sec: Number(data.pulse_gap_sec) || 2,
+        volume: Number(data.volume) || 0,
+        s_up: Number(data.s_up ?? data.sUp) || 0,
+        s_down: Number(data.s_down ?? data.sDown) || 0,
+        flow_rate_ph_up: Number(data.flow_rate_ph_up ?? data.flowRatePhUp) || 0,
+        flow_rate_ph_down: Number(data.flow_rate_ph_down ?? data.flowRatePhDown) || 0,
         isLoading: false,
       });
     } catch {

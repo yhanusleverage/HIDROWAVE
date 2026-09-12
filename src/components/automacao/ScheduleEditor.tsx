@@ -83,12 +83,17 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
   const fetchRules = useCallback(async () => {
     try {
       const { getDecisionRules } = await import('@/lib/automation');
+      const { isFnCirculationRuleId } = await import('@/lib/rule-execution-history');
       const data = await getDecisionRules(deviceId);
       setRules(
-        (data || []).map((r: { rule_id: string; rule_name: string }) => ({
-          rule_id: r.rule_id,
-          rule_name: r.rule_name,
-        }))
+        (data || [])
+          .filter(
+            (r: { rule_id: string }) => !isFnCirculationRuleId(r.rule_id)
+          )
+          .map((r: { rule_id: string; rule_name: string }) => ({
+            rule_id: r.rule_id,
+            rule_name: r.rule_name,
+          }))
       );
     } catch (e) {
       console.error('Error fetching rules:', e);
@@ -104,11 +109,14 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
     if (!formRuleId) return;
     setSaving(true);
     try {
+      const { loadSettings } = await import('@/lib/settings');
+      const settings = await loadSettings();
       const body: Record<string, unknown> = {
         device_id: deviceId,
         rule_id: formRuleId,
         schedule_type: formType,
         time_start: formTimeStart,
+        timezone: settings.timezone || 'America/Sao_Paulo',
       };
       if (formTimeEnd) body.time_end = formTimeEnd;
       if (formType === 'weekly' && formDays.length > 0) body.days_of_week = formDays;

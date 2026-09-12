@@ -125,12 +125,17 @@ export function WeekDetailPanel({
     }
     try {
       const { getDecisionRules } = await import('@/lib/automation');
+      const { isFnCirculationRuleId } = await import('@/lib/rule-execution-history');
       const data = await getDecisionRules(activeDeviceId);
       setRules(
-        (data || []).map((r: { rule_id: string; rule_name: string }) => ({
-          rule_id: r.rule_id,
-          rule_name: r.rule_name,
-        }))
+        (data || [])
+          .filter(
+            (r: { rule_id: string }) => !isFnCirculationRuleId(r.rule_id)
+          )
+          .map((r: { rule_id: string; rule_name: string }) => ({
+            rule_id: r.rule_id,
+            rule_name: r.rule_name,
+          }))
       );
     } catch (e) {
       console.error('[WeekDetail] rules', e);
@@ -175,12 +180,15 @@ export function WeekDetailPanel({
     setSaving(true);
     try {
       const durationSeconds = Math.round(formDurationMin * 60);
+      const { loadSettings } = await import('@/lib/settings');
+      const settings = await loadSettings();
       const body: Record<string, unknown> = {
         device_id: activeDeviceId,
         rule_id: formRuleId,
         schedule_type: 'daily',
         time_start: formTimeStart,
         created_by: 'grow-cycle-ui',
+        timezone: settings.timezone || 'America/Sao_Paulo',
       };
 
       const res = await fetch('/api/automation/schedules', {

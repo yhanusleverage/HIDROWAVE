@@ -40,6 +40,33 @@ export function ruleIdFromCreatedBy(createdBy: string | null | undefined): strin
   return id.length > 0 ? id : null;
 }
 
+/** Motor: recirculação contínua (nunca auto-disable; keepalive ruidoso no historial). */
+export function isFnCirculationRuleId(ruleId: string | null | undefined): boolean {
+  if (!ruleId) return false;
+  return (
+    ruleId === 'fn_recirculacao_continua' ||
+    ruleId === 'fn_circulation'
+  );
+}
+
+/** Ocultar ACK de circ perto de procedure_finished (±ms). */
+export const FN_CIRC_NEAR_PROCEDURE_MS = 12_000;
+
+export function isNearProcedureFinished(
+  execIso: string | null | undefined,
+  procedureCreatedAts: string[],
+  windowMs = FN_CIRC_NEAR_PROCEDURE_MS
+): boolean {
+  if (!execIso || procedureCreatedAts.length === 0) return false;
+  const t = new Date(execIso).getTime();
+  if (Number.isNaN(t)) return false;
+  return procedureCreatedAts.some((iso) => {
+    const p = new Date(iso).getTime();
+    if (Number.isNaN(p)) return false;
+    return Math.abs(t - p) < windowMs;
+  });
+}
+
 export function displayNameForExecution(
   row: RuleExecutionRow,
   t: AppTranslations

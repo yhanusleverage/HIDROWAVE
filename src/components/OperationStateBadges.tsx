@@ -9,8 +9,13 @@ import {
 import { HW_BADGE, type HwAccent } from '@/lib/design-tokens';
 
 function formatCountdown(totalSec: number): string {
-  const minutes = Math.floor(totalSec / 60);
-  const seconds = totalSec % 60;
+  const sec = Math.max(0, Math.floor(totalSec));
+  const hours = Math.floor(sec / 3600);
+  const minutes = Math.floor((sec % 3600) / 60);
+  const seconds = sec % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
   if (minutes > 0) {
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
   }
@@ -28,6 +33,9 @@ export interface OperationStateBadgesProps {
   replacingLabel?: string;
   isAguardandoRecirculacao?: boolean;
   operationRemainingSec?: number;
+  /** ETA global dose+homogeneização (firmware). Solo se muestra si > 0. */
+  cycleRemainingSec?: number;
+  cycleLabel?: string;
   showNextCheck?: boolean;
   nextCheckInSec?: number;
   nextCheckLabel?: string;
@@ -52,6 +60,8 @@ export default function OperationStateBadges({
   replacingLabel = 'Reponendo',
   isAguardandoRecirculacao = false,
   operationRemainingSec = 0,
+  cycleRemainingSec = 0,
+  cycleLabel = 'Ciclo',
   showNextCheck = false,
   nextCheckInSec = 0,
   nextCheckLabel = 'Próxima verificação',
@@ -114,6 +124,16 @@ export default function OperationStateBadges({
         <span className={`${badgeBase} ${sizeClass} ${HW_BADGE.wait}`}>
           <ClockIcon className="w-3.5 h-3.5 shrink-0" aria-hidden />
           Recirculação {formatCountdown(operationRemainingSec)}
+        </span>
+      )}
+
+      {cycleRemainingSec > 0 && (
+        <span
+          className={`${badgeBase} ${sizeClass} ${HW_BADGE.wait}`}
+          title={cycleLabel}
+        >
+          <ClockIcon className="w-3.5 h-3.5 shrink-0" aria-hidden />
+          {cycleLabel} {formatCountdown(cycleRemainingSec)}
         </span>
       )}
 

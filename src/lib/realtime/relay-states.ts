@@ -9,9 +9,11 @@ export type RelayMasterRow = {
   reserved_relay_states?: boolean[];
   ec_operation_state?: string;
   ec_operation_remaining_sec?: number;
+  ec_operation_cycle_remaining_sec?: number;
   ec_next_check_in_sec?: number;
   ph_operation_state?: string;
   ph_operation_remaining_sec?: number;
+  ph_operation_cycle_remaining_sec?: number;
   ph_next_check_in_sec?: number;
   last_update?: string;
 };

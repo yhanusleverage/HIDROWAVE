@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import NavLink from '@/components/NavLink';
 import { BeakerIcon } from '@heroicons/react/24/outline';
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
@@ -14,6 +15,11 @@ import { useHydroEcReading } from '@/hooks/useHydroEcReading';
 import { useLevelSensors } from '@/hooks/useLevelSensors';
 import { MixInterlockBadge } from '@/components/MixInterlockBadge';
 import { ecErrorAbs } from '@/lib/ec-control-display';
+import { estimateEcDoseSplit } from '@/lib/ec-dose-preview';
+import {
+  estimateEcCycleBreakdown,
+  formatCyclePreview,
+} from '@/lib/dose-cycle-eta';
 import { formatSensorValue } from '@/lib/format-sensor-value';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -44,20 +50,53 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
     isDosando,
     isAguardandoRecirculacao,
     operationRemainingSec,
+    operationCycleRemainingSec,
     nextCheckInSec,
     isEcCheckPending,
     operationInterrupted,
+    isDiluting,
   } = useEcOperationState(deviceId, configReady, {
     intervalCeilingSec: ecConfig.intervalo_auto_ec,
     autoEnabled: ecConfig.auto_enabled,
     mirrorFirmware: ecConfig.auto_enabled,
   });
 
-  /** Litros A→B del YFB5 durante dilución (mismo dato que Automação). */
   const dilutionState = useEcDilutionState(deviceId, active, {
     mirrorFirmware: true,
   });
   const levels = useLevelSensors(deviceId, active);
+
+  const idleCyclePreview = useMemo(() => {
+    if (
+      !ecConfig.auto_enabled ||
+      isDosando ||
+      isAguardandoRecirculacao ||
+      isDiluting ||
+      ecAtual == null
+    ) {
+      return null;
+    }
+    const split = estimateEcDoseSplit({
+      volumeL: ecConfig.volume,
+      baseDose: ecConfig.base_dose,
+      ecSetpoint: ecConfig.ec_setpoint,
+      ecActual: ecAtual,
+      tolerance: ecConfig.tolerance,
+      aggressiveness: ecConfig.aggressiveness,
+      nutrients: ecConfig.nutrients,
+    });
+    if (!split) return null;
+    const breakdown = estimateEcCycleBreakdown({
+      nutrients: split.parts.map((p) => ({
+        ml: p.ml,
+        flowRateMlPerSec: p.flowRateMlPerSec,
+      })),
+      pulseMl: ecConfig.pulse_ml,
+      pulseGapSec: ecConfig.pulse_gap_sec,
+      recircSec: ecConfig.tempo_recirculacao,
+    });
+    return breakdown ? formatCyclePreview(breakdown.totalSec) : null;
+  }, [ecConfig, ecAtual, isDosando, isAguardandoRecirculacao, isDiluting]);
 
   if (!active) {
     return null;
@@ -102,6 +141,8 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
           dosandoLabel={ec.dosing}
           isAguardandoRecirculacao={isAguardandoRecirculacao}
           operationRemainingSec={operationRemainingSec}
+          cycleRemainingSec={operationCycleRemainingSec}
+          cycleLabel={ec.cycleBadge}
           showNextCheck={showNextCheck}
           nextCheckInSec={nextCheckInSec}
           nextCheckLabel={ec.nextCheck}
@@ -148,8 +189,7 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
             },
             {
               label: auto.lastDose,
-              value:
-                totalMl != null ? `${totalMl.toFixed(2)} ml` : '-- ml',
+              value: totalMl != null ? `${totalMl.toFixed(2)} ml` : '-- ml',
               loading: dosageLoading && totalMl == null,
             },
             {
@@ -161,6 +201,7 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
             bandLabel: `${ecConfig.tolerance} µS/cm · ${ecConfig.intervalo_auto_ec}s`,
             recircSec: ecConfig.tempo_recirculacao,
             limitHint,
+            nextCyclePreview: idleCyclePreview,
           }}
           dosageHint={
             !available ? <span>{auto.missingNutrientTable}</span> : undefined

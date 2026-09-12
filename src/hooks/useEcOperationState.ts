@@ -22,6 +22,7 @@ export type EcOperationState =
 export interface EcOperationSnapshot {
   state: EcOperationState;
   operationRemainingSec: number;
+  operationCycleRemainingSec: number;
   nextCheckInSec: number;
   syncedAt: number;
 }
@@ -42,6 +43,7 @@ function clearLegacySessionSnapshot(deviceId: string) {
 type EcOperationRow = RelayMasterRow & {
   ec_operation_state?: string;
   ec_operation_remaining_sec?: number;
+  ec_operation_cycle_remaining_sec?: number;
   ec_next_check_in_sec?: number;
   ec_dilution_target_l?: number;
   ec_dilution_progress_l?: number;
@@ -67,6 +69,11 @@ function tickRemaining(snapshot: EcOperationSnapshot, now: number): number {
   return Math.max(0, snapshot.operationRemainingSec - elapsedSec);
 }
 
+function tickCycleRemaining(snapshot: EcOperationSnapshot, now: number): number {
+  const elapsedSec = Math.floor((now - snapshot.syncedAt) / 1000);
+  return Math.max(0, snapshot.operationCycleRemainingSec - elapsedSec);
+}
+
 function tickNextCheck(snapshot: EcOperationSnapshot, now: number): number {
   const elapsedSec = Math.floor((now - snapshot.syncedAt) / 1000);
   return Math.max(0, snapshot.nextCheckInSec - elapsedSec);
@@ -76,6 +83,7 @@ function extractEcFields(row: RelayMasterRow): {
   hasEcFields: boolean;
   state: EcOperationState;
   operationRemainingSec: number;
+  operationCycleRemainingSec: number;
   nextCheckInSec: number;
 } | null {
   const r = row as EcOperationRow;
@@ -87,6 +95,10 @@ function extractEcFields(row: RelayMasterRow): {
     hasEcFields: true,
     state: parseEcState(r.ec_operation_state),
     operationRemainingSec: Math.max(0, Number(r.ec_operation_remaining_sec) || 0),
+    operationCycleRemainingSec: Math.max(
+      0,
+      Number(r.ec_operation_cycle_remaining_sec) || 0
+    ),
     nextCheckInSec: Math.max(0, Number(r.ec_next_check_in_sec) || 0),
   };
 }
@@ -176,6 +188,7 @@ function initialSnapshot(): EcOperationSnapshot {
   return {
     state: 'idle',
     operationRemainingSec: 0,
+    operationCycleRemainingSec: 0,
     nextCheckInSec: 0,
     syncedAt: Date.now(),
   };
@@ -219,6 +232,7 @@ export function useEcOperationState(
     const idle: EcOperationSnapshot = {
       state: 'idle',
       operationRemainingSec: 0,
+      operationCycleRemainingSec: 0,
       nextCheckInSec: 0,
       syncedAt: Date.now(),
     };
@@ -302,6 +316,7 @@ export function useEcOperationState(
     const next: EcOperationSnapshot = {
       state: extracted.state,
       operationRemainingSec: extracted.operationRemainingSec,
+      operationCycleRemainingSec: extracted.operationCycleRemainingSec,
       nextCheckInSec,
       syncedAt,
     };
@@ -309,6 +324,7 @@ export function useEcOperationState(
     if (
       next.state === current.state &&
       next.operationRemainingSec === current.operationRemainingSec &&
+      next.operationCycleRemainingSec === current.operationCycleRemainingSec &&
       next.nextCheckInSec === current.nextCheckInSec &&
       next.syncedAt === current.syncedAt
     ) {
@@ -325,7 +341,7 @@ export function useEcOperationState(
     const { data, error } = await supabase
       .from('relay_master')
       .select(
-        'device_id, ec_operation_state, ec_operation_remaining_sec, ec_next_check_in_sec, doser_relay_states, last_operation_interrupted'
+        'device_id, ec_operation_state, ec_operation_remaining_sec, ec_operation_cycle_remaining_sec, ec_next_check_in_sec, doser_relay_states, last_operation_interrupted'
       )
       .eq('device_id', deviceId.trim())
       .maybeSingle();
@@ -397,6 +413,7 @@ export function useEcOperationState(
   }, [snapshot.state, snapshot.nextCheckInSec]);
 
   const operationRemainingSec = tickRemaining(snapshot, nowTick);
+  const operationCycleRemainingSec = tickCycleRemaining(snapshot, nowTick);
   const nextCheckInSec = tickNextCheck(snapshot, nowTick);
 
   useEffect(() => {
@@ -437,6 +454,9 @@ export function useEcOperationState(
     state: displayState,
     operationRemainingSec:
       autoOn || isDilutionState ? operationRemainingSec : 0,
+    /** ETA global dose+recirc; 0 si idle, diluyendo o firmware antiguo sin campo. */
+    operationCycleRemainingSec:
+      autoOn && !isDilutionState ? operationCycleRemainingSec : 0,
     nextCheckInSec: autoOn ? nextCheckInSec : 0,
     /** Secuencia activa: dosing o pausa corta entre nutrientes (sin badge aparte) */
     isDosando:
