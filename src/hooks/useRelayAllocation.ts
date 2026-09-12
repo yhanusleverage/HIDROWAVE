@@ -114,10 +114,10 @@ export function useRelayAllocation(
       ]);
 
       if (phRes.ok) {
-        setPhConfig((await phRes.json()) as PhConfigRelaySlice);
+        setPhConfig((await phRes.json().catch(() => ({}))) as PhConfigRelaySlice);
       }
       if (ecRes.ok) {
-        setEcConfig((await ecRes.json()) as EcConfigRelaySlice);
+        setEcConfig((await ecRes.json().catch(() => ({}))) as EcConfigRelaySlice);
       }
       setRelayNames(names);
 

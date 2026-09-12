@@ -6,16 +6,21 @@ import {
 import {
   notifyDeviceRuleUpsert,
   notifyDeviceRulesManifest,
+  notifyDeviceProcedureCmd,
   hashRulePayload,
+  isTankProcedureRuleJson,
+  type ProcedureCmdOp,
 } from '@/lib/mqtt-rules-publish';
 import { rematerializeRuleJsonForDevice } from '@/lib/rule-procedure/rematerialize-rule-json';
 
 type SyncOp = 'upsert' | 'disable' | 'delete';
 
 /**
- * POST — publica uma decision_rule no Core (MQTT retained) + atualiza manifest.
- * Body: { device_id, rule_id, rule_name?, rule_description?, rule_json?, enabled?, priority?, op? }
- * Upsert: rematerializa tipagem hidráulica antes do MQTT (corrige R0/sem MAC).
+ * POST — publica decision_rule no Core (MQTT retained) + opcional procedure/cmd.
+ * Body: { …, op?, procedure_op?: 'start'|'abort'|'rearm'|'none' }
+ * - Salvar: upsert sem procedure_op → Armed
+ * - Ativar: upsert + procedure_op=start
+ * - Desativar: procedure_op=abort + disable
  */
 export async function POST(request: Request) {
   try {
@@ -32,6 +37,14 @@ export async function POST(request: Request) {
     const op = (String(body.op ?? 'upsert') as SyncOp) || 'upsert';
     if (op !== 'upsert' && op !== 'disable' && op !== 'delete') {
       return NextResponse.json({ error: 'op inválido' }, { status: 400 });
+    }
+
+    const rawProcOp = body.procedure_op;
+    let procedureOp: ProcedureCmdOp | 'none' | undefined;
+    if (rawProcOp === 'start' || rawProcOp === 'abort' || rawProcOp === 'rearm') {
+      procedureOp = rawProcOp;
+    } else if (rawProcOp === 'none') {
+      procedureOp = 'none';
     }
 
     const writer =
@@ -72,7 +85,6 @@ export async function POST(request: Request) {
       }
       ruleJson = remat.ruleJson;
 
-      // Persistir script recompilado (tipagem atual) no banco
       await sb
         .from('decision_rules')
         .update({
@@ -81,6 +93,28 @@ export async function POST(request: Request) {
         })
         .eq('device_id', deviceId)
         .eq('rule_id', ruleId);
+    } else if (ruleJson == null && (procedureOp === 'abort' || procedureOp === 'start')) {
+      const { data: row } = await sb
+        .from('decision_rules')
+        .select('rule_json')
+        .eq('device_id', deviceId)
+        .eq('rule_id', ruleId)
+        .maybeSingle();
+      ruleJson = row?.rule_json;
+    }
+
+    const tankLike = isTankProcedureRuleJson(ruleJson);
+
+    // Desativar tanque: abort antes do disable (para OFF limpo se estava Running)
+    if (
+      tankLike &&
+      (op === 'disable' || op === 'delete') &&
+      procedureOp !== 'none'
+    ) {
+      const abortOp = procedureOp === 'abort' || procedureOp == null ? 'abort' : procedureOp;
+      if (abortOp === 'abort') {
+        await notifyDeviceProcedureCmd(deviceId, ruleId, 'abort');
+      }
     }
 
     const pub = await notifyDeviceRuleUpsert(
@@ -108,6 +142,18 @@ export async function POST(request: Request) {
       );
     }
 
+    // Ativar tanque: após Armed (upsert enabled), Start
+    // Pequeno delay: upsert e cmd usam conexões MQTT distintas — dá tempo ao Core carregar Armed
+    let procedureCmd: { op: ProcedureCmdOp; ok: boolean } | null = null;
+    if (tankLike && op === 'upsert' && Boolean(body.enabled) && procedureOp === 'start') {
+      await new Promise((r) => setTimeout(r, 400));
+      const cmd = await notifyDeviceProcedureCmd(deviceId, ruleId, 'start');
+      procedureCmd = { op: 'start', ok: cmd.ok || Boolean(cmd.skipped) };
+      if (!cmd.ok && !cmd.skipped) {
+        console.warn('[rules/sync] procedure start:', cmd.error);
+      }
+    }
+
     const { data: rows } = await sb
       .from('decision_rules')
       .select('rule_id, rule_name, rule_description, rule_json, enabled, priority')
@@ -131,7 +177,13 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ success: true, device_id: deviceId, rule_id: ruleId, op });
+    return NextResponse.json({
+      success: true,
+      device_id: deviceId,
+      rule_id: ruleId,
+      op,
+      procedure_cmd: procedureCmd,
+    });
   } catch (e) {
     console.error('[rules/sync]', e);
     return NextResponse.json(

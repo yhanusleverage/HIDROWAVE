@@ -38,7 +38,8 @@ export function useEcConfig(deviceId: string, enabled = true): EcConfigSnapshot 
       const res = await fetch(`/api/ec-controller/config?device_id=${q}`);
       if (!res.ok) return;
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) return;
       setSnapshot({
         auto_enabled: Boolean(data.auto_enabled),
         intervalo_auto_ec: Number(data.intervalo_auto_ec) || 300,

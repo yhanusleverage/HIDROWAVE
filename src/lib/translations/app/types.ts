@@ -655,16 +655,32 @@ export interface AppTranslations {
         badgeDisabled: string;
         configEnabled: string;
         configDisabled: string;
+        configDisabledAuto: string;
         unnamedRule: string;
         badgeCompleted: string;
         badgeAborted: string;
         procedureCompleted: string;
         procedureAborted: string;
         procedureTimeout: string;
+        dayToday: string;
+        dayYesterday: string;
+        categoryProcedure: string;
+        categoryConfig: string;
+        categoryActuator: string;
       };
       delete: {
         title: string;
         body: string;
+        adminHint: string;
+        passwordLabel: string;
+        passwordWrong: string;
+        confirm: string;
+      };
+      toggleConfirm: {
+        enableTitle: string;
+        disableTitle: string;
+        enableBody: string;
+        disableBody: string;
         adminHint: string;
         passwordLabel: string;
         passwordWrong: string;

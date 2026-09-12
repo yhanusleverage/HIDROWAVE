@@ -56,6 +56,7 @@ export async function saveProcedureToDecisionRules(
         enabled: procedure.enabled,
         priority: procedure.priority,
         op: procedure.enabled ? 'upsert' : 'disable',
+        procedure_op: 'none',
       });
       return { ok: true, ruleDbId: match.id, created: false };
     }
@@ -84,6 +85,7 @@ export async function saveProcedureToDecisionRules(
       enabled: procedure.enabled,
       priority: procedure.priority,
       op: procedure.enabled ? 'upsert' : 'disable',
+      procedure_op: 'none',
     });
 
     return { ok: true, ruleDbId: created.id, created: true };

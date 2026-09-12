@@ -128,8 +128,8 @@ export function useHydroEcReading(
         return;
       }
 
-      const data = (await res.json()) as HydroMeasurement;
-      if (!hasHydroFields(data)) return;
+      const data = (await res.json().catch(() => null)) as HydroMeasurement | null;
+      if (!data || !hasHydroFields(data)) return;
 
       applyHydroRow(
         data,

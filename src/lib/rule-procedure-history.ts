@@ -19,7 +19,13 @@ export type ProcedureEventRow = {
   reason: string | null;
   kind: string | null;
   created_at: string;
+  /** Nombre humano (bridge lo rellena al INSERT; opcional en filas viejas) */
+  rule_name?: string | null;
 };
+
+/** UI: bridge/auto-disable completó un procedimiento → refrescar lista de regras */
+export const PROCEDURE_FINISHED_UI_EVENT = 'hwProcedureFinished';
+
 
 export type RuleNameLookup = Record<
   string,
@@ -29,21 +35,43 @@ export type RuleNameLookup = Record<
 export function displayNameForProcedure(
   row: ProcedureEventRow,
   names: RuleNameLookup,
-  t: AppTranslations
+  t: AppTranslations,
+  nameHints?: Record<string, string>
 ): string {
   const meta = names[row.rule_id];
+  const hinted = nameHints?.[row.rule_id]?.trim() || null;
   const name = resolveDecisionRuleDisplayName(
     {
       rule_id: row.rule_id,
-      rule_name: meta?.rule_name ?? row.rule_id,
+      rule_name: hinted ?? meta?.rule_name ?? row.rule_name ?? row.rule_id,
       rule_json: meta?.rule_json,
     },
     t
   );
   if (/^RULE_\d+$/i.test(name)) {
-    return t.automacao.page.executionHistory.unnamedRule;
+    return hinted || t.automacao.page.executionHistory.unnamedRule;
   }
   return name;
+}
+
+/** Notifica a Automação que una regla se completó (enabled=false en UI). */
+export function notifyProcedureFinishedUi(input: {
+  deviceId: string;
+  ruleId: string;
+  ruleName?: string | null;
+  status: ProcedureEventStatus;
+}): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent(PROCEDURE_FINISHED_UI_EVENT, {
+      detail: {
+        deviceId: input.deviceId,
+        ruleId: input.ruleId,
+        ruleName: input.ruleName ?? null,
+        status: input.status,
+      },
+    })
+  );
 }
 
 export async function fetchProcedureEvents(
@@ -56,12 +84,32 @@ export async function fetchProcedureEvents(
 
   const { data, error } = await supabase
     .from('procedure_events')
-    .select('id, device_id, event_id, rule_id, status, reason, kind, created_at')
+    .select('id, device_id, event_id, rule_id, status, reason, kind, created_at, rule_name')
     .eq('device_id', deviceId)
     .order('created_at', { ascending: false })
     .limit(limit);
 
   if (error) {
+    // Columna rule_name aún no migrada — reintentar sin ella
+    if (
+      error.message?.includes('rule_name') ||
+      error.code === '42703' ||
+      error.code === 'PGRST204'
+    ) {
+      const fallback = await supabase
+        .from('procedure_events')
+        .select('id, device_id, event_id, rule_id, status, reason, kind, created_at')
+        .eq('device_id', deviceId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (!fallback.error) {
+        return {
+          rows: (fallback.data ?? []) as ProcedureEventRow[],
+          error: null,
+          available: true,
+        };
+      }
+    }
     // Tabla aún no migrada — no romper historial ni ocultar ACK
     if (
       error.message?.includes('procedure_events') ||

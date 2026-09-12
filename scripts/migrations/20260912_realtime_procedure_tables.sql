@@ -1,30 +1,15 @@
--- =====================================================
--- Supabase Realtime — activar tablas para WebSocket
--- Solo añade tablas que EXISTEN (evita error 42P01)
--- Métricas: ejecutar RUN_CONTROLLER_METRICS_MIGRATIONS.sql antes
--- =====================================================
+-- Realtime para historial de procedimentos + auto-disable UI
+-- Idempotente: safe si ya están en supabase_realtime.
+-- Ejecutar en Supabase SQL Editor (un solo Run).
 
 DO $$
 DECLARE
   t text;
   tables text[] := ARRAY[
-    'device_status',
-    'relay_master',
-    'relay_slaves',
-    'relay_commands',
-    'hydro_measurements',
-    'environment_data',
-    'nutrient_dosages',
-    'ph_dosages',
-    'ec_controller_metrics',
-    'ph_controller_metrics',
-    'pump_quantity',
-    'ec_config_view',
-    'ph_config_view',
-    -- Automação / procedimentos (historial + auto-disable UI)
     'procedure_events',
     'rule_config_events',
-    'decision_rules'
+    'decision_rules',
+    'relay_commands'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP
@@ -42,11 +27,20 @@ BEGIN
     EXCEPTION
       WHEN duplicate_object THEN
         RAISE NOTICE 'Already in publication: %', t;
+      WHEN undefined_object THEN
+        RAISE NOTICE 'Publication supabase_realtime missing — skip %', t;
     END;
   END LOOP;
 END $$;
 
-SELECT schemaname, tablename
+-- Verificación
+SELECT tablename
 FROM pg_publication_tables
 WHERE pubname = 'supabase_realtime'
+  AND tablename IN (
+    'procedure_events',
+    'rule_config_events',
+    'decision_rules',
+    'relay_commands'
+  )
 ORDER BY tablename;

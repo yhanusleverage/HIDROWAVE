@@ -882,7 +882,7 @@ export async function createRelayCommand(command: Omit<RelayCommand, 'id' | 'cre
   });
 
   if (!response.ok) return null;
-  const result = await response.json();
+  const result = await response.json().catch(() => ({}));
   return (result.command as RelayCommand) || null;
 }
 

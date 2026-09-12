@@ -13,6 +13,7 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 export type DecisionRuleMqttOp = 'upsert' | 'disable' | 'delete';
+export type DecisionRuleProcedureOp = 'start' | 'abort' | 'rearm' | 'none';
 
 /** Após CRUD no browser: empurra a regra ao Core via MQTT. */
 export async function requestDecisionRuleMqttSync(params: {
@@ -24,6 +25,8 @@ export async function requestDecisionRuleMqttSync(params: {
   enabled?: boolean;
   priority?: number;
   op?: DecisionRuleMqttOp;
+  /** Tanque: start ao ativar; abort ao desativar. Salvar = omitir / none. */
+  procedure_op?: DecisionRuleProcedureOp;
 }): Promise<{ ok: boolean; error?: string }> {
   try {
     const headers = await authHeaders();

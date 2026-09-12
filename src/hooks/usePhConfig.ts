@@ -42,7 +42,8 @@ export function usePhConfig(deviceId: string, enabled = true): PhConfigSnapshot 
       const res = await fetch(`/api/ph-controller/config?device_id=${q}`);
       if (!res.ok) return;
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) return;
       setSnapshot({
         auto_enabled: Boolean(data.auto_enabled),
         intervalo_auto_ph: Number(data.intervalo_auto_ph) || 300,

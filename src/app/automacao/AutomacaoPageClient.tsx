@@ -20,6 +20,7 @@ import {
   ClipboardIcon,
   ClipboardDocumentCheckIcon,
   ArrowPathIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { formatInstructionPreview } from '@/lib/instruction-labels';
 import { formatProcedureStepsPreviewList } from '@/lib/rule-procedure/procedure-step-preview';
@@ -35,6 +36,8 @@ import {
 } from '@/lib/decision-rule-display-name';
 import { RuleExecutionHistoryPanel } from '@/components/automacao/RuleExecutionHistoryPanel';
 import { appendRuleConfigEvent } from '@/lib/rule-config-history';
+import { PROCEDURE_FINISHED_UI_EVENT } from '@/lib/rule-procedure-history';
+import { supabase } from '@/lib/supabase';
 import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
 import {
   getDeviceDisplayStatus,
@@ -510,6 +513,75 @@ export default function AutomacaoPageClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, userProfile?.email]);
 
+  // Auto-disable en UI + MQTT tras procedure_finished (bridge → historial).
+  // El sync disable sobrescribe retained upsert enabled=1 si el ESP reconecta.
+  useEffect(() => {
+    const onProcFinished = (e: Event) => {
+      const detail = (e as CustomEvent<{
+        deviceId?: string;
+        ruleId?: string;
+        ruleName?: string | null;
+        status?: string;
+      }>).detail;
+      if (!detail?.ruleId || detail.status !== 'completed') return;
+      if (detail.deviceId && detail.deviceId !== selectedDeviceId) return;
+      if (detail.ruleId.toLowerCase().startsWith('fn_')) return;
+      setRules((prev) =>
+        prev.map((r) =>
+          r.rule_id === detail.ruleId ? { ...r, enabled: false } : r
+        )
+      );
+      void loadRules();
+      const deviceId = detail.deviceId || selectedDeviceId;
+      if (deviceId && deviceId !== 'default_device') {
+        void requestDecisionRuleMqttSync({
+          device_id: deviceId,
+          rule_id: detail.ruleId,
+          rule_name: detail.ruleName ?? undefined,
+          enabled: false,
+          op: 'disable',
+          procedure_op: 'none',
+        }).then((r) => {
+          if (!r.ok) {
+            console.warn('[automacao] MQTT disable post-complete falló:', r.error);
+          }
+        });
+      }
+    };
+    window.addEventListener(PROCEDURE_FINISHED_UI_EVENT, onProcFinished);
+    return () => window.removeEventListener(PROCEDURE_FINISHED_UI_EVENT, onProcFinished);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDeviceId]);
+
+  // Realtime: bridge UPDATE decision_rules.enabled → lista Ativas/Inativas
+  useEffect(() => {
+    if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
+    const channel = supabase
+      .channel(`decision-rules-enabled-${selectedDeviceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'decision_rules',
+          filter: `device_id=eq.${selectedDeviceId}`,
+        },
+        (payload) => {
+          const row = payload.new as { rule_id?: string; enabled?: boolean };
+          if (!row?.rule_id || typeof row.enabled !== 'boolean') return;
+          setRules((prev) =>
+            prev.map((r) =>
+              r.rule_id === row.rule_id ? { ...r, enabled: row.enabled as boolean } : r
+            )
+          );
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [selectedDeviceId]);
+
   // ✅ Auto-expandir seção e slave quando há apenas 1 slave
   useEffect(() => {
     if (espnowSlaves.length === 1 && !expandedSlaveRelayManager) {
@@ -881,7 +953,7 @@ export default function AutomacaoPageClient() {
           `/api/esp-now/command-acks?master_device_id=${selectedDeviceId}&limit=50`
         );
         if (!response.ok) return;
-        const result = await response.json();
+        const result = await response.json().catch(() => ({}));
         const acks = result.acks || [];
         acks.forEach((ack: { command_id: number | string; status: string; action?: string; relay_number?: number }) => {
           processCommandAck(ack.command_id, ack.status, ack.action, ack.relay_number);
@@ -1130,7 +1202,7 @@ export default function AutomacaoPageClient() {
         // Recarregar regras para refletir novos nomes
         await loadRules();
       } else {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({}));
         console.error('❌ Erro ao salvar nome do relé:', error);
         toast.error(
           ap.toast.relayNameSaveFail.replace('{error}', String(error.error || 'Erro desconhecido'))
@@ -1172,6 +1244,22 @@ export default function AutomacaoPageClient() {
     if (!rule) return;
 
     const nextEnabled = !rule.enabled;
+    const ruleName =
+      resolveDecisionRuleDisplayName(
+        {
+          rule_id: rule.rule_id,
+          rule_name: rule.rule_name || rule.name,
+          rule_json: rule.rule_json,
+        },
+        t
+      ) ||
+      rule.rule_name ||
+      rule.name ||
+      ap.toast.ruleNoName;
+
+    const confirmed = await showToggleConfirmation(ruleName, nextEnabled);
+    if (!confirmed) return;
+
     const dbId = rule.supabase_id || (typeof rule.id === 'string' ? rule.id : null);
     if (!dbId || typeof dbId === 'number') {
       toast.error(ap.toast.ruleUuidMissing);
@@ -1212,6 +1300,8 @@ export default function AutomacaoPageClient() {
         enabled: nextEnabled,
         priority: rule.priority,
         op: nextEnabled ? 'upsert' : 'disable',
+        // Ativar = Start; desativar = Abort (só procedimentos tanque no server)
+        procedure_op: nextEnabled ? 'start' : 'abort',
       });
       if (!sync.ok) {
         console.warn('[toggleRule] MQTT sync:', sync.error);
@@ -1472,6 +1562,8 @@ export default function AutomacaoPageClient() {
           enabled: decisionRule.enabled,
           priority: decisionRule.priority,
           op: decisionRule.enabled ? 'upsert' : 'disable',
+          // Salvar = armar (Armed). Start só no toggle Ativar.
+          procedure_op: 'none',
         });
         if (!mqtt.ok) {
           console.warn('[handleSaveRule] MQTT sync:', mqtt.error);
@@ -1510,57 +1602,90 @@ export default function AutomacaoPageClient() {
   };
 
 
-  // ✅ Componente de confirmación con contraseña (usando React state)
-  const DeleteConfirmationToast = ({ 
-    t, 
-    ruleName, 
-    onConfirm, 
-    onCancel 
-  }: { 
-    t: Toast; 
-    ruleName: string; 
-    onConfirm: (password: string) => void; 
+  // Confirmación con contraseña admin (excluir / activar / desactivar)
+  const AdminPasswordConfirmToast = ({
+    t: toastItem,
+    title,
+    body,
+    accent,
+    onConfirm,
+    onCancel,
+  }: {
+    t: Toast;
+    title: string;
+    body: string;
+    accent: 'danger' | 'ok' | 'warn';
+    onConfirm: () => void;
     onCancel: () => void;
   }) => {
     const [password, setPassword] = React.useState('');
-    
+    const tc = ap.toggleConfirm;
+    const border =
+      accent === 'ok'
+        ? 'border-aqua-500/50'
+        : accent === 'warn'
+          ? 'border-amber-500/50'
+          : 'border-red-500/40';
+    const titleColor =
+      accent === 'ok'
+        ? 'text-aqua-400'
+        : accent === 'warn'
+          ? 'text-amber-400'
+          : 'text-red-400';
+    const iconBg =
+      accent === 'ok'
+        ? 'bg-aqua-500/20'
+        : accent === 'warn'
+          ? 'bg-amber-500/20'
+          : 'bg-red-500/20';
+    const iconColor =
+      accent === 'ok'
+        ? 'text-aqua-400'
+        : accent === 'warn'
+          ? 'text-amber-400'
+          : 'text-red-400';
+    const ring =
+      accent === 'ok'
+        ? 'focus:ring-aqua-500 focus:border-aqua-500 border-aqua-500/60'
+        : accent === 'warn'
+          ? 'focus:ring-amber-500 focus:border-amber-500 border-amber-500/60'
+          : 'focus:ring-red-500 focus:border-red-500 border-red-500/60';
+    const btn =
+      accent === 'ok'
+        ? 'bg-aqua-600 hover:bg-aqua-700'
+        : accent === 'warn'
+          ? 'bg-amber-600 hover:bg-amber-700'
+          : 'bg-red-600 hover:bg-red-700';
+
     const handleConfirm = () => {
       if (password && validateAdminPassword(password)) {
-        onConfirm(password);
+        onConfirm();
       } else {
-        toast.error(ap.delete.passwordWrong, { id: 'password-error' });
+        toast.error(tc.passwordWrong, { id: 'password-error' });
       }
     };
 
     return (
       <div
         className={`${
-          t.visible ? 'animate-enter' : 'animate-leave'
-        } max-w-md w-full bg-dark-card border-2 border-red-500/40 shadow-lg rounded-lg pointer-events-auto flex flex-col`}
+          toastItem.visible ? 'animate-enter' : 'animate-leave'
+        } max-w-md w-full bg-dark-card border-2 ${border} shadow-lg rounded-lg pointer-events-auto flex flex-col`}
       >
         <div className="p-4">
           <div className="flex items-start">
             <div className="flex-shrink-0">
-              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
-                <XMarkIcon className="w-6 h-6 text-red-400" />
+              <div className={`w-10 h-10 rounded-full ${iconBg} flex items-center justify-center`}>
+                <ExclamationTriangleIcon className={`w-6 h-6 ${iconColor}`} />
               </div>
             </div>
             <div className="ml-3 w-0 flex-1">
-              <h3 className="text-sm font-semibold text-red-400 mb-1">
-                {ap.delete.title}
-              </h3>
-              <p className="text-sm text-dark-text mb-3">
-                {ap.delete.body.replace('{name}', ruleName)}
-              </p>
-              <p className="text-xs text-yellow-400 mb-3">
-                {ap.delete.adminHint}
-              </p>
-              
-              {/* Input de senha */}
+              <h3 className={`text-sm font-semibold ${titleColor} mb-1`}>{title}</h3>
+              <p className="text-sm text-dark-text mb-3">{body}</p>
+              <p className="text-xs text-yellow-400 mb-3">{tc.adminHint}</p>
               <input
                 type="password"
                 autoFocus
-                placeholder={ap.delete.passwordLabel}
+                placeholder={tc.passwordLabel}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => {
@@ -1570,18 +1695,18 @@ export default function AutomacaoPageClient() {
                     onCancel();
                   }
                 }}
-                className="w-full px-3 py-2 mb-3 bg-dark-surface border border-dark-border rounded text-dark-text text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                className={`w-full px-3 py-2 mb-3 bg-dark-surface border rounded text-dark-text text-sm focus:outline-none focus:ring-2 ${ring}`}
               />
-              
-              {/* Botões */}
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={handleConfirm}
-                  className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors"
+                  className={`flex-1 px-3 py-2 ${btn} text-white text-sm font-medium rounded transition-colors`}
                 >
-                  {ap.delete.confirm}
+                  {tc.confirm}
                 </button>
                 <button
+                  type="button"
                   onClick={onCancel}
                   className="flex-1 px-3 py-2 bg-dark-surface hover:bg-dark-border text-dark-text text-sm font-medium rounded border border-dark-border transition-colors"
                 >
@@ -1591,6 +1716,7 @@ export default function AutomacaoPageClient() {
             </div>
             <div className="ml-4 flex-shrink-0 flex">
               <button
+                type="button"
                 onClick={onCancel}
                 className="inline-flex text-dark-textSecondary hover:text-dark-text"
               >
@@ -1603,29 +1729,52 @@ export default function AutomacaoPageClient() {
     );
   };
 
-  // ✅ Función para mostrar toast de confirmación con contraseña
-  const showDeleteConfirmation = (id: number | string, ruleName: string): Promise<boolean> => {
+  const showAdminPasswordConfirmation = (opts: {
+    title: string;
+    body: string;
+    accent: 'danger' | 'ok' | 'warn';
+  }): Promise<boolean> => {
     return new Promise((resolve) => {
-      const toastId = toast.custom(
-        (t) => (
-          <DeleteConfirmationToast
-            t={t}
-            ruleName={ruleName}
-            onConfirm={(password) => {
-              toast.dismiss(t.id);
+      toast.custom(
+        (toastItem) => (
+          <AdminPasswordConfirmToast
+            t={toastItem}
+            title={opts.title}
+            body={opts.body}
+            accent={opts.accent}
+            onConfirm={() => {
+              toast.dismiss(toastItem.id);
               resolve(true);
             }}
             onCancel={() => {
-              toast.dismiss(t.id);
+              toast.dismiss(toastItem.id);
               resolve(false);
             }}
           />
         ),
         {
-          duration: Infinity, // Toast permanece até ser fechado
+          duration: Infinity,
           position: 'top-center',
         }
       );
+    });
+  };
+
+  const showToggleConfirmation = (ruleName: string, enabling: boolean): Promise<boolean> => {
+    const tc = ap.toggleConfirm;
+    return showAdminPasswordConfirmation({
+      title: enabling ? tc.enableTitle : tc.disableTitle,
+      body: (enabling ? tc.enableBody : tc.disableBody).replace('{name}', ruleName),
+      accent: enabling ? 'ok' : 'warn',
+    });
+  };
+
+  // ✅ Función para mostrar toast de confirmación con contraseña
+  const showDeleteConfirmation = (_id: number | string, ruleName: string): Promise<boolean> => {
+    return showAdminPasswordConfirmation({
+      title: ap.delete.title,
+      body: ap.delete.body.replace('{name}', ruleName),
+      accent: 'danger',
     });
   };
 

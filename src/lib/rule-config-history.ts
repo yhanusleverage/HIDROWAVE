@@ -16,6 +16,8 @@ export type RuleConfigEvent = {
   rule_name: string | null;
   event_type: RuleConfigEventType;
   created_at: string;
+  /** bridge:procedure_finished = desactivación automática al concluir */
+  created_by?: string | null;
 };
 
 const LS_PREFIX = 'hw_rule_config_events:';
@@ -113,7 +115,7 @@ export async function fetchRuleConfigEvents(
 
   const { data, error } = await supabase
     .from('rule_config_events')
-    .select('id, device_id, rule_id, rule_name, event_type, created_at')
+    .select('id, device_id, rule_id, rule_name, event_type, created_at, created_by')
     .eq('device_id', deviceId)
     .order('created_at', { ascending: false })
     .limit(limit);
