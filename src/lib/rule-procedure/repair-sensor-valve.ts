@@ -20,7 +20,7 @@ function invertLevelOperator(op: SensorCondition['operator']): SensorCondition['
 export function repairSensorValveStep(step: ProcedureStep): ProcedureStep {
   if (step.type !== 'sensor_valve') return step;
 
-  let maxDurationMs = step.maxDurationMs > 0 ? step.maxDurationMs : 30 * 60 * 1000;
+  const maxDurationMs = step.maxDurationMs > 0 ? step.maxDurationMs : 30 * 60 * 1000;
   let valveStart = step.valveStart;
   let valveFinish = step.valveFinish;
 
