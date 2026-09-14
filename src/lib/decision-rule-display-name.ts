@@ -6,8 +6,8 @@ import {
   FN_RULE_NAME_KEYS,
   canonicalFnRuleId,
   roleIdFromFnRuleId,
-  type HydraulicRoleId,
 } from '@/lib/fixed-function-rule-from-hydraulic';
+import type { HydraulicRoleId } from '@/lib/hydraulic-relay-roles';
 import type { AppTranslations } from '@/lib/translations/app/types';
 
 const RULE_ID_TO_ROLE = Object.fromEntries(
