@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { SidebarProvider } from '@/contexts/SidebarContext';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { ActiveDeviceProvider } from '@/contexts/ActiveDeviceContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import LayoutContent from '@/components/LayoutContent';
 
@@ -35,9 +36,11 @@ export default function RootLayout({
       <body className={inter.className}>
         <AuthProvider>
           <LanguageProvider>
-            <SidebarProvider>
-              <LayoutContent>{children}</LayoutContent>
-            </SidebarProvider>
+            <ActiveDeviceProvider>
+              <SidebarProvider>
+                <LayoutContent>{children}</LayoutContent>
+              </SidebarProvider>
+            </ActiveDeviceProvider>
           </LanguageProvider>
         </AuthProvider>
       </body>

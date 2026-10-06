@@ -148,10 +148,9 @@ export function EcAutoStatusCard({ deviceId }: EcAutoStatusCardProps) {
           nextCheckLabel={ec.nextCheck}
           accent="emerald"
           operationInterrupted={operationInterrupted}
-        />
-        <div className="mt-2">
+        >
           <MixInterlockBadge levels={levels} />
-        </div>
+        </OperationStateBadges>
 
         {dilutionState.isDraining && dilutionState.targetL > 0 && (
           <div className="mt-4 mb-2 space-y-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2.5">

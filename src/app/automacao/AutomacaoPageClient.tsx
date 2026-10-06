@@ -38,12 +38,13 @@ import { RuleExecutionHistoryPanel } from '@/components/automacao/RuleExecutionH
 import { appendRuleConfigEvent } from '@/lib/rule-config-history';
 import { PROCEDURE_FINISHED_UI_EVENT } from '@/lib/rule-procedure-history';
 import { supabase } from '@/lib/supabase';
-import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
+import { useAuth } from '@/contexts/AuthContext';
+import { useActiveDevice } from '@/contexts/ActiveDeviceContext';
+import { DeviceMasterSelect } from '@/components/DeviceMasterSelect';
 import {
   getDeviceDisplayStatus,
   type DeviceDisplayStatus,
 } from '@/lib/realtime/device-status';
-import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toBcp47 } from '@/lib/locale';
 import { getESPNOWSlaves, ESPNowSlave } from '@/lib/esp-now-slaves';
@@ -244,8 +245,12 @@ export default function AutomacaoPageClient() {
   const [jsonPreviewRule, setJsonPreviewRule] = useState<AutomationRule | null>(null); // ✅ Regra para vista previa JSON
   const [copiedRuleId, setCopiedRuleId] = useState<string | null>(null); // ✅ rule_id copiado para feedback visual
   const [loading, setLoading] = useState(true);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default_device');
-  const { masters: availableMasters } = useDevicesWithRealtime(userProfile?.email);
+  const {
+    deviceId: selectedDeviceId,
+    selected: selectedMaster,
+  } = useActiveDevice();
+  const activeDeviceRef = useRef(selectedDeviceId);
+  activeDeviceRef.current = selectedDeviceId;
   
   const [relays, setRelays] = useState<Relay[]>([
     { id: 0, name: 'Relé 0' },
@@ -454,18 +459,13 @@ export default function AutomacaoPageClient() {
     return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    if (availableMasters.length > 0 && selectedDeviceId === 'default_device') {
-      setSelectedDeviceId(availableMasters[0].device_id || 'default_device');
-    }
-  }, [availableMasters, selectedDeviceId]);
-
-  // ✅ NOVO: Carregar nomes de relés LOCAIS do Master
   const loadLocalRelayNames = useCallback(async () => {
-    if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
-    
+    const requestedId = selectedDeviceId;
+    if (!requestedId || requestedId === 'default_device') return;
+
     try {
-      const names = await getMasterLocalRelayNames(selectedDeviceId);
+      const names = await getMasterLocalRelayNames(requestedId);
+      if (activeDeviceRef.current !== requestedId) return;
 
       const labeled: Array<{ number: number; name: string }> = [];
       const localRelays: Relay[] = [];
@@ -480,20 +480,39 @@ export default function AutomacaoPageClient() {
       console.error('Erro ao carregar nomes de relés locais:', error);
     }
   }, [selectedDeviceId]);
-  
 
   // Carregar regras do Supabase quando selectedDeviceId mudar
   useEffect(() => {
+    setRules([]);
+    setEspnowSlaves([]);
+    setRelayStates(new Map());
+    setLoadingRelays(new Map());
+    setTempRelayNames(new Map());
+    setRelayTimers(new Map());
+    setTimerModes(new Map());
+    setTimerSecondsLeft(new Map());
+    setArmedTimers(new Map());
+    setRelayCycles(new Map());
+    setShowTimerInput(null);
+    setShowCycleInput(null);
+    setHydraulicRoles({});
+    commandToRelayMap.current.clear();
+    pendingAckTimersRef.current.forEach((timer) => clearTimeout(timer));
+    pendingAckTimersRef.current.clear();
+
     if (selectedDeviceId && selectedDeviceId !== 'default_device') {
       loadRules();
       loadESPNOWSlaves();
-      loadLocalRelayNames(); // ✅ NOVO: Carregar nomes de relés locais
+      loadLocalRelayNames();
       void (async () => {
+        const requestedId = selectedDeviceId;
         try {
           const res = await fetch(
-            `/api/automation/hydraulic-roles?device_id=${encodeURIComponent(selectedDeviceId)}`
+            `/api/automation/hydraulic-roles?device_id=${encodeURIComponent(requestedId)}`
           );
+          if (activeDeviceRef.current !== requestedId) return;
           const data = await res.json().catch(() => ({}));
+          if (activeDeviceRef.current !== requestedId) return;
           if (res.ok) {
             setHydraulicRoles(
               normalizeHydraulicRolesJson(data.roles ?? data.hydraulic_roles_json)
@@ -502,14 +521,12 @@ export default function AutomacaoPageClient() {
             setHydraulicRoles({});
           }
         } catch {
-          setHydraulicRoles({});
+          if (activeDeviceRef.current === requestedId) setHydraulicRoles({});
         }
       })();
     } else {
-      setHydraulicRoles({});
+      setLoading(false);
     }
-    // ✅ SOLUCIÓN DATA RACE: Remover funciones de las dependencias
-    // Solo debe ejecutarse cuando cambia selectedDeviceId o userProfile?.email
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, userProfile?.email]);
 
@@ -1032,9 +1049,11 @@ export default function AutomacaoPageClient() {
   }, [selectedDeviceId, updateRelayStatesOnly]);
 
   const loadRules = async () => {
+    const requestedId = selectedDeviceId;
     setLoading(true);
     try {
-      const decisionRules = await getDecisionRules(selectedDeviceId);
+      const decisionRules = await getDecisionRules(requestedId);
+      if (activeDeviceRef.current !== requestedId) return;
       
       // Converter DecisionRule para AutomationRule
       const convertedRules: AutomationRule[] = decisionRules.map((rule) => {
@@ -1073,27 +1092,30 @@ export default function AutomacaoPageClient() {
 
       setRules(convertedRules);
     } catch (error) {
+      if (activeDeviceRef.current !== requestedId) return;
       console.error('Error loading rules:', error);
       toast.error(ap.toast.loadRulesFail);
     } finally {
-      setLoading(false);
+      if (activeDeviceRef.current === requestedId) setLoading(false);
     }
   };
 
   const loadESPNOWSlaves = async () => {
-    if (!selectedDeviceId || !userProfile?.email) {
+    const requestedId = selectedDeviceId;
+    if (!requestedId || !userProfile?.email) {
       console.warn('⚠️ Não é possível carregar slaves: selectedDeviceId ou userProfile.email ausente');
       return;
     }
     
     console.log('🔍 Carregando slaves ESP-NOW...', {
-      masterDeviceId: selectedDeviceId,
+      masterDeviceId: requestedId,
       userEmail: userProfile.email
     });
     
     setLoadingSlaves(true);
     try {
-      const slaves = await getESPNOWSlaves(selectedDeviceId, userProfile.email);
+      const slaves = await getESPNOWSlaves(requestedId, userProfile.email);
+      if (activeDeviceRef.current !== requestedId) return;
       console.log(`✅ ${slaves.length} slave(s) encontrado(s):`, slaves.map(s => ({
         name: s.name,
         mac: s.macAddress,
@@ -1137,7 +1159,7 @@ export default function AutomacaoPageClient() {
       console.error('❌ Erro ao carregar slaves ESP-NOW:', error);
       toast.error(ap.toast.loadAtlasFail);
     } finally {
-      setLoadingSlaves(false);
+      if (activeDeviceRef.current === requestedId) setLoadingSlaves(false);
     }
   };
 
@@ -2052,7 +2074,6 @@ export default function AutomacaoPageClient() {
     : null;
 
   // Motor: Core online + >=1 regra enabled (decision_engine_enabled nao e publicado pelo firmware)
-  const selectedMaster = availableMasters.find((m) => m.device_id === selectedDeviceId);
   const masterDisplayStatus: DeviceDisplayStatus = selectedMaster
     ? getDeviceDisplayStatus(selectedMaster)
     : 'offline';
@@ -2079,23 +2100,7 @@ export default function AutomacaoPageClient() {
               <p className="text-base sm:text-lg text-dark-textSecondary mt-1">{t.pages.automacaoSubtitle}</p>
             </div>
             {/* Seletor de Master */}
-            {availableMasters.length > 0 && (
-              <select
-                value={selectedDeviceId}
-                onChange={(e) => setSelectedDeviceId(e.target.value)}
-                className="w-full sm:w-auto min-w-[200px] px-4 py-3 text-base sm:text-lg bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500 focus:border-aqua-500 focus:outline-none"
-              >
-                {availableMasters.map(master => {
-                  const st = getDeviceDisplayStatus(master);
-                  return (
-                    <option key={master.device_id} value={master.device_id || ''}>
-                      {master.device_name || master.device_id}{' '}
-                      {st === 'online' ? '🟢' : st === 'warning' ? '🟡' : '🔴'}
-                    </option>
-                  );
-                })}
-              </select>
-            )}
+            <DeviceMasterSelect size="lg" />
           </div>
           
           {/* Segunda linha: Informações em tempo real */}
@@ -3249,16 +3254,21 @@ export default function AutomacaoPageClient() {
 
 
 
-        <RuleExecutionHistoryPanel deviceId={selectedDeviceId} />
+        <RuleExecutionHistoryPanel key={selectedDeviceId} deviceId={selectedDeviceId} />
           </>
         )}
 
         {activeTab === 'ec' && (
-          <AutoEcControllerPanel deviceId={selectedDeviceId} espnowSlaves={espnowSlaves} />
+          <AutoEcControllerPanel
+            key={selectedDeviceId}
+            deviceId={selectedDeviceId}
+            espnowSlaves={espnowSlaves}
+          />
         )}
 
         {activeTab === 'ph' && selectedDeviceId && selectedDeviceId !== 'default_device' && (
           <PhControllerPanel
+            key={selectedDeviceId}
             deviceId={selectedDeviceId}
             currentPh={phAtual}
             currentPhRaw={phRaw}

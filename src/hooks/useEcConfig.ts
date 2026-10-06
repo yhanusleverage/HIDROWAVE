@@ -2,7 +2,7 @@
  * Config Auto EC do Supabase (ec_config_view) — poll leve para dashboard.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface EcConfigSnapshot {
   auto_enabled: boolean;
@@ -38,20 +38,23 @@ const DEFAULT: EcConfigSnapshot = {
 
 export function useEcConfig(deviceId: string, enabled = true): EcConfigSnapshot {
   const [snapshot, setSnapshot] = useState<EcConfigSnapshot>(DEFAULT);
+  const seq = useRef(0);
 
   const refresh = useCallback(async () => {
+    const ticket = ++seq.current;
     if (!enabled || !deviceId?.trim()) {
-      setSnapshot((s) => ({ ...s, isLoading: false }));
+      if (seq.current === ticket) setSnapshot((s) => ({ ...s, isLoading: false }));
       return;
     }
 
     try {
       const q = encodeURIComponent(deviceId.trim());
       const res = await fetch(`/api/ec-controller/config?device_id=${q}`);
+      if (seq.current !== ticket) return;
       if (!res.ok) return;
 
       const data = await res.json().catch(() => null);
-      if (!data) return;
+      if (seq.current !== ticket || !data) return;
       const nutrientsRaw = Array.isArray(data.nutrients) ? data.nutrients : [];
       setSnapshot({
         auto_enabled: Boolean(data.auto_enabled),
@@ -73,6 +76,7 @@ export function useEcConfig(deviceId: string, enabled = true): EcConfigSnapshot 
         isLoading: false,
       });
     } catch {
+      if (seq.current !== ticket) return;
       setSnapshot((s) => ({ ...s, isLoading: false }));
     }
   }, [deviceId, enabled]);

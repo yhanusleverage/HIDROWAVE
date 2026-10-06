@@ -49,8 +49,8 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
     autoEnabled: phConfig.auto_enabled,
     mirrorFirmware: phConfig.auto_enabled,
     relayFallback: {
-      relayPhUp: phConfig.relay_ph_up,
-      relayPhDown: phConfig.relay_ph_down,
+      relayPhUp: phConfig.relay_ph_up ?? -1,
+      relayPhDown: phConfig.relay_ph_down ?? -1,
       doserRelayStates,
     },
   });
@@ -207,10 +207,9 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
           nextCheckLabel={ph.nextCheck}
           accent="violet"
           operationInterrupted={operationInterrupted}
-        />
-        <div className="mt-2">
+        >
           <MixInterlockBadge levels={levels} />
-        </div>
+        </OperationStateBadges>
 
         <AutoControlStatusMetrics
           accent="ph"

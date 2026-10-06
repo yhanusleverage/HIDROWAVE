@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { hwToast } from '@/lib/control-toast';
+import { optionalDoserRelay } from '@/lib/relay-allocation';
 import {
   mlPerPhUnitFromDose,
   withVolume,
@@ -31,6 +32,7 @@ interface PhCalibrationSectionProps {
   relayOptions: RelayOption[];
   isOnline?: boolean;
   autoBlocked?: boolean;
+  commandsLocked?: boolean;
 }
 
 type PumpSide = 'base' | 'acid';
@@ -48,6 +50,7 @@ function PumpCalibrationCard({
   deviceId,
   isOnline,
   autoBlocked,
+  commandsLocked = false,
 }: {
   side: PumpSide;
   title: string;
@@ -61,6 +64,7 @@ function PumpCalibrationCard({
   deviceId: string;
   isOnline: boolean;
   autoBlocked: boolean;
+  commandsLocked?: boolean;
 }) {
   const { t } = useLanguage();
   const g = t.calibragem.gains;
@@ -96,6 +100,7 @@ function PumpCalibrationCard({
       toast.error(g.toastCoreOffline);
       return;
     }
+    if (commandsLocked) return;
     if (autoBlocked) {
       toast.error(g.toastDisableAuto);
       return;
@@ -220,7 +225,7 @@ function PumpCalibrationCard({
       <button
         type="button"
         onClick={() => void runMlTest()}
-        disabled={testing || !isOnline || autoBlocked || mlDosed <= 0 || !(flowRate > 0)}
+        disabled={testing || commandsLocked || !isOnline || autoBlocked || mlDosed <= 0 || !(flowRate > 0)}
         className="w-full py-2.5 rounded-lg text-sm font-medium border border-violet-500/50 bg-violet-500/15 text-violet-200 hover:bg-violet-500/25 disabled:opacity-40 flex items-center justify-center gap-2"
       >
         <PlayIcon className="w-4 h-4" />
@@ -244,6 +249,7 @@ export function PhCalibrationSection({
   relayOptions,
   isOnline = false,
   autoBlocked = false,
+  commandsLocked = false,
 }: PhCalibrationSectionProps) {
   const { t } = useLanguage();
   const g = t.calibragem.gains;
@@ -270,6 +276,7 @@ export function PhCalibrationSection({
   const [ecVolumeLiters, setEcVolumeLiters] = useState<number | null>(null);
 
   const volumeDirty = volumeLiters !== savedVolumeLiters;
+  const loadSeq = useRef(0);
 
   const ecKRecipe =
     ecBaseDose != null && ecTotalMl != null && ecTotalMl > 0
@@ -279,6 +286,7 @@ export function PhCalibrationSection({
 
   const loadAll = useCallback(async () => {
     if (!deviceId) return;
+    const seq = ++loadSeq.current;
     setLoading(true);
     try {
       const [phRes, ecRes, ecMetrics] = await Promise.all([
@@ -286,10 +294,12 @@ export function PhCalibrationSection({
         fetch(`/api/ec-controller/config?device_id=${encodeURIComponent(deviceId)}`),
         fetchEcControllerMetrics(deviceId, 24),
       ]);
+      if (seq !== loadSeq.current) return;
       let ecVol: number | null = null;
       let vol = 100;
       if (ecRes.ok) {
         const ec = await ecRes.json();
+        if (seq !== loadSeq.current) return;
         if (Number(ec.volume) > 0) {
           ecVol = Number(ec.volume);
           vol = ecVol;
@@ -335,12 +345,13 @@ export function PhCalibrationSection({
       setEcVolumeLiters(ecVol);
       if (phRes.ok) {
         const ph = await phRes.json();
+        if (seq !== loadSeq.current) return;
         setPhConfigRaw(ph);
         const loadedVol = Number(ph.volume) > 0 ? Number(ph.volume) : vol;
         setVolumeLiters(loadedVol);
         setSavedVolumeLiters(loadedVol);
-        setRelayPhUp(Number(ph.relay_ph_up) ?? 1);
-        setRelayPhDown(Number(ph.relay_ph_down) ?? 0);
+        setRelayPhUp(optionalDoserRelay(ph.relay_ph_up) ?? -1);
+        setRelayPhDown(optionalDoserRelay(ph.relay_ph_down) ?? -1);
         setFlowRatePhUp(Number(ph.flow_rate_ph_up) || 1);
         setFlowRatePhDown(Number(ph.flow_rate_ph_down) || 1);
         setMlPerPhUnitBase(
@@ -356,10 +367,11 @@ export function PhCalibrationSection({
         setSavedVolumeLiters(vol);
       }
     } catch (e) {
+      if (seq !== loadSeq.current) return;
       console.error(e);
       toast.error(g.toastLoadError);
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [deviceId, g.toastLoadError]);
 
@@ -368,9 +380,13 @@ export function PhCalibrationSection({
   }, [loadAll]);
 
   const relayUpName =
-    relayOptions.find((r) => r.number === relayPhUp)?.name ?? `Relé ${relayPhUp}`;
+    relayPhUp < 0
+      ? '--'
+      : (relayOptions.find((r) => r.number === relayPhUp)?.name ?? `Relé ${relayPhUp}`);
   const relayDownName =
-    relayOptions.find((r) => r.number === relayPhDown)?.name ?? `Relé ${relayPhDown}`;
+    relayPhDown < 0
+      ? '--'
+      : (relayOptions.find((r) => r.number === relayPhDown)?.name ?? `Relé ${relayPhDown}`);
 
   const saveVolumeLiters = async () => {
     if (!deviceId) return;
@@ -647,6 +663,7 @@ export function PhCalibrationSection({
           deviceId={deviceId}
           isOnline={isOnline}
           autoBlocked={autoBlocked}
+          commandsLocked={commandsLocked}
         />
         <PumpCalibrationCard
           side="acid"
@@ -661,6 +678,7 @@ export function PhCalibrationSection({
           deviceId={deviceId}
           isOnline={isOnline}
           autoBlocked={autoBlocked}
+          commandsLocked={commandsLocked}
         />
       </div>
     </div>

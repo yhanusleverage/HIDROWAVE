@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import NavLink from '@/components/NavLink';
 import { toast } from 'react-hot-toast';
 import {
@@ -9,10 +9,12 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
 } from '@heroicons/react/24/outline';
-import { useAuth } from '@/contexts/AuthContext';
+import { useActiveDevice } from '@/contexts/ActiveDeviceContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getMasterLocalRelayNames } from '@/lib/nutrition-plan';
-import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
+import { supabase } from '@/lib/supabase';
+import { createRealtimeChannel } from '@/lib/realtime/channel';
+import { DeviceMasterSelect } from '@/components/DeviceMasterSelect';
 import { PhCalibrationSection } from '@/components/PhCalibrationSection';
 import { EcPumpCalibrationSection } from '@/components/EcPumpCalibrationSection';
 import { PumpQuantitySection } from '@/components/PumpQuantitySection';
@@ -21,34 +23,42 @@ import { usePhConfig } from '@/hooks/usePhConfig';
 
 export default function CalibragemPage() {
   const { t } = useLanguage();
-  const { userProfile } = useAuth();
-  const { masters: devices } = useDevicesWithRealtime(userProfile?.email);
-  const [selectedDeviceId, setSelectedDeviceId] = useState('');
+  const { deviceId: selectedDeviceId, selected: selectedDevice } = useActiveDevice();
+  const activeDeviceRef = useRef(selectedDeviceId);
+  activeDeviceRef.current = selectedDeviceId;
   const [relayOptions, setRelayOptions] = useState<Array<{ number: number; name: string }>>([]);
   const [activeTab, setActiveTab] = useState<'vazao' | 'ganhos' | 'quantidade'>('vazao');
   const [procedureOpen, setProcedureOpen] = useState(false);
 
-  const selectedDevice = devices.find((d) => d.device_id === selectedDeviceId);
   const ecConfig = useEcConfig(selectedDeviceId, Boolean(selectedDeviceId));
   const phConfig = usePhConfig(selectedDeviceId, Boolean(selectedDeviceId));
+  const configLoading = ecConfig.isLoading || phConfig.isLoading;
   const autoBlocked = Boolean(ecConfig.auto_enabled || phConfig.auto_enabled);
   const isOnline = Boolean(selectedDevice?.is_online);
 
   useEffect(() => {
-    if (devices.length > 0 && !selectedDeviceId) {
-      setSelectedDeviceId(devices[0].device_id);
-    }
-  }, [devices, selectedDeviceId]);
+    setRelayOptions([]);
+  }, [selectedDeviceId]);
 
   const loadRelayNames = useCallback(async () => {
-    if (!selectedDeviceId) return;
+    const requestedId = selectedDeviceId;
+    if (!requestedId) return;
     try {
-      const names = await getMasterLocalRelayNames(selectedDeviceId);
+      const names = await getMasterLocalRelayNames(requestedId);
+      if (activeDeviceRef.current !== requestedId) return;
       const relays: Array<{ number: number; name: string }> = [];
       for (let i = 0; i <= 7; i++) {
         relays.push({ number: i, name: names.get(i) || `Relé ${i}` });
       }
-      setRelayOptions(relays);
+      setRelayOptions((prev) => {
+        if (
+          prev.length === relays.length &&
+          prev.every((row, i) => row.number === relays[i].number && row.name === relays[i].name)
+        ) {
+          return prev;
+        }
+        return relays;
+      });
     } catch (e) {
       console.error(e);
       toast.error(t.calibragem.toastLoadRelays);
@@ -57,6 +67,23 @@ export default function CalibragemPage() {
 
   useEffect(() => {
     if (selectedDeviceId) void loadRelayNames();
+  }, [selectedDeviceId, loadRelayNames]);
+
+  useEffect(() => {
+    const id = selectedDeviceId?.trim();
+    if (!id) return;
+    const channel = createRealtimeChannel(`hidrowave-calib-relay-names-${id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'relay_master', filter: `device_id=eq.${id}` },
+        () => {
+          void loadRelayNames();
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [selectedDeviceId, loadRelayNames]);
 
   return (
@@ -73,19 +100,7 @@ export default function CalibragemPage() {
                 {t.pages.calibragemSubtitle}
               </p>
             </div>
-            {devices.length > 0 && (
-              <select
-                value={selectedDeviceId}
-                onChange={(e) => setSelectedDeviceId(e.target.value)}
-                className="w-full sm:w-auto min-w-[200px] px-4 py-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text focus:ring-2 focus:ring-aqua-500"
-              >
-                {devices.map((d) => (
-                  <option key={d.device_id} value={d.device_id}>
-                    {d.device_name || d.device_id} {d.is_online ? '🟢' : '🔴'}
-                  </option>
-                ))}
-              </select>
-            )}
+            <DeviceMasterSelect />
           </div>
         </div>
       </header>
@@ -130,10 +145,12 @@ export default function CalibragemPage() {
         {activeTab === 'ganhos' ? (
           selectedDeviceId ? (
             <PhCalibrationSection
+              key={selectedDeviceId}
               deviceId={selectedDeviceId}
               relayOptions={relayOptions}
               isOnline={isOnline}
               autoBlocked={autoBlocked}
+              commandsLocked={configLoading}
             />
           ) : (
             <p className="text-dark-textSecondary text-sm">{t.calibragem.selectDevice}</p>
@@ -141,6 +158,7 @@ export default function CalibragemPage() {
         ) : activeTab === 'quantidade' ? (
           selectedDeviceId ? (
             <PumpQuantitySection
+              key={selectedDeviceId}
               deviceId={selectedDeviceId}
               relayOptions={relayOptions}
             />
@@ -203,9 +221,11 @@ export default function CalibragemPage() {
 
             {selectedDeviceId ? (
               <EcPumpCalibrationSection
+                key={selectedDeviceId}
                 deviceId={selectedDeviceId}
                 isOnline={isOnline}
                 autoBlocked={autoBlocked}
+                commandsLocked={configLoading}
                 relayOptions={relayOptions}
               />
             ) : (

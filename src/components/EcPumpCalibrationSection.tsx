@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import NavLink from '@/components/NavLink';
 import { toast } from 'react-hot-toast';
 import { hwToast } from '@/lib/control-toast';
@@ -30,8 +30,13 @@ import {
   PERISTALTIC_RELAY_MAX,
 } from '@/lib/dosing-pump-registry';
 import { PumpPrimeHoldControl } from '@/components/PumpPrimeHoldControl';
-import { HW_TEXT } from '@/lib/design-tokens';
+import { HW_ACCENT_LEFT, HW_TEXT } from '@/lib/design-tokens';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { optionalDoserRelay } from '@/lib/relay-allocation';
+import { supabase } from '@/lib/supabase';
+import { createRealtimeChannel } from '@/lib/realtime/channel';
+import { saveMasterLocalRelayName } from '@/lib/nutrition-plan';
+import { cardTitle, isSolutionName, pumpNumberLabel } from '@/lib/pump-display';
 
 type PumpKind = 'ec' | 'ph_up' | 'ph_down';
 
@@ -116,6 +121,39 @@ async function saveEcPumpFlow(
   }
 }
 
+/** Si la bomba ya está en la receta, solo cambia `name` y reenvía el resto tal cual llegó. */
+async function saveEcNutrientNameIfPresent(deviceId: string, relay: number, solution: string) {
+  const getRes = await fetch(
+    `/api/ec-controller/config?device_id=${encodeURIComponent(deviceId)}`
+  );
+  if (!getRes.ok) {
+    throw new Error('Erro ao ler a receita');
+  }
+  const existing = unwrapConfigRow(await getRes.json());
+  const current = parseNutrientsJson(existing.nutrients);
+  const storedName = solution || pumpNumberLabel(relay);
+  let found = false;
+  const next = current.map((n) => {
+    if (nutrientRelayNumber(n) !== relay) return n;
+    found = true;
+    return { ...n, name: storedName };
+  });
+  if (!found) return;
+  const res = await fetch('/api/ec-controller/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...existing,
+      device_id: deviceId,
+      nutrients: next,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.error === 'string' ? err.error : 'Erro ao salvar nome');
+  }
+}
+
 function unwrapConfigRow(json: unknown): Record<string, unknown> {
   if (!json || typeof json !== 'object') return {};
   const row = json as Record<string, unknown>;
@@ -173,18 +211,22 @@ function PumpAccordionRow({
   globalFlowRate,
   isOnline,
   autoBlocked,
+  commandsLocked = false,
   open,
   onToggle,
   onSaved,
+  onNameSaved,
 }: {
   deviceId: string;
   pump: AvailablePump;
   globalFlowRate: number;
   isOnline: boolean;
   autoBlocked: boolean;
+  commandsLocked?: boolean;
   open: boolean;
   onToggle: () => void;
   onSaved: (relay: number, kind: PumpKind, flowRate: number) => void;
+  onNameSaved: (name: string) => void;
 }) {
   const { t } = useLanguage();
   const flow = t.calibragem.flow;
@@ -192,9 +234,24 @@ function PumpAccordionRow({
   const isPh = pump.kind !== 'ec';
   const [measuredVolumeMl, setMeasuredVolumeMl] = useState(10);
   const [measuredDurationSec, setMeasuredDurationSec] = useState(60);
-  const [flowRate, setFlowRate] = useState(stored ?? (globalFlowRate > 0 ? globalFlowRate : 1));
+  const serverFlow = stored ?? (globalFlowRate > 0 ? globalFlowRate : 1);
+  const appliedFlowRef = useRef(serverFlow);
+  const [flowRate, setFlowRate] = useState(serverFlow);
   const [testVolumeMl, setTestVolumeMl] = useState(5);
   const [saving, setSaving] = useState(false);
+  const [savingName, setSavingName] = useState(false);
+  const serverSolutionName = isSolutionName(pump.name, pump.relay) ? pump.name : '';
+  const appliedNameRef = useRef(serverSolutionName);
+  const [solutionName, setSolutionName] = useState(serverSolutionName);
+
+  useEffect(() => {
+    const next = isSolutionName(pump.name, pump.relay) ? pump.name : '';
+    setSolutionName((current) => {
+      if (current !== appliedNameRef.current) return current;
+      appliedNameRef.current = next;
+      return next;
+    });
+  }, [pump.name, pump.relay]);
   const [testing, setTesting] = useState(false);
   const [timingTest, setTimingTest] = useState(false);
   const [pumpEndsAt, setPumpEndsAt] = useState(0);
@@ -218,14 +275,21 @@ function PumpAccordionRow({
   const pumpRemainSec = Math.max(0, Math.ceil((pumpEndsAt - Date.now()) / 1000));
 
   useEffect(() => {
-    setFlowRate(stored ?? (globalFlowRate > 0 ? globalFlowRate : 1));
+    const next = stored ?? (globalFlowRate > 0 ? globalFlowRate : 1);
+    setFlowRate((current) => {
+      if (current !== appliedFlowRef.current) return current;
+      appliedFlowRef.current = next;
+      return next;
+    });
   }, [stored, globalFlowRate, pump.relay, pump.kind]);
 
   const calculatedRate = calculateFlowRateMlPerSecond(measuredVolumeMl, measuredDurationSec);
   const usingFallback = stored == null;
+  const unassigned = !isPh && !isSolutionName(pump.name, pump.relay);
+  const cardAccent = isPh ? 'ph' : unassigned ? 'brand' : 'ec';
   const accent = isPh ? 'ph' : 'ec';
-  const titleColor = isPh ? HW_TEXT.ph : HW_TEXT.ec;
-  const borderAccent = isPh ? 'border-l-violet-500' : 'border-l-emerald-500';
+  const titleColor = HW_TEXT[cardAccent];
+  const borderAccent = HW_ACCENT_LEFT[cardAccent];
 
   const applyCalculated = () => {
     if (calculatedRate == null) {
@@ -234,6 +298,25 @@ function PumpAccordionRow({
     }
     setFlowRate(roundFlowRateMlPerSec(calculatedRate));
     toast.success(formatFlowRate(calculatedRate));
+  };
+
+  const saveSolutionName = async () => {
+    const trimmed = solutionName.trim();
+    setSavingName(true);
+    try {
+      const ok = await saveMasterLocalRelayName(deviceId, pump.relay, trimmed);
+      if (!ok) throw new Error(flow.toastNameError);
+      await saveEcNutrientNameIfPresent(deviceId, pump.relay, trimmed);
+      const shown = isSolutionName(trimmed, pump.relay) ? trimmed : '';
+      appliedNameRef.current = shown;
+      setSolutionName(shown);
+      toast.success(flow.toastNameSaved);
+      onNameSaved(trimmed);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : flow.toastNameError);
+    } finally {
+      setSavingName(false);
+    }
   };
 
   const save = async () => {
@@ -254,6 +337,8 @@ function PumpAccordionRow({
       } else {
         await savePhPumpFlow(deviceId, pump.kind, q);
       }
+      appliedFlowRef.current = q;
+      setFlowRate(q);
       onSaved(pump.relay, pump.kind, q);
       hwToast.success(`${pump.name}: ${formatFlowRate(q)}`, 'CALIBRAGEM');
       toast.success(`${pump.name}: ${formatFlowRate(q)}`);
@@ -275,8 +360,8 @@ function PumpAccordionRow({
       toast.error(flow.toastCoreOffline);
       return;
     }
-    if (autoBlocked) {
-      toast.error(flow.toastDisableAuto);
+    if (autoBlocked || commandsLocked) {
+      if (autoBlocked) toast.error(flow.toastDisableAuto);
       return;
     }
     setTimingTest(true);
@@ -310,6 +395,7 @@ function PumpAccordionRow({
 
   /** Verificação pós-calibração: ml alvo + vazão → duração. */
   const runTest = async () => {
+    if (commandsLocked) return;
     if (flowRate <= 0) return;
     const duration = calculateDoseDurationSeconds(testVolumeMl, flowRate);
     if (duration == null || duration <= 0) {
@@ -362,7 +448,7 @@ function PumpAccordionRow({
         <span>
           <span className={`block text-sm font-semibold ${titleColor}`}>{pump.name}</span>
           <span className="block text-xs text-dark-textSecondary mt-0.5">
-            {flow.relayN.replace('{n}', String(pump.relay))}
+            {flow.pumpN.replace('{n}', String(pump.relay + 1))}
           </span>
         </span>
         <span className="flex items-center gap-2 shrink-0">
@@ -379,12 +465,35 @@ function PumpAccordionRow({
 
       {open ? (
         <div className="px-4 pb-4 border-t border-dark-border space-y-4 pt-3">
+          {!isPh ? (
+            <div>
+              <label className="block text-xs text-dark-textSecondary mb-1">{flow.solutionName}</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={solutionName}
+                  onChange={(e) => setSolutionName(e.target.value)}
+                  placeholder={flow.namePlaceholder}
+                  className="flex-1 p-2 bg-dark-surface border border-dark-border rounded-md text-sm text-dark-text"
+                />
+                <button
+                  type="button"
+                  onClick={() => void saveSolutionName()}
+                  disabled={savingName}
+                  className="px-3 py-2 text-xs rounded-lg border border-cyan-500/40 bg-cyan-500/15 text-cyan-200 disabled:opacity-40"
+                >
+                  {savingName ? flow.sending : flow.saveName}
+                </button>
+              </div>
+            </div>
+          ) : null}
           <PumpPrimeHoldControl
             deviceId={deviceId}
             relayNumber={pump.relay}
             relayLabel={pump.name}
             isOnline={isOnline}
             autoBlocked={autoBlocked}
+            commandsLocked={commandsLocked}
             accent={accent}
           />
 
@@ -436,6 +545,7 @@ function PumpAccordionRow({
             onClick={() => void runTimedCalibration()}
             disabled={
               timingTest ||
+              commandsLocked ||
               !isOnline ||
               autoBlocked ||
               !Number.isFinite(measuredDurationSec) ||
@@ -523,7 +633,7 @@ function PumpAccordionRow({
             <button
               type="button"
               onClick={() => void runTest()}
-              disabled={testing || !isOnline || autoBlocked}
+              disabled={testing || commandsLocked || !isOnline || autoBlocked}
               className={`px-3 py-2 rounded-lg text-sm disabled:opacity-40 flex items-center gap-1 border ${
                 isPh
                   ? 'border-violet-500/40 text-violet-400'
@@ -544,11 +654,13 @@ export function EcPumpCalibrationSection({
   deviceId,
   isOnline,
   autoBlocked,
+  commandsLocked = false,
   relayOptions = [],
 }: {
   deviceId: string;
   isOnline: boolean;
   autoBlocked: boolean;
+  commandsLocked?: boolean;
   relayOptions?: Array<{ number: number; name: string }>;
 }) {
   const { t } = useLanguage();
@@ -557,9 +669,18 @@ export function EcPumpCalibrationSection({
   const [pumps, setPumps] = useState<AvailablePump[]>([]);
   const [globalFlowRate, setGlobalFlowRate] = useState(1);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const loadedDeviceRef = useRef<string | null>(null);
+  const loadSeqRef = useRef(0);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const firstForDevice = loadedDeviceRef.current !== deviceId;
+    const silent = Boolean(opts?.silent) || !firstForDevice;
+    if (firstForDevice) loadedDeviceRef.current = deviceId;
+    const seq = ++loadSeqRef.current;
+    if (!silent) {
+      setLoading(true);
+      setPumps([]);
+    }
     const nameOf = (relay: number, fallback: string) =>
       relayOptions.find((o) => o.number === relay)?.name || fallback;
 
@@ -572,15 +693,15 @@ export function EcPumpCalibrationSection({
       const config = unwrapConfigRow(await ecRes.json());
       const ph = phRes.ok ? unwrapConfigRow(await phRes.json()) : {};
       const rows = parseNutrientsJson(config.nutrients);
-      const phUp = Number(ph.relay_ph_up);
-      const phDown = Number(ph.relay_ph_down);
+      const phUp = optionalDoserRelay(ph.relay_ph_up);
+      const phDown = optionalDoserRelay(ph.relay_ph_down);
 
       // Solo tras API OK: exactamente 6 slots (0–5), libres incluidos
       const byRelay = new Map<number, AvailablePump>();
       for (let relay = PERISTALTIC_RELAY_MIN; relay <= PERISTALTIC_RELAY_MAX; relay++) {
         byRelay.set(relay, {
           kind: 'ec',
-          name: nameOf(relay, `Bomba ${relay + 1}`),
+          name: cardTitle('ec', relay, nameOf(relay, '')),
           relay,
           flowRate: undefined,
         });
@@ -593,49 +714,85 @@ export function EcPumpCalibrationSection({
         if (!isAssignedNutrient(n) && !(flowRate && flowRate > 0)) continue;
         byRelay.set(relay, {
           kind: 'ec',
-          name: (n.name && String(n.name).trim()) || nameOf(relay, `Bomba ${relay + 1}`),
+          name: cardTitle(
+            'ec',
+            relay,
+            (n.name && String(n.name).trim()) || nameOf(relay, '')
+          ),
           relay,
           flowRate,
         });
       }
 
-      if (Number.isFinite(phUp) && isPeristalticDosingRelay(phUp)) {
+      if (phUp != null && isPeristalticDosingRelay(phUp)) {
         const r = Math.trunc(phUp);
         byRelay.set(r, {
           kind: 'ph_up',
-          name: nameOf(r, 'pH+ (base)'),
+          name: 'pH+',
           relay: r,
           flowRate: Number(ph.flow_rate_ph_up) > 0 ? Number(ph.flow_rate_ph_up) : undefined,
         });
       }
       if (
-        Number.isFinite(phDown) &&
+        phDown != null &&
         isPeristalticDosingRelay(phDown) &&
-        Math.trunc(phDown) !== Math.trunc(phUp)
+        phDown !== phUp
       ) {
         const r = Math.trunc(phDown);
         byRelay.set(r, {
           kind: 'ph_down',
-          name: nameOf(r, 'pH− (ácido)'),
+          name: 'pH-',
           relay: r,
           flowRate: Number(ph.flow_rate_ph_down) > 0 ? Number(ph.flow_rate_ph_down) : undefined,
         });
       }
 
+      if (seq !== loadSeqRef.current) return;
       setPumps(Array.from(byRelay.values()).sort((a, b) => a.relay - b.relay));
       setGlobalFlowRate(1);
     } catch (e) {
       console.error(e);
-      toast.error(flow.toastLoadError);
-      setPumps([]);
+      if (seq !== loadSeqRef.current) return;
+      if (!silent) {
+        toast.error(flow.toastLoadError);
+        setPumps([]);
+      }
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, [deviceId, relayOptions, flow.toastLoadError]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const id = deviceId?.trim();
+    if (!id) return;
+    const refresh = () => {
+      void load({ silent: true });
+    };
+    const channel = createRealtimeChannel(`hidrowave-calib-pumps-${id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ec_config_view', filter: `device_id=eq.${id}` },
+        refresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ph_config_view', filter: `device_id=eq.${id}` },
+        refresh
+      )
+      .subscribe();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      void supabase.removeChannel(channel);
+    };
+  }, [deviceId, load]);
 
   const onSaved = (relay: number, kind: PumpKind, flowRate: number) => {
     setPumps((prev) =>
@@ -644,10 +801,9 @@ export function EcPumpCalibrationSection({
     window.dispatchEvent(
       new CustomEvent('flowRateUpdated', { detail: { deviceId, flowRate, relay } })
     );
-    void load();
   };
 
-  if (loading) {
+  if (loading && pumps.length === 0) {
     return (
       <p className="text-dark-textSecondary text-sm">
         {t.common.loadingPumps ?? flow.loading}
@@ -679,7 +835,7 @@ export function EcPumpCalibrationSection({
         <p className="text-sm text-dark-textSecondary mt-1">{flow.sectionHint}</p>
       </div>
       {pumps.map((p) => {
-        const key = `${p.kind}-${p.relay}`;
+        const key = String(p.relay);
         return (
           <PumpAccordionRow
             key={key}
@@ -688,9 +844,19 @@ export function EcPumpCalibrationSection({
             globalFlowRate={globalFlowRate}
             isOnline={isOnline}
             autoBlocked={autoBlocked}
+            commandsLocked={commandsLocked}
             open={openKey === key}
             onToggle={() => setOpenKey((cur) => (cur === key ? null : key))}
             onSaved={onSaved}
+            onNameSaved={(name) => {
+              setPumps((prev) =>
+                prev.map((row) =>
+                  row.relay === p.relay && row.kind === 'ec'
+                    ? { ...row, name: cardTitle('ec', row.relay, name) }
+                    : row
+                )
+              );
+            }}
           />
         );
       })}

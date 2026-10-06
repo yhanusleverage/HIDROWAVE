@@ -224,8 +224,13 @@ export function sanitizePhNumericFields(
     out.tempo_recirculacao = positiveInt(out.tempo_recirculacao as number, 1);
   }
 
-  if (typeof out.relay_ph_up === 'number') out.relay_ph_up = Math.floor(out.relay_ph_up);
-  if (typeof out.relay_ph_down === 'number') out.relay_ph_down = Math.floor(out.relay_ph_down);
+  for (const key of ['relay_ph_up', 'relay_ph_down'] as const) {
+    if (out[key] === null) continue;
+    if (typeof out[key] === 'number') {
+      const n = Math.floor(out[key] as number);
+      out[key] = n >= 0 && n <= 7 ? n : null;
+    }
+  }
 
   const aggressiveness = clampAggressiveness(out.aggressiveness);
   if (aggressiveness !== undefined) out.aggressiveness = aggressiveness;

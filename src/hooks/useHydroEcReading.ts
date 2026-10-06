@@ -129,6 +129,7 @@ export function useHydroEcReading(
       }
 
       const data = (await res.json().catch(() => null)) as HydroMeasurement | null;
+      if (deviceIdRef.current?.trim() !== id) return;
       if (!data || !hasHydroFields(data)) return;
 
       applyHydroRow(
@@ -143,7 +144,7 @@ export function useHydroEcReading(
     } catch (err) {
       console.warn('[useHydroEcReading] Erro no fetch:', err);
     } finally {
-      setIsLoading(false);
+      if (deviceIdRef.current?.trim() === id) setIsLoading(false);
     }
   }, [enabled]);
 

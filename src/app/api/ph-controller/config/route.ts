@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import {
+  optionalDoserRelay,
   validatePhRelayAssignment,
   type EcNutrientRelaySlice,
 } from '@/lib/relay-allocation';
@@ -101,12 +102,14 @@ export async function POST(request: Request) {
       })
     );
 
-    const relayPhUp = Number(
-      writableConfig.relay_ph_up ?? existingPh?.relay_ph_up ?? 1
-    );
-    const relayPhDown = Number(
-      writableConfig.relay_ph_down ?? existingPh?.relay_ph_down ?? 0
-    );
+    const relayPhUp =
+      writableConfig.relay_ph_up === null
+        ? null
+        : optionalDoserRelay(writableConfig.relay_ph_up ?? existingPh?.relay_ph_up);
+    const relayPhDown =
+      writableConfig.relay_ph_down === null
+        ? null
+        : optionalDoserRelay(writableConfig.relay_ph_down ?? existingPh?.relay_ph_down);
 
     const { data: ecRow } = await supabase
       .from('ec_config_view')

@@ -5,6 +5,7 @@ export type RelayMasterRow = {
   device_id: string;
   doser_relay_states?: boolean[];
   doser_relay_has_timers?: boolean[];
+  doser_relay_names?: string[] | null;
   level_relay_states?: boolean[];
   reserved_relay_states?: boolean[];
   ec_operation_state?: string;

@@ -40,6 +40,7 @@ export function PumpPrimeHoldControl({
   relayLabel,
   isOnline,
   autoBlocked,
+  commandsLocked = false,
   accent = 'ec',
 }: {
   deviceId: string;
@@ -47,6 +48,7 @@ export function PumpPrimeHoldControl({
   relayLabel?: string;
   isOnline: boolean;
   autoBlocked: boolean;
+  commandsLocked?: boolean;
   accent?: 'ec' | 'ph';
 }) {
   const { t } = useLanguage();
@@ -95,6 +97,7 @@ export function PumpPrimeHoldControl({
       hwToast.error(p.toastOffline, 'CALIBRAGEM');
       return;
     }
+    if (commandsLocked) return;
     if (autoBlocked) {
       hwToast.error(p.toastDisableAuto, 'CALIBRAGEM');
       return;
@@ -128,7 +131,7 @@ export function PumpPrimeHoldControl({
         'CALIBRAGEM'
       );
     }
-  }, [autoBlocked, deviceId, isOnline, relayNumber, p.toastOffline, p.toastDisableAuto, p.toastPrimeFail]);
+  }, [autoBlocked, commandsLocked, deviceId, isOnline, relayNumber, p.toastOffline, p.toastDisableAuto, p.toastPrimeFail]);
 
   useEffect(() => {
     if (!holding) return;
@@ -156,7 +159,7 @@ export function PumpPrimeHoldControl({
     };
   }, [stopPrime]);
 
-  const disabled = !isOnline || autoBlocked || !deviceId;
+  const disabled = !isOnline || autoBlocked || commandsLocked || !deviceId;
 
   const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (disabled) return;

@@ -27,15 +27,17 @@ import { useEcOperationState } from '@/hooks/useEcOperationState';
 import { useHydroEcReading } from '@/hooks/useHydroEcReading';
 import { setVisibleInterval } from '@/lib/realtime/visible-interval';
 import { getMasterLocalRelayNames, saveMasterLocalRelayName } from '@/lib/nutrition-plan';
+import { nutrientNameFromPump } from '@/lib/pump-display';
 import {
   formatFlowRate,
   mergeNutrientFlowRates,
+  nutrientRelayNumber,
   type NutrientFlowRow,
 } from '@/lib/pump-calibration';
 import { useRelayAllocation } from '@/hooks/useRelayAllocation';
 import { DoserRelaySelect } from '@/components/DoserRelaySelect';
 import { DoserRelayMapPanel } from '@/components/DoserRelayMapPanel';
-import { getSelectableRelays, getRelayBusyClaim, serializeRegistryForDebug, validateEcNutrientsAssignment } from '@/lib/relay-allocation';
+import { getSelectableRelays, getRelayBusyClaim, optionalDoserRelay, serializeRegistryForDebug, validateEcNutrientsAssignment } from '@/lib/relay-allocation';
 import {
   composeRelayControlDisabled,
   getManualPendingRelaySet,
@@ -246,6 +248,29 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       }),
     [buildRegistry, nutrientsState]
   );
+
+  useEffect(() => {
+    const names = relayAllocation.registry.names;
+    setLocalRelayNames((prev) => {
+      if (prev.size === names.size && [...names].every(([relay, name]) => prev.get(relay) === name)) {
+        return prev;
+      }
+      return new Map(names);
+    });
+    setAvailableRelays((prev) => {
+      const relays: Array<{ number: number; name: string }> = [];
+      for (let i = 0; i <= 7; i++) {
+        relays.push({ number: i, name: names.get(i) || `Relé ${i}` });
+      }
+      if (
+        prev.length === relays.length &&
+        prev.every((row, i) => row.number === relays[i].number && row.name === relays[i].name)
+      ) {
+        return prev;
+      }
+      return relays;
+    });
+  }, [relayAllocation.registry.names]);
 
   /** Solo inicializa al abrir modal / cambiar modo editar — no pisa la elección del usuario. */
   const nutrientModalInitKeyRef = useRef<string | null>(null);
@@ -830,6 +855,28 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       
       const result = await response.json();
       console.log('✅ [EC Controller] Configuração salva com sucesso em ec_config_view:', result);
+
+      const keptRelays = new Set<number>();
+      for (const row of nutrientsMerged) {
+        const relay = nutrientRelayNumber(row);
+        if (relay != null) keptRelays.add(relay);
+      }
+      const phUp = optionalDoserRelay(relayAllocation.phConfig?.relay_ph_up);
+      const phDown = optionalDoserRelay(relayAllocation.phConfig?.relay_ph_down);
+      const releasedRelays = new Set<number>();
+      for (const prev of existingNutrients) {
+        const relay = nutrientRelayNumber(prev as NutrientFlowRow);
+        if (relay == null || keptRelays.has(relay)) continue;
+        if (relay === phUp || relay === phDown) continue;
+        releasedRelays.add(relay);
+      }
+      if (releasedRelays.size > 0) {
+        await Promise.all(
+          [...releasedRelays].map((relay) => saveMasterLocalRelayName(deviceId, relay, ''))
+        );
+        await loadLocalRelayNames();
+      }
+
       void relayAllocation.refresh();
       console.log('📤 [EC Controller] Dados salvos na view table (prontos para RPC activate_auto_ec):', {
         table: 'ec_config_view',
@@ -863,7 +910,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       toast.error(`Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`);
       return false;
     }
-  }, [deviceId, nutrientsState, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, availableRelays, relayAllocation, markConfigSynced, ec]);
+  }, [deviceId, nutrientsState, totalVolume, baseDose, ecSetpoint, ecTolerance, intervaloAutoEC, tempoRecirculacao, autoEnabled, aggressiveness, consumo24h, pulseMl, pulseGapSec, availableRelays, relayAllocation, markConfigSynced, ec, loadLocalRelayNames]);
   
   // ✅ Cleanup: Limpiar timeout al desmontar componente
   useEffect(() => {
@@ -984,25 +1031,18 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       return;
     }
 
+    const inherited = nutrientNameFromPump(
+      newRelayNumber,
+      localRelayNames.get(newRelayNumber)
+    );
     const updatedNutrients = [...nutrientsState];
     updatedNutrients[nutrientIndex] = {
       ...updatedNutrients[nutrientIndex],
       relayNumber: newRelayNumber,
+      name: inherited,
     };
     setNutrientsState(updatedNutrients);
-    
-    // Salvar nome do nutriente no relé escolhido
-    if (deviceId && deviceId !== 'default_device') {
-      const updatedNutrient = updatedNutrients[nutrientIndex];
-      await saveMasterLocalRelayName(deviceId, newRelayNumber, updatedNutrient.name);
-      
-      // Atualizar nomes locais
-      await loadLocalRelayNames();
-      
-      // Salvar automaticamente no Supabase
-      await saveECControllerConfig();
-    }
-  }, [deviceId, nutrientsState, loadLocalRelayNames, saveECControllerConfig, getEcRelayNamingLock]);
+  }, [nutrientsState, localRelayNames, getEcRelayNamingLock]);
 
   const totalMlPerLiter = useMemo(
     () => nutrientsState.reduce((sum, nut) => sum + nut.mlPerLiter, 0),
@@ -1538,11 +1578,10 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                   manualDoseLock
                                 );
           
-                                    const handleMlPerLiterChange = async (idx: number, value: number) => {
+                                    const handleMlPerLiterChange = (idx: number, value: number) => {
                                   const updatedNutrients = [...nutrientsState];
                                   updatedNutrients[idx] = { ...updatedNutrients[idx], mlPerLiter: value };
                                   setNutrientsState(updatedNutrients);
-                                      await saveECControllerConfig();
                                 };
           
                                     const handleDoseNutrient = async (nut: { name: string; relayNumber: number; mlPerLiter: number }, idx: number) => {
@@ -1730,9 +1769,9 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                             </button>
                                             <button
                                               onClick={() => {
-                                                const updated = nutrientsState.filter((_, i) => i !== index);
-                                                setNutrientsState(updated);
-                                                saveECControllerConfig();
+                                                setNutrientsState(
+                                                  nutrientsState.filter((_, i) => i !== index)
+                                                );
                                               }}
                                               disabled={ecControllerLocked}
                                               className={`px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-all ${
@@ -2186,21 +2225,6 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-dark-textSecondary mb-1">
-                  {ec.nutrientName}
-                </label>
-                <input
-                  type="text"
-                  id="nutrientName"
-                  defaultValue={editingNutrientIndex !== null ? nutrientsState[editingNutrientIndex]?.name : ''}
-                  disabled={modalNutrientControl.disabled}
-                  className="w-full p-2 bg-dark-surface border border-dark-border rounded-md text-dark-text focus:border-aqua-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                  placeholder="Ex: Grow, Micro, pH-, etc."
-                  title={modalNutrientControl.title || undefined}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-dark-textSecondary mb-1">
                   {ec.relayMaster}
                 </label>
                 <span title={modalNutrientControl.title || undefined}>
@@ -2252,16 +2276,14 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                     return;
                   }
 
-                  const nameInput = document.getElementById('nutrientName') as HTMLInputElement;
                   const mlInput = document.getElementById('nutrientMlPerLiter') as HTMLInputElement;
-                  
-                  if (!nameInput?.value.trim()) {
-                    toast.error('Nome do nutriente é obrigatório');
-                    return;
-                  }
-                  
+                  const name = nutrientNameFromPump(
+                    modalRelayNumber,
+                    localRelayNames.get(modalRelayNumber)
+                  );
+
                   const newNutrient = {
-                    name: nameInput.value.trim(),
+                    name,
                     relayNumber: modalRelayNumber,
                     mlPerLiter: parseFloat(mlInput.value) || 0,
                   };
@@ -2303,32 +2325,11 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                     setNutrientsState([...nutrientsState, newNutrient]);
                   }
                   
-                  // Salvar nome do nutriente no relé escolhido
-                  if (deviceId && deviceId !== 'default_device') {
-                    await saveMasterLocalRelayName(deviceId, newNutrient.relayNumber, newNutrient.name);
-                    await loadLocalRelayNames();
-                  }
-                  
                   setIsNutrientModalOpen(false);
                   setEditingNutrientIndex(null);
-                  
-                  // Toast de confirmação antes de salvar
-                  if (editingNutrientIndex !== null) {
-                    toast.success(`Nutriente "${newNutrient.name}" editado! Salvando no Supabase...`);
-                  } else {
-                    toast.success(`Nutriente "${newNutrient.name}" adicionado! Salvando no Supabase...`);
-                  }
-                  
-                  // Salvar automaticamente no Supabase (modo silencioso para evitar toast duplicado)
-                  const saved = await saveECControllerConfig(true);
-                  
-                  if (saved) {
-                    if (editingNutrientIndex !== null) {
-                      toast.success(`✅ Nutriente "${newNutrient.name}" salvo no Supabase!`);
-                    } else {
-                      toast.success(`✅ Nutriente "${newNutrient.name}" salvo no Supabase!`);
-                    }
-                  }
+                  toast.success(
+                    `Nutriente "${newNutrient.name}" na lista. Use ${ec.saveParams}.`
+                  );
                 }}
                 disabled={modalNutrientControl.disabled}
                 className="px-4 py-2 bg-gradient-to-r from-aqua-500 to-primary-500 hover:from-aqua-600 hover:to-primary-600 text-white rounded-lg transition-all shadow-lg hover:shadow-aqua-500/50 disabled:opacity-50 disabled:cursor-not-allowed"

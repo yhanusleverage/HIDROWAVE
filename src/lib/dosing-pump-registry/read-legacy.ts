@@ -8,6 +8,7 @@ import {
   parseNutrientFlowRate,
   type NutrientFlowRow,
 } from '@/lib/pump-calibration';
+import { optionalDoserRelay } from '@/lib/relay-allocation';
 import {
   isPeristalticDosingRelay,
   PERISTALTIC_RELAY_MIN,
@@ -86,12 +87,12 @@ export function buildDosingPumpRegistryFromConfigs(
   }
 
   if (phConfig) {
-    const up = Number(phConfig.relay_ph_up);
-    const down = Number(phConfig.relay_ph_down);
+    const up = optionalDoserRelay(phConfig.relay_ph_up);
+    const down = optionalDoserRelay(phConfig.relay_ph_down);
     const flowUp = Number(phConfig.flow_rate_ph_up);
     const flowDown = Number(phConfig.flow_rate_ph_down);
 
-    if (Number.isFinite(up) && up >= 0) {
+    if (up != null) {
       upsertSlot(map, {
         relayIndex: Math.trunc(up),
         name: 'pH+',
@@ -99,7 +100,7 @@ export function buildDosingPumpRegistryFromConfigs(
         source: 'ph_up',
       });
     }
-    if (Number.isFinite(down) && down >= 0) {
+    if (down != null) {
       upsertSlot(map, {
         relayIndex: Math.trunc(down),
         name: 'pH−',

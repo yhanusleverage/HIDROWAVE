@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import { HydroMeasurement, EnvironmentMeasurement } from '@/lib/supabase';
 import { subscribeSensorMeasurements } from '@/lib/realtime/sensor-measurements';
@@ -21,9 +21,10 @@ import {
   type HydroLiveState,
 } from '@/lib/realtime/hydro-freshness';
 import { useAuth } from '@/contexts/AuthContext';
+import { useActiveDevice } from '@/contexts/ActiveDeviceContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toBcp47 } from '@/lib/locale';
-import { useDevicesWithRealtime } from '@/hooks/useDevicesWithRealtime';
+import { DeviceMasterSelect } from '@/components/DeviceMasterSelect';
 import QuemSomosTeaser from '@/components/QuemSomosTeaser';
 import { DashboardChartsSection } from '@/components/dashboard/DashboardChartsSection';
 import { DashboardSensorsSection } from '@/components/dashboard/DashboardSensorsSection';
@@ -41,8 +42,9 @@ export default function DashboardPage() {
   const { t, locale } = useLanguage();
   const d = t.dashboard;
   const userEmail = userProfile?.email || '';
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
-  const { devices } = useDevicesWithRealtime(userEmail || undefined);
+  const { deviceId: selectedDeviceId, generation } = useActiveDevice();
+  const generationRef = useRef(generation);
+  generationRef.current = generation;
   const [hydroLive, setHydroLive] = useState<HydroLiveState>(emptyHydroLiveState());
   const hydroData = hydroLive.row;
   const hydroSensorUpdatedAt = hydroLive.sensorUpdatedAt;
@@ -68,13 +70,6 @@ export default function DashboardPage() {
   // ✅ Estados para configuração de umbrales de otros sensores
   const [showTempConfig, setShowTempConfig] = useState(false);
   const [showPHConfig, setShowPHConfig] = useState(false);
-
-  useEffect(() => {
-    if (devices.length > 0 && !selectedDeviceId) {
-      setSelectedDeviceId(devices[0].device_id);
-      console.log('✅ [DASHBOARD] Dispositivo selecionado:', devices[0].device_id);
-    }
-  }, [devices, selectedDeviceId]);
 
   // ✅ Carregar umbrales de EC das configurações
   useEffect(() => {
@@ -140,6 +135,7 @@ export default function DashboardPage() {
   // ✅ Cargar datos críticos primero (sensores) - carga paralela
   const fetchSensorData = async (deviceId: string) => {
     if (!deviceId) return;
+    const ticket = generationRef.current;
     console.log('🔄 [DASHBOARD] Cargando sensores para', deviceId);
     setLoadingSensors(true);
     try {
@@ -148,6 +144,7 @@ export default function DashboardPage() {
         fetch(`/api/hydro-data?device_id=${q}`),
         fetch(`/api/environment-data?device_id=${q}`),
       ]);
+      if (generationRef.current !== ticket) return;
 
       // Procesar datos hidropónicos
       if (hydroRes.ok) {
@@ -177,17 +174,19 @@ export default function DashboardPage() {
 
       setError(null);
     } catch (err) {
+      if (generationRef.current !== ticket) return;
       console.error('❌ [DASHBOARD] Erro ao buscar sensores:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(`Erro ao carregar sensores: ${errorMessage}`);
     } finally {
-      setLoadingSensors(false);
+      if (generationRef.current === ticket) setLoadingSensors(false);
     }
   };
 
   // ✅ Cargar datos históricos después (gráficos) - carga paralela
   const fetchHistoryData = async (deviceId: string) => {
     if (!deviceId) return;
+    const ticket = generationRef.current;
     console.log('🔄 [DASHBOARD] Cargando histórico para', deviceId);
     setLoadingCharts(true);
     try {
@@ -198,6 +197,7 @@ export default function DashboardPage() {
       const envHistoryRes = await fetch(
         `/api/environment-data?device_id=${q}&history=true&limit=24`
       );
+      if (generationRef.current !== ticket) return;
 
       if (hydroHistoryRes.ok) {
         const hydroPayload = await hydroHistoryRes.json();
@@ -254,9 +254,10 @@ export default function DashboardPage() {
         setEnvHistory([]);
       }
     } catch (err) {
+      if (generationRef.current !== ticket) return;
       console.error('❌ [DASHBOARD] Erro ao buscar histórico:', err);
     } finally {
-      setLoadingCharts(false);
+      if (generationRef.current === ticket) setLoadingCharts(false);
     }
   };
 
@@ -267,12 +268,13 @@ export default function DashboardPage() {
 
   // Realtime sensores — tarjetas + gráficos (ventana deslizante); REST solo carga inicial + fallback lento
   useEffect(() => {
-    if (!userEmail) return;
+    if (!userEmail || !selectedDeviceId) return;
 
-    const deviceId = selectedDeviceId || undefined;
+    const deviceId = selectedDeviceId;
 
     return subscribeSensorMeasurements(deviceId, {
       onHydro: (row) => {
+        if (row.device_id && row.device_id !== deviceId) return;
         const parsed = parseHydroRow(row);
         if (!parsed) return;
         setHydroLive((prev) => applyHydroRow(parsed, prev));
@@ -281,6 +283,7 @@ export default function DashboardPage() {
         }
       },
       onEnvironment: (row) => {
+        if (row.device_id && row.device_id !== deviceId) return;
         const validated = validateEnvData(row);
         if (validated) {
           setEnvironmentData(validated);
@@ -401,6 +404,7 @@ export default function DashboardPage() {
             </div>
             
             <div className="flex items-center gap-3 flex-wrap">
+              <DeviceMasterSelect />
               <div className="text-xs sm:text-sm text-dark-textSecondary bg-dark-surface px-3 py-1.5 rounded-lg border border-dark-border">
                 {new Date().toLocaleDateString(toBcp47(locale))}{' '}
                 {new Date().toLocaleTimeString(toBcp47(locale))}
@@ -438,6 +442,7 @@ export default function DashboardPage() {
         )}
         
         <DashboardChartsSection
+          key={selectedDeviceId || 'none'}
           loadingCharts={loadingCharts}
           hydroHistory={hydroHistory}
           selectedDeviceId={selectedDeviceId}
@@ -458,9 +463,16 @@ export default function DashboardPage() {
           onOpenPhConfig={() => setShowPHConfig(true)}
         />
 
-        <DashboardAutoControlSection selectedDeviceId={selectedDeviceId} />
+        <DashboardAutoControlSection
+          key={`auto-${selectedDeviceId || 'none'}`}
+          selectedDeviceId={selectedDeviceId}
+        />
 
-        <DashboardCropSection selectedDeviceId={selectedDeviceId} userEmail={userEmail || ''} />
+        <DashboardCropSection
+          key={`crop-${selectedDeviceId || 'none'}`}
+          selectedDeviceId={selectedDeviceId}
+          userEmail={userEmail || ''}
+        />
       </div>
 
       {/* ✅ Modal de Configuração de Umbrales de EC */}

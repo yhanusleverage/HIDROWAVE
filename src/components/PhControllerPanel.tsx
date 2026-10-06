@@ -43,6 +43,7 @@ import { DoserRelaySelect } from '@/components/DoserRelaySelect';
 import {
   buildRegistryFromConfigs,
   serializeRegistryForDebug,
+  optionalDoserRelay,
   validatePhRelayAssignment,
   type EcNutrientRelaySlice,
   type RelayAllocationRegistry,
@@ -331,8 +332,8 @@ export default function PhControllerPanel({
           ? Number(data.ml_per_ph_unit_base)
           : Number(data.ml_per_ph_unit) || 2.0
       );
-      setRelayPhUp(Number(data.relay_ph_up) ?? 1);
-      setRelayPhDown(Number(data.relay_ph_down) ?? 0);
+      setRelayPhUp(optionalDoserRelay(data.relay_ph_up) ?? -1);
+      setRelayPhDown(optionalDoserRelay(data.relay_ph_down) ?? -1);
       setIntervaloAutoPh(Number(data.intervalo_auto_ph) || 300);
       setTempoRecirculacao(Number(data.tempo_recirculacao) || 60);
       setAutoEnabled(Boolean(data.auto_enabled));
@@ -471,9 +472,11 @@ export default function PhControllerPanel({
   const saveConfig = useCallback(async (silent = false) => {
     if (!deviceId) return false;
 
+    const relayUpOut = relayPhUp < 0 ? null : relayPhUp;
+    const relayDownOut = relayPhDown < 0 ? null : relayPhDown;
     const phRelayCheck = validatePhRelayAssignment(
-      relayPhUp,
-      relayPhDown,
+      relayUpOut,
+      relayDownOut,
       ecNutrientsForRelayCheck
     );
     if (!phRelayCheck.ok) {
@@ -492,8 +495,8 @@ export default function PhControllerPanel({
           volume,
           ml_per_ph_unit_acid: mlPerPhUnitAcid,
           ml_per_ph_unit_base: mlPerPhUnitBase,
-          relay_ph_up: relayPhUp,
-          relay_ph_down: relayPhDown,
+          relay_ph_up: relayUpOut,
+          relay_ph_down: relayDownOut,
           intervalo_auto_ph: intervaloAutoPh,
           tempo_recirculacao: tempoRecirculacao,
           auto_enabled: autoEnabled,
@@ -510,8 +513,12 @@ export default function PhControllerPanel({
       justSavedRef.current = true;
       setTimeout(() => { justSavedRef.current = false; }, 2000);
       if (deviceId && deviceId !== 'default_device') {
-        await saveMasterLocalRelayName(deviceId, relayPhUp, 'pH+');
-        await saveMasterLocalRelayName(deviceId, relayPhDown, 'pH-');
+        if (relayUpOut != null) {
+          await saveMasterLocalRelayName(deviceId, relayUpOut, 'pH+');
+        }
+        if (relayDownOut != null) {
+          await saveMasterLocalRelayName(deviceId, relayDownOut, 'pH-');
+        }
         await relayAllocation?.refresh?.();
       }
       markConfigSynced();
@@ -840,18 +847,26 @@ export default function PhControllerPanel({
     (next: number) => {
       const prev = relayPhUp;
       setRelayPhUp(next);
-      void autoNamePhRelay(next, prev, 'pH+');
+      if (next < 0) {
+        if (prev >= 0) void saveMasterLocalRelayName(deviceId, prev, '');
+        return;
+      }
+      void autoNamePhRelay(next, prev < 0 ? next : prev, 'pH+');
     },
-    [relayPhUp, autoNamePhRelay]
+    [relayPhUp, autoNamePhRelay, deviceId]
   );
 
   const handleRelayPhDownChange = useCallback(
     (next: number) => {
       const prev = relayPhDown;
       setRelayPhDown(next);
-      void autoNamePhRelay(next, prev, 'pH-');
+      if (next < 0) {
+        if (prev >= 0) void saveMasterLocalRelayName(deviceId, prev, '');
+        return;
+      }
+      void autoNamePhRelay(next, prev < 0 ? next : prev, 'pH-');
     },
-    [relayPhDown, autoNamePhRelay]
+    [relayPhDown, autoNamePhRelay, deviceId]
   );
 
   const phConfigJson = useMemo(
@@ -1301,6 +1316,7 @@ export default function PhControllerPanel({
                   registry={relayRegistry}
                   context={{ field: 'ph_up', currentValue: relayPhUp }}
                   value={relayPhUp}
+                  allowEmpty
                   disabled={phUpRelayControl.disabled}
                   onChange={handleRelayPhUpChange}
                 />
@@ -1313,6 +1329,7 @@ export default function PhControllerPanel({
                   registry={relayRegistry}
                   context={{ field: 'ph_down', currentValue: relayPhDown }}
                   value={relayPhDown}
+                  allowEmpty
                   disabled={phDownRelayControl.disabled}
                   onChange={handleRelayPhDownChange}
                 />

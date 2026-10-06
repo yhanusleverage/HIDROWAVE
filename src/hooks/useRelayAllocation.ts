@@ -1,8 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { getMasterLocalRelayNames } from '@/lib/nutrition-plan';
+import {
+  DOSER_NAME_CHANNEL,
+  getMasterLocalRelayNames,
+  type DoserNameUpdate,
+} from '@/lib/nutrition-plan';
 import { subscribeRelayStateUpdates, type RelayMasterRow } from '@/lib/realtime/relay-states';
 import {
   subscribeRelayCommandRegistryUpdates,
@@ -10,7 +14,9 @@ import {
   PENDING_COMMAND_STATUS_LIST,
   type RelayCommandRow,
 } from '@/lib/realtime/relay-commands';
+import { createRealtimeChannel } from '@/lib/realtime/channel';
 import {
+  applyNutrientSolutionNames,
   buildRegistryFromConfigs,
   getSelectableRelays,
   getRelayConflicts,
@@ -28,6 +34,15 @@ import {
 
 const IDLE_POLL_MS = 60_000;
 const PENDING_POLL_MS = 5_000;
+const NAMES_REFRESH_MS = 200;
+
+function sameNameMap(a: Map<number, string>, b: Map<number, string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [relay, name] of b) {
+    if (a.get(relay) !== name) return false;
+  }
+  return true;
+}
 
 type PendingCommandSlice = {
   id?: number | string;
@@ -59,6 +74,40 @@ export function useRelayAllocation(
   const [doserRelayHasTimers, setDoserRelayHasTimers] = useState<boolean[]>([]);
   const [decisionRules, setDecisionRules] = useState<DecisionRuleRelaySlice[]>([]);
   const [pendingCommands, setPendingCommands] = useState<PendingCommandSlice[]>([]);
+  const namesRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const namesRefreshSeqRef = useRef(0);
+  const masterNamesRef = useRef<Map<number, string>>(new Map());
+  const serverNutrientsRef = useRef<unknown>([]);
+
+  const publishComposedNames = useCallback(() => {
+    const composed = applyNutrientSolutionNames(
+      masterNamesRef.current,
+      serverNutrientsRef.current
+    );
+    setRelayNames((prev) => (sameNameMap(prev, composed) ? prev : composed));
+  }, []);
+
+  const refreshRelayNames = useCallback(async () => {
+    const id = deviceId?.trim();
+    if (!id) return;
+    const seq = ++namesRefreshSeqRef.current;
+    try {
+      const names = await getMasterLocalRelayNames(id);
+      if (seq !== namesRefreshSeqRef.current) return;
+      masterNamesRef.current = names;
+      publishComposedNames();
+    } catch (err) {
+      console.warn('[useRelayAllocation] names refresh', err);
+    }
+  }, [deviceId, publishComposedNames]);
+
+  const scheduleRelayNamesRefresh = useCallback(() => {
+    if (namesRefreshTimerRef.current) clearTimeout(namesRefreshTimerRef.current);
+    namesRefreshTimerRef.current = setTimeout(() => {
+      namesRefreshTimerRef.current = null;
+      void refreshRelayNames();
+    }, NAMES_REFRESH_MS);
+  }, [refreshRelayNames]);
 
   const fetchPendingCommands = useCallback(async () => {
     if (!deviceId?.trim()) return;
@@ -117,9 +166,12 @@ export function useRelayAllocation(
         setPhConfig((await phRes.json().catch(() => ({}))) as PhConfigRelaySlice);
       }
       if (ecRes.ok) {
-        setEcConfig((await ecRes.json().catch(() => ({}))) as EcConfigRelaySlice);
+        const ec = (await ecRes.json().catch(() => ({}))) as EcConfigRelaySlice;
+        serverNutrientsRef.current = ec.nutrients ?? [];
+        setEcConfig(ec);
       }
-      setRelayNames(names);
+      masterNamesRef.current = names;
+      publishComposedNames();
 
       const master = masterRes.data;
       if (master) {
@@ -137,7 +189,7 @@ export function useRelayAllocation(
     } finally {
       setIsLoading(false);
     }
-  }, [deviceId, fetchPendingCommands]);
+  }, [deviceId, fetchPendingCommands, publishComposedNames]);
 
   const applyMasterRow = useCallback((row: RelayMasterRow) => {
     if (row.doser_relay_states?.length) {
@@ -146,7 +198,22 @@ export function useRelayAllocation(
     if (row.doser_relay_has_timers?.length) {
       setDoserRelayHasTimers(row.doser_relay_has_timers);
     }
-  }, []);
+    if (Array.isArray(row.doser_relay_names)) {
+      const incoming = row.doser_relay_names;
+      const next = new Map(masterNamesRef.current);
+      for (let i = 0; i <= 7; i++) {
+        const raw = incoming[i];
+        const name = raw && String(raw).trim() ? String(raw).trim() : '';
+        if (name) next.set(i, name);
+        else next.delete(i);
+      }
+      masterNamesRef.current = next;
+      publishComposedNames();
+    }
+    // El estado del relé a menudo llega sin doser_relay_names (columna TOAST sin cambios).
+    // Releer la fila confirma el nombre guardado en Calibragem sin poner loading.
+    scheduleRelayNamesRefresh();
+  }, [publishComposedNames, scheduleRelayNamesRefresh]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -156,8 +223,77 @@ export function useRelayAllocation(
     return () => {
       unsubRelay();
       unsubCmds();
+      if (namesRefreshTimerRef.current) {
+        clearTimeout(namesRefreshTimerRef.current);
+        namesRefreshTimerRef.current = null;
+      }
     };
   }, [enabled, deviceId, fetchAll, applyMasterRow, applyCommandRow]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const id = deviceId.trim();
+    const apply = (update: DoserNameUpdate) => {
+      if (!update || update.deviceId !== id) return;
+      const relay = update.relayNumber;
+      if (!Number.isInteger(relay) || relay < 0 || relay > 7) return;
+      const name = (update.relayName || '').trim();
+      const next = new Map(masterNamesRef.current);
+      if (name) next.set(relay, name);
+      else next.delete(relay);
+      masterNamesRef.current = next;
+      publishComposedNames();
+    };
+    const onWindow = (event: Event) => {
+      apply((event as CustomEvent<DoserNameUpdate>).detail);
+    };
+    window.addEventListener(DOSER_NAME_CHANNEL, onWindow);
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel(DOSER_NAME_CHANNEL);
+      channel.onmessage = (event: MessageEvent<DoserNameUpdate>) => apply(event.data);
+    } catch {
+      channel = null;
+    }
+    return () => {
+      window.removeEventListener(DOSER_NAME_CHANNEL, onWindow);
+      channel?.close();
+    };
+  }, [enabled, deviceId, publishComposedNames]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const id = deviceId.trim();
+    let cancelled = false;
+    const refreshNutrientNames = async () => {
+      try {
+        const res = await fetch(
+          `/api/ec-controller/config?device_id=${encodeURIComponent(id)}`
+        );
+        if (!res.ok || cancelled) return;
+        const ec = (await res.json().catch(() => ({}))) as EcConfigRelaySlice;
+        if (cancelled) return;
+        serverNutrientsRef.current = ec.nutrients ?? [];
+        setEcConfig(ec);
+        publishComposedNames();
+      } catch (err) {
+        console.warn('[useRelayAllocation] nutrient names', err);
+      }
+    };
+    const channel = createRealtimeChannel(`hidrowave-ec-pump-names-${id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ec_config_view', filter: `device_id=eq.${id}` },
+        () => {
+          void refreshNutrientNames();
+        }
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [enabled, deviceId, publishComposedNames]);
 
   useEffect(() => {
     if (!enabled) return;

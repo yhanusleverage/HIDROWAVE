@@ -2,7 +2,8 @@
  * Config Auto pH do Supabase — poll leve para dashboard.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { optionalDoserRelay } from '@/lib/relay-allocation';
 
 export interface PhConfigSnapshot {
   auto_enabled: boolean;
@@ -10,8 +11,8 @@ export interface PhConfigSnapshot {
   ph_setpoint: number;
   ph_tolerance: number;
   tempo_recirculacao: number;
-  relay_ph_up: number;
-  relay_ph_down: number;
+  relay_ph_up: number | null;
+  relay_ph_down: number | null;
   aggressiveness: number;
   pulse_ml: number;
   pulse_gap_sec: number;
@@ -46,28 +47,31 @@ const DEFAULT: PhConfigSnapshot = {
 
 export function usePhConfig(deviceId: string, enabled = true): PhConfigSnapshot {
   const [snapshot, setSnapshot] = useState<PhConfigSnapshot>(DEFAULT);
+  const seq = useRef(0);
 
   const refresh = useCallback(async () => {
+    const ticket = ++seq.current;
     if (!enabled || !deviceId?.trim()) {
-      setSnapshot((s) => ({ ...s, isLoading: false }));
+      if (seq.current === ticket) setSnapshot((s) => ({ ...s, isLoading: false }));
       return;
     }
 
     try {
       const q = encodeURIComponent(deviceId.trim());
       const res = await fetch(`/api/ph-controller/config?device_id=${q}`);
+      if (seq.current !== ticket) return;
       if (!res.ok) return;
 
       const data = await res.json().catch(() => null);
-      if (!data) return;
+      if (seq.current !== ticket || !data) return;
       setSnapshot({
         auto_enabled: Boolean(data.auto_enabled),
         intervalo_auto_ph: Number(data.intervalo_auto_ph) || 300,
         ph_setpoint: Number(data.ph_setpoint) || 6.0,
         ph_tolerance: Number(data.ph_tolerance) || 0.2,
         tempo_recirculacao: Number(data.tempo_recirculacao) || 60,
-        relay_ph_up: Number(data.relay_ph_up) ?? 1,
-        relay_ph_down: Number(data.relay_ph_down) ?? 0,
+        relay_ph_up: optionalDoserRelay(data.relay_ph_up),
+        relay_ph_down: optionalDoserRelay(data.relay_ph_down),
         aggressiveness: Number(data.aggressiveness) || 0.5,
         pulse_ml: Number(data.pulse_ml) || 2,
         pulse_gap_sec: Number(data.pulse_gap_sec) || 2,
@@ -79,6 +83,7 @@ export function usePhConfig(deviceId: string, enabled = true): PhConfigSnapshot 
         isLoading: false,
       });
     } catch {
+      if (seq.current !== ticket) return;
       setSnapshot((s) => ({ ...s, isLoading: false }));
     }
   }, [deviceId, enabled]);

@@ -6,6 +6,7 @@
  * `docs/engineering/DOSING_PUMP_REGISTRY_MODEL.md` e `dosing-pump-registry`.
  */
 
+import { isSolutionName } from '@/lib/pump-display';
 import {
   PENDING_COMMAND_STATUSES,
   isRelayCommandOperationallyPending,
@@ -168,6 +169,14 @@ function isDoserRelay(n: number): boolean {
   return Number.isInteger(n) && n >= DOSER_RELAY_MIN && n <= DOSER_RELAY_MAX;
 }
 
+/** null / vacío no es el relé 0. Number(null) === 0. */
+export function optionalDoserRelay(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(n) || n < DOSER_RELAY_MIN || n > DOSER_RELAY_MAX) return null;
+  return n;
+}
+
 function relayName(names: Map<number, string>, relayNumber: number): string {
   return names.get(relayNumber) || `Relé ${relayNumber}`;
 }
@@ -184,8 +193,43 @@ function toNamesMap(input?: Map<number, string> | Record<number, string>): Map<n
 }
 
 function nutrientRelay(nut: EcNutrientRelaySlice): number | null {
-  const r = nut.relay ?? nut.relayNumber;
-  return typeof r === 'number' && isDoserRelay(r) ? r : null;
+  const row = nut as EcNutrientRelaySlice & { relay_number?: number };
+  const raw = row.relay ?? row.relayNumber ?? row.relay_number;
+  const r = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isInteger(r) && isDoserRelay(r) ? r : null;
+}
+
+function asNutrientList(raw: unknown): EcNutrientRelaySlice[] {
+  if (Array.isArray(raw)) return raw as EcNutrientRelaySlice[];
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? (parsed as EcNutrientRelaySlice[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/**
+ * El nombre de la tarjeta (Calmag, GROW…) puede vivir en el nutriente
+ * aunque doser_relay_names esté vacío. No pisa un nombre de solución ya guardado.
+ */
+export function applyNutrientSolutionNames(
+  masterNames: Map<number, string>,
+  nutrients: unknown
+): Map<number, string> {
+  const next = new Map(masterNames);
+  for (const nut of asNutrientList(nutrients)) {
+    const relay = nutrientRelay(nut);
+    if (relay == null) continue;
+    const label = (nut.name || '').trim();
+    if (!isSolutionName(label, relay)) continue;
+    if (isSolutionName(next.get(relay), relay)) continue;
+    next.set(relay, label);
+  }
+  return next;
 }
 
 function isActiveNutrient(nut: EcNutrientRelaySlice): boolean {
@@ -228,11 +272,14 @@ function collectRelayNumbersFromInstructions(
 }
 
 export function buildRegistryFromConfigs(input: BuildRegistryInput): RelayAllocationRegistry {
-  const names = toNamesMap(input.relayNames);
+  const names = applyNutrientSolutionNames(
+    toNamesMap(input.relayNames),
+    input.ecConfig?.nutrients
+  );
   const claims: RelaySlotClaim[] = [];
 
-  const phUp = Number(input.phConfig?.relay_ph_up);
-  if (isDoserRelay(phUp)) {
+  const phUp = optionalDoserRelay(input.phConfig?.relay_ph_up);
+  if (phUp != null) {
     claims.push({
       relayNumber: phUp,
       owner: 'ph_up',
@@ -241,8 +288,8 @@ export function buildRegistryFromConfigs(input: BuildRegistryInput): RelayAlloca
     });
   }
 
-  const phDown = Number(input.phConfig?.relay_ph_down);
-  if (isDoserRelay(phDown)) {
+  const phDown = optionalDoserRelay(input.phConfig?.relay_ph_down);
+  if (phDown != null) {
     claims.push({
       relayNumber: phDown,
       owner: 'ph_down',
@@ -532,14 +579,19 @@ export interface ValidationResult {
 }
 
 export function validatePhRelayAssignment(
-  relayPhUp: number,
-  relayPhDown: number,
+  relayPhUp: number | null,
+  relayPhDown: number | null,
   ecNutrients: EcNutrientRelaySlice[] | null | undefined
 ): ValidationResult {
-  if (!isDoserRelay(relayPhUp) || !isDoserRelay(relayPhDown)) {
+  const up = relayPhUp == null ? null : optionalDoserRelay(relayPhUp);
+  const down = relayPhDown == null ? null : optionalDoserRelay(relayPhDown);
+  if (relayPhUp != null && up == null) {
     return { ok: false, error: 'Relés pH devem estar entre 0 e 7.' };
   }
-  if (relayPhUp === relayPhDown) {
+  if (relayPhDown != null && down == null) {
+    return { ok: false, error: 'Relés pH devem estar entre 0 e 7.' };
+  }
+  if (up != null && down != null && up === down) {
     return { ok: false, error: 'Relé pH+ e pH− não podem ser o mesmo.' };
   }
 
@@ -553,11 +605,11 @@ export function validatePhRelayAssignment(
     }
   }
 
-  if (ecRelays.has(relayPhUp)) {
-    return { ok: false, error: `Relé pH+ (${relayPhUp}) já está atribuído a um nutriente Auto EC.` };
+  if (up != null && ecRelays.has(up)) {
+    return { ok: false, error: `Relé pH+ (${up}) já está atribuído a um nutriente Auto EC.` };
   }
-  if (ecRelays.has(relayPhDown)) {
-    return { ok: false, error: `Relé pH− (${relayPhDown}) já está atribuído a um nutriente Auto EC.` };
+  if (down != null && ecRelays.has(down)) {
+    return { ok: false, error: `Relé pH− (${down}) já está atribuído a um nutriente Auto EC.` };
   }
 
   return { ok: true };
@@ -569,8 +621,8 @@ export function validateEcNutrientsAssignment(
 ): ValidationResult {
   if (!Array.isArray(nutrients)) return { ok: true };
 
-  const phUp = Number(phConfig?.relay_ph_up);
-  const phDown = Number(phConfig?.relay_ph_down);
+  const phUp = optionalDoserRelay(phConfig?.relay_ph_up);
+  const phDown = optionalDoserRelay(phConfig?.relay_ph_down);
   const seen = new Map<number, string>();
 
   for (let i = 0; i < nutrients.length; i++) {
@@ -590,10 +642,10 @@ export function validateEcNutrientsAssignment(
     }
     seen.set(relay, nut.name || `Nutriente ${i + 1}`);
 
-    if (isDoserRelay(phUp) && relay === phUp) {
+    if (phUp != null && relay === phUp) {
       return { ok: false, error: `Relé ${relay} já usado como pH+ (base) no Auto pH.` };
     }
-    if (isDoserRelay(phDown) && relay === phDown) {
+    if (phDown != null && relay === phDown) {
       return { ok: false, error: `Relé ${relay} já usado como pH− (ácido) no Auto pH.` };
     }
   }

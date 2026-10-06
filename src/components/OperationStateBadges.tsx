@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import {
   ClockIcon,
   BeakerIcon,
@@ -44,6 +45,8 @@ export interface OperationStateBadgesProps {
   operationInterrupted?: boolean;
   /** header = pills compactas ao lado do título colapsável */
   variant?: 'default' | 'header';
+  /** Badges extra na mesma fila (ex.: recirculação) */
+  children?: ReactNode;
 }
 
 const badgeBase =
@@ -68,6 +71,7 @@ export default function OperationStateBadges({
   accent = 'emerald',
   operationInterrupted = false,
   variant = 'default',
+  children,
 }: OperationStateBadgesProps) {
   const sizeClass = variant === 'header' ? 'text-xs px-2 py-0.5' : 'text-sm px-2.5 py-1';
 
@@ -143,6 +147,8 @@ export default function OperationStateBadges({
           {nextCheckLabel} {formatCountdown(nextCheckInSec)}
         </span>
       )}
+
+      {children}
     </div>
   );
 }

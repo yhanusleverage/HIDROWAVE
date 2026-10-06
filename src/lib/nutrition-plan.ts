@@ -54,6 +54,27 @@ export async function getMasterLocalRelayNames(
   }
 }
 
+export const DOSER_NAME_CHANNEL = 'hidrowave-doser-names';
+
+export type DoserNameUpdate = {
+  deviceId: string;
+  relayNumber: number;
+  relayName: string;
+};
+
+/** Avisa otras pantallas abiertas (misma ventana y otras pestañas) sin esperar el eco de Supabase. */
+export function publishDoserRelayName(update: DoserNameUpdate): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(DOSER_NAME_CHANNEL, { detail: update }));
+  try {
+    const channel = new BroadcastChannel(DOSER_NAME_CHANNEL);
+    channel.postMessage(update);
+    channel.close();
+  } catch {
+    /* BroadcastChannel no está en todos los entornos */
+  }
+}
+
 /**
  * Salva nome de relé LOCAL do Master em relay_master (arrays de nomes)
  */
@@ -90,6 +111,11 @@ export async function saveMasterLocalRelayName(
       return false;
     }
 
+    publishDoserRelayName({
+      deviceId: masterDeviceId,
+      relayNumber,
+      relayName,
+    });
     return true;
   } catch (error) {
     console.error('Erro ao salvar nome do relé local:', error);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import type { RealtimeChannelStatus } from '@/lib/realtime/channel';
@@ -62,6 +62,8 @@ function LiveBadge({ status }: { status: RealtimeChannelStatus | 'connecting' })
 export function PumpQuantitySection({ deviceId, relayOptions }: Props) {
   const { t, locale } = useLanguage();
   const q = t.calibragem.qty;
+  const deviceRef = useRef(deviceId);
+  deviceRef.current = deviceId;
   const [rows, setRows] = useState<PumpQuantityRow[]>([]);
   const [resetting, setResetting] = useState<number | null>(null);
   const [rtStatus, setRtStatus] = useState<RealtimeChannelStatus | 'connecting'>(
@@ -69,15 +71,17 @@ export function PumpQuantitySection({ deviceId, relayOptions }: Props) {
   );
 
   const load = useCallback(async () => {
-    if (!deviceId) return;
+    const requested = deviceId;
+    if (!requested) return;
     try {
       const { data, error } = await supabase
         .from('pump_quantity')
         .select(
           'device_id,relay_index,role,total_ml,last_increment_at,last_reset_at,updated_at'
         )
-        .eq('device_id', deviceId)
+        .eq('device_id', requested)
         .order('relay_index', { ascending: true });
+      if (deviceRef.current !== requested) return;
       if (error) throw error;
       setRows((data as PumpQuantityRow[]) || []);
     } catch (e) {
@@ -87,6 +91,7 @@ export function PumpQuantitySection({ deviceId, relayOptions }: Props) {
   }, [deviceId, q.toastLoadError]);
 
   useEffect(() => {
+    setRows([]);
     void load();
   }, [load]);
 
@@ -96,6 +101,7 @@ export function PumpQuantitySection({ deviceId, relayOptions }: Props) {
     return subscribePumpQuantity(
       deviceId,
       (row) => {
+        if (row.device_id && row.device_id !== deviceId) return;
         setRows((prev) => {
           const idx = prev.findIndex((r) => r.relay_index === row.relay_index);
           if (idx < 0) {

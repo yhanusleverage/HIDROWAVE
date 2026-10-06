@@ -1007,6 +1007,12 @@ export interface AppTranslations {
       loading: string;
       noCalib: string;
       relayN: string;
+      pumpN: string;
+      solutionName: string;
+      saveName: string;
+      namePlaceholder: string;
+      toastNameSaved: string;
+      toastNameError: string;
       volumeMl: string;
       timeSec: string;
       use: string;
