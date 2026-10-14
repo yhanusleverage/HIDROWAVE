@@ -206,6 +206,57 @@ export interface AutomationRule {
   [key: string]: unknown; // ✅ Index signature para compatibilidad
 }
 
+type DecisionRuleLiveRow = {
+  id?: string | number;
+  device_id?: string;
+  rule_id?: string;
+  rule_name?: string;
+  rule_description?: string | null;
+  rule_json?: RuleJson;
+  enabled?: boolean;
+  priority?: number;
+};
+
+function toAutomationRule(rule: DecisionRuleLiveRow): AutomationRule {
+  const ruleJson = (rule.rule_json || {}) as RuleJson;
+  const hasScript = Boolean(ruleJson?.script?.instructions);
+  const hasConditions = Array.isArray(ruleJson?.conditions) && ruleJson.conditions.length > 0;
+  const hasActions = Array.isArray(ruleJson?.actions) && ruleJson.actions.length > 0;
+  const ruleId = rule.rule_id || '';
+  return {
+    id: rule.id || ruleId || Date.now(),
+    name: rule.rule_name || ruleId,
+    description: rule.rule_description || '',
+    condition: hasConditions
+      ? (ruleJson.conditions || [])
+          .map((c: RuleCondition) => `${c.sensor} ${c.operator} ${c.value}`)
+          .join(' e ')
+      : hasScript
+        ? 'Sequential Script'
+        : '',
+    action: hasActions
+      ? (ruleJson.actions || [])
+          .map(
+            (a: RuleAction) =>
+              `${(a.relay_names && a.relay_names.length > 0 ? a.relay_names : ['Relé']).join(', ')} por ${a.duration || 0}s`
+          )
+          .join(', ')
+      : hasScript
+        ? `${(ruleJson.script?.instructions || []).length} instrução(ões)`
+        : '',
+    enabled: Boolean(rule.enabled),
+    conditions: hasConditions ? ruleJson.conditions : [],
+    actions: hasActions ? ruleJson.actions : [],
+    rule_json: ruleJson,
+    rule_name: rule.rule_name || ruleId,
+    rule_description: rule.rule_description || '',
+    priority: rule.priority,
+    supabase_id: rule.id != null ? String(rule.id) : undefined,
+    rule_id: ruleId,
+    device_id: rule.device_id,
+  };
+}
+
 // ✅ Funções helper para converter entre formato de tempo (HH:MM:SS) e milissegundos
 // Nota: Estas funciones están definidas pero no se usan actualmente
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -570,26 +621,70 @@ export default function AutomacaoPageClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId]);
 
-  // Realtime: bridge UPDATE decision_rules.enabled → lista Ativas/Inativas
+  // Realtime: crear, editar, activar y eliminar en decision_rules (HMI o web).
   useEffect(() => {
     if (!selectedDeviceId || selectedDeviceId === 'default_device') return;
+    const deviceId = selectedDeviceId;
     const channel = supabase
-      .channel(`decision-rules-enabled-${selectedDeviceId}`)
+      .channel(`decision-rules-live-${deviceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'decision_rules',
+          filter: `device_id=eq.${deviceId}`,
+        },
+        (payload) => {
+          const row = payload.new as DecisionRuleLiveRow;
+          if (!row?.rule_id) return;
+          const next = toAutomationRule(row);
+          setRules((prev) => {
+            const idx = prev.findIndex((r) => r.rule_id === row.rule_id);
+            if (idx < 0) return [...prev, next];
+            const copy = prev.slice();
+            copy[idx] = next;
+            return copy;
+          });
+        }
+      )
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'decision_rules',
-          filter: `device_id=eq.${selectedDeviceId}`,
+          filter: `device_id=eq.${deviceId}`,
         },
         (payload) => {
-          const row = payload.new as { rule_id?: string; enabled?: boolean };
-          if (!row?.rule_id || typeof row.enabled !== 'boolean') return;
+          const row = payload.new as DecisionRuleLiveRow;
+          if (!row?.rule_id) return;
+          const next = toAutomationRule(row);
+          setRules((prev) => {
+            const idx = prev.findIndex((r) => r.rule_id === row.rule_id);
+            if (idx < 0) return [...prev, next];
+            const copy = prev.slice();
+            copy[idx] = next;
+            return copy;
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'decision_rules',
+        },
+        (payload) => {
+          const old = payload.old as DecisionRuleLiveRow;
+          if (old.device_id && old.device_id !== deviceId) return;
           setRules((prev) =>
-            prev.map((r) =>
-              r.rule_id === row.rule_id ? { ...r, enabled: row.enabled as boolean } : r
-            )
+            prev.filter((r) => {
+              if (old.rule_id && r.rule_id === old.rule_id) return false;
+              if (old.id != null && String(r.supabase_id) === String(old.id)) return false;
+              return true;
+            })
           );
         }
       )
@@ -1056,39 +1151,7 @@ export default function AutomacaoPageClient() {
       if (activeDeviceRef.current !== requestedId) return;
       
       // Converter DecisionRule para AutomationRule
-      const convertedRules: AutomationRule[] = decisionRules.map((rule) => {
-        // ✅ Preservar rule_json completo para scripts sequenciais
-        const ruleJson = rule.rule_json as RuleJson; // Type assertion para acessar script
-        const hasScript = ruleJson?.script?.instructions;
-        const hasConditions = ruleJson?.conditions && Array.isArray(ruleJson.conditions) && ruleJson.conditions.length > 0;
-        const hasActions = ruleJson?.actions && Array.isArray(ruleJson.actions) && ruleJson.actions.length > 0;
-        
-        return {
-          id: rule.id || rule.rule_id || Date.now(), // ✅ Usar UUID se disponível, senão rule_id ou timestamp
-          name: rule.rule_name,
-          description: rule.rule_description || '',
-          condition: hasConditions 
-            ? (ruleJson.conditions || []).map((c: RuleCondition) => 
-                `${c.sensor} ${c.operator} ${c.value}`
-              ).join(' e ')
-            : hasScript ? 'Sequential Script' : '',
-          action: hasActions
-            ? (ruleJson.actions || []).map((a: RuleAction) => 
-                `${(a.relay_names && a.relay_names.length > 0 ? a.relay_names : ['Relé']).join(', ')} por ${a.duration || 0}s`
-              ).join(', ')
-            : hasScript ? `${(ruleJson.script?.instructions || []).length} instrução(ões)` : '',
-          enabled: rule.enabled,
-          conditions: hasConditions ? ruleJson.conditions : [],
-          actions: hasActions ? ruleJson.actions : [],
-          // ✅ Preservar campos originais para scripts e UUID do Supabase
-          rule_json: ruleJson,
-          rule_name: rule.rule_name,
-          rule_description: rule.rule_description,
-          priority: rule.priority,
-          supabase_id: rule.id, // ✅ UUID real do Supabase (para updates/deletes)
-          rule_id: rule.rule_id, // ✅ rule_id text do Supabase
-        };
-      });
+      const convertedRules: AutomationRule[] = decisionRules.map((rule) => toAutomationRule(rule));
 
       setRules(convertedRules);
     } catch (error) {
