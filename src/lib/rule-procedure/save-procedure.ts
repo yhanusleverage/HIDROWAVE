@@ -17,7 +17,7 @@ export async function saveProcedureToDecisionRules(
   createdBy?: string
 ): Promise<SaveProcedureResult> {
   if (!deviceId?.trim()) {
-    return { ok: false, error: 'Selecione um dispositivo master', created: false };
+    return { ok: false, error: 'Selecione um core', created: false };
   }
 
   const validation = validateProcedure(procedure);

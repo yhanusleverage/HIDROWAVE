@@ -131,7 +131,7 @@ export default function SequentialScriptEditor({
     // isFree ignora claims de config (pH/EC); para scripts usamos só badge "livre"
     const available = slots
       .filter((s) => s.slotBadge === 'livre' || usedInScript.has(s.relayNumber))
-      .map((s) => ({ number: s.relayNumber, name: s.name || `Relé Master ${s.relayNumber}` }));
+      .map((s) => ({ number: s.relayNumber, name: s.name || `Pulso ${s.relayNumber}` }));
     if (available.length > 0) return available;
     // Fallback: lista completa se allocation ainda não carregou
     return DEFAULT_MASTER_RELAYS;

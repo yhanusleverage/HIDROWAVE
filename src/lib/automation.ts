@@ -768,7 +768,7 @@ export async function createSlaveCommandDirect(payload: {
         return { success: false, error: `action inválida: "${payload.actions[i]}"` };
       }
       if (typeof payload.relay_numbers[i] !== 'number' || payload.relay_numbers[i] < 0 || payload.relay_numbers[i] > 7) {
-        return { success: false, error: `relay_number inválido: ${payload.relay_numbers[i]} (0-7 para slaves)` };
+        return { success: false, error: `relay_number inválido: ${payload.relay_numbers[i]} (0-7 no Atlas)` };
       }
     }
 

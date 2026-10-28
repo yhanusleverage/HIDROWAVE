@@ -319,7 +319,7 @@ export function buildRegistryFromConfigs(input: BuildRegistryInput): RelayAlloca
     claims.push({
       relayNumber: dilDrain,
       owner: 'ec_dilution_drain',
-      label: 'Dreno diluição EC (legacy master)',
+      label: 'Dreno diluição EC (core)',
       sourceId: 'dilution_drain',
     });
   }
@@ -330,7 +330,7 @@ export function buildRegistryFromConfigs(input: BuildRegistryInput): RelayAlloca
     claims.push({
       relayNumber: dilFill,
       owner: 'ec_dilution_fill',
-      label: 'Reposição diluição EC (legacy master)',
+      label: 'Reposição diluição EC (core)',
       sourceId: 'dilution_fill',
     });
   }
@@ -676,10 +676,10 @@ export function validateEcDilutionSlaveFields(
   }
 
   if (!hasDrainMac || !Number.isFinite(drainRelay) || drainRelay < 0 || drainRelay > 7) {
-    return { ok: false, error: 'Relé slave de dreno incompleto (MAC + índice 0–7).' };
+    return { ok: false, error: 'Relé Atlas de dreno incompleto (MAC + índice 0–7).' };
   }
   if (!hasFillMac || !Number.isFinite(fillRelay) || fillRelay < 0 || fillRelay > 7) {
-    return { ok: false, error: 'Relé slave de reposição incompleto (MAC + índice 0–7).' };
+    return { ok: false, error: 'Relé Atlas de reposição incompleto (MAC + índice 0–7).' };
   }
 
   const drainMac = config.dilution_drain_slave_mac!.toString().trim().toUpperCase();

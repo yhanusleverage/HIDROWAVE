@@ -178,7 +178,7 @@ export async function saveSlaveRelayName(
     }
 
     if (!slaveDeviceId) {
-      return { ok: false, error: 'Device ID do slave não encontrado' };
+      return { ok: false, error: 'Device ID do Atlas não encontrado' };
     }
 
     const db =
@@ -198,7 +198,7 @@ export async function saveSlaveRelayName(
     if (!existing) {
       return {
         ok: false,
-        error: `Slave ${slaveDeviceId} ainda não existe em relay_slaves (aguarde sync do firmware)`,
+        error: `Atlas ${slaveDeviceId} ainda não existe (aguarde o core)`,
       };
     }
 
@@ -250,10 +250,10 @@ export async function saveSlaveDeviceName(
 ): Promise<SaveSlaveDeviceNameResult> {
   const trimmed = deviceName.trim();
   if (!slaveDeviceId?.trim()) {
-    return { ok: false, error: 'device_id do slave ausente' };
+    return { ok: false, error: 'device_id do Atlas ausente' };
   }
   if (!trimmed) {
-    return { ok: false, error: 'Nome do slave é obrigatório' };
+    return { ok: false, error: 'Nome do Atlas é obrigatório' };
   }
 
   try {
@@ -274,7 +274,7 @@ export async function saveSlaveDeviceName(
       return { ok: false, error: error.message, code: error.code };
     }
     if (!updated) {
-      return { ok: false, error: 'Slave não encontrado em device_status' };
+      return { ok: false, error: 'Atlas não encontrado' };
     }
     return { ok: true };
   } catch (error) {

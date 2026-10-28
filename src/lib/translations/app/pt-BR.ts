@@ -140,9 +140,9 @@ export const appPtBR: AppTranslations = {
     atlas: 'HydroWave Atlas',
     atlasShort: 'Atlas',
     atlasSubtitle: 'Relés e válvulas',
-    pulse: 'HydroWave Pulse',
-    pulseShort: 'Pulse',
-    pulseSubtitle: 'Módulo dosador pH/EC',
+    pulse: 'HydroWave Pulso',
+    pulseShort: 'Pulso',
+    pulseSubtitle: 'Pulso pH/EC',
   },
   automacao: {
     tabs: {
@@ -191,7 +191,7 @@ export const appPtBR: AppTranslations = {
       saving: 'Guardando…',
       typeTitle: 'Tipagem de relés hidráulicos',
       typeSubtitle: 'Funções fixas P1 — configure uma vez por Core',
-      coreRelaysHint: 'Relés do Core 0–7 são dosadores Auto EC/pH — não use aqui',
+      coreRelaysHint: 'Relés 0–7 do core são o pulso. Não use aqui',
       recircHint:
         'tempo_recirculacao (Auto EC/pH) não controla a bomba de circulação — configure a bomba abaixo',
       selectCoreType: 'Selecione um Core na barra superior para configurar a tipagem.',
@@ -286,7 +286,7 @@ export const appPtBR: AppTranslations = {
       useDurationHint: 'Desligado = fica no estado até outro passo mudar.',
       actuatorSelect: 'Relé / bomba',
       optgroupCoreRelays: 'Core',
-      optgroupDosingPumps: 'Bombas dosadoras (Core)',
+      optgroupDosingPumps: 'Pulso',
       optgroupAtlasRelays: 'Atlas',
       emptyActuatorLists:
         'Nenhuma bomba calibrada nem Atlas neste Core. Calibre bombas ou verifique os Atlas ligados.',
@@ -359,7 +359,7 @@ export const appPtBR: AppTranslations = {
       typeUnblockAuto: 'Liberar Auto',
       hintWhile: 'LOOP — mantém ação até condição ou tempo máximo (ex.: dreno enquanto nível ≠ vazio)',
       hintIf: 'Se — executa passos só se a condição for verdadeira',
-      hintRelay: 'Relé — liga ou desliga um relé master ou slave',
+      hintRelay: 'Relé — liga ou desliga core ou Atlas',
       hintSwitch: 'SWITCH — alterna estado do relé por tempo ou ciclo ON/OFF',
       hintBlockAuto: 'Pausa Auto EC/pH — colocar no início do procedimento',
       hintUnblockAuto: 'Libera Auto EC/pH — fim do procedimento (também libera ao terminar o script)',
@@ -765,7 +765,7 @@ export const appPtBR: AppTranslations = {
       title: 'Auto EC',
       titleLong: 'Controle Automático de EC',
       subtitle: 'Configure o sistema adaptativo proporcional de dosagem nutricional.',
-      selectDevice: 'Selecione um dispositivo Master para configurar o Auto EC.',
+      selectDevice: 'Selecione um core para o Auto EC.',
       autoActive: 'Auto EC ativo',
       autoInactive: 'Auto EC inativo',
       nextCheck: 'Próxima verificação EC',
@@ -852,7 +852,7 @@ export const appPtBR: AppTranslations = {
       debugConsoleNote:
         'Este formato é o mesmo que aparece no console.log quando a configuração é salva.',
       debugLegend:
-        'device_id: ID do dispositivo Master\nbase_dose: EC base em µS/cm\nnutrients[].flowRate: Vazão de cada bomba (ml/s), da Calibragem\nvolume: Volume total do reservatório (L)\ntotal_ml: Soma de ml/L de todos os nutrientes\nec_setpoint: Setpoint desejado de EC (µS/cm)\ntolerance: Banda morta em µS/cm — needsAdjustment se (SP − EC) > tolerance\nauto_enabled: Controle automático ativado?\naggressiveness: Tope de passo Auto EC (0.05–1.0)\nconsumo_24h: Camada Consumo EC 24 h\npulse_ml: ml por pulso (HMI pulseMl)\npulse_gap_sec: Gap pulsos em segundos (HMI pulseGapSec)\nnutrients: Array de nutrientes com relés e ml/L\nintervalo_auto_ec: Intervalo entre verificações de EC (segundos)\ntempo_recirculacao: Tempo de recirculação em segundos (integer)\n_debug: Informação calculada adicional (preview)',
+        'device_id: ID do core\nbase_dose: EC base em µS/cm\nnutrients[].flowRate: Vazão de cada bomba (ml/s), da Calibragem\nvolume: Volume total do reservatório (L)\ntotal_ml: Soma de ml/L de todos os nutrientes\nec_setpoint: Setpoint desejado de EC (µS/cm)\ntolerance: Banda morta em µS/cm — needsAdjustment se (SP − EC) > tolerance\nauto_enabled: Controle automático ativado?\naggressiveness: Tope de passo Auto EC (0.05–1.0)\nconsumo_24h: Camada Consumo EC 24 h\npulse_ml: ml por pulso (HMI pulseMl)\npulse_gap_sec: Gap pulsos em segundos (HMI pulseGapSec)\nnutrients: Array de nutrientes com relés e ml/L\nintervalo_auto_ec: Intervalo entre verificações de EC (segundos)\ntempo_recirculacao: Tempo de recirculação em segundos (integer)\n_debug: Informação calculada adicional (preview)',
       debugPreviewTitle: 'Ver preview da configuração',
     },
     ph: {
@@ -923,7 +923,7 @@ export const appPtBR: AppTranslations = {
       debugIntro:
         '💡 JSON enviado/salvo em ph_config_view + preview de estado MQTT (_debug)',
       debugLegend:
-        'ph_setpoint / ph_tolerance: SP e banda morta (domínio pH)\ns (ml/unid pH): Sensibilidade da calibragem; u = A × |e| × s\nintervalo_auto_ph: Intervalo entre verificações (s)\naggressiveness: A na equação u(t) = A × |e_H| / k\npulse_ml: ml por pulso (HMI pulseMl)\npulse_gap_sec: Gap pulsos (s) (HMI pulseGapSec)\n_debug: PV, erro, u(t) previsto, ph_operation_* em tempo real',
+        'ph_setpoint / ph_tolerance: SP e banda morta (domínio pH)\ns_L (ml/L por ponto): sensibilidade salva; u(t) = A × V × s_L × |e|\nintervalo_auto_ph: Intervalo entre verificações (s)\naggressiveness: A em u(t) = A × V × s_L × |e|\npulse_ml: ml por pulso (HMI pulseMl)\npulse_gap_sec: Gap pulsos (s) (HMI pulseGapSec)\n_debug: PV, erro, u(t) previsto, ph_operation_* em tempo real',
       debugPreviewTitle: 'Ver preview da configuração pH',
     },
     dilution: {
@@ -948,7 +948,7 @@ export const appPtBR: AppTranslations = {
       toastSaveError: 'Erro ao salvar diluição',
       toastToggleError: 'Erro ao alterar auto diluição',
       toastInvalidVolume: 'Volume inválido (mín. 0,1 L)',
-      toastNeedRelays: 'Configure e salve os relés slave antes de iniciar',
+      toastNeedRelays: 'Configure e salve os relés Atlas antes de iniciar',
       toastAlreadyRunning: 'Diluição já em andamento',
       toastStartError: 'Erro ao iniciar diluição',
       noAtlas: 'Nenhum HydroWave Atlas ligado — sincronize o Core na bancada.',
@@ -961,7 +961,7 @@ export const appPtBR: AppTranslations = {
       stateFilling: 'Diluição · repondo — aguardando nível alto',
       hint: 'Quando o EC está alto demais, a diluição drena parte da solução e repõe água limpa via Atlas.',
       sending: 'Enviando…',
-      emptyRelays: 'Todos os relés slave estão reservados ou indisponíveis.',
+      emptyRelays: 'Todos os relés Atlas estão reservados ou indisponíveis.',
       overshootHint: 'Overshoot detectado — volume sugerido pré-preenchido.',
       lastDilution: 'Última diluição: {vol} L ({source}) — {when}',
     },

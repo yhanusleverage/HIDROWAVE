@@ -161,22 +161,24 @@ export function resolveActiveK(input: ResolveActiveKInput): ActiveKResult | null
 }
 
 /**
- * Preview operador (domínio pH): u(t) = A × V × s_L × |e| = A × |e| × s  (ml)
- * s = ml por unidade pH total (V × s_L).
+ * Preview operador: u(t) = A × V × s_L × |e| (ml).
+ * s_L = ml por litro e por ponto (ml_per_ph_unit guardado). Os litros ampliam o sorvo.
  */
 export function previewPhDoseOperatorMl(
   phSetpoint: number,
   phMeasured: number,
   aggressiveness: number,
-  mlPerPhUnitSens: number,
-  tolerancePh: number
+  mlPerLiterPerPh: number,
+  tolerancePh: number,
+  volumeLiters: number
 ): number | null {
   if (!isFinitePh(phMeasured) || !isFinitePh(phSetpoint)) return null;
   const e = phErrorAbs(phSetpoint, phMeasured);
   if (e <= tolerancePh) return null;
-  if (!Number.isFinite(mlPerPhUnitSens) || mlPerPhUnitSens <= 0) return null;
+  if (!Number.isFinite(mlPerLiterPerPh) || mlPerLiterPerPh <= 0) return null;
+  if (!Number.isFinite(volumeLiters) || volumeLiters <= 0) return null;
   const a = Math.min(1, Math.max(0.05, aggressiveness));
-  const dose = a * e * mlPerPhUnitSens;
+  const dose = a * e * mlPerLiterPerPh * volumeLiters;
   return Number.isFinite(dose) && dose > 0 ? dose : null;
 }
 

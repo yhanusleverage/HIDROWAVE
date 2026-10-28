@@ -74,8 +74,8 @@ export async function POST(request: Request) {
       console.error('❌ Erro ao buscar slave:', slaveError);
       return NextResponse.json(
         { 
-          error: `Slave "${device_id}" não encontrado em relay_slaves`,
-          details: 'O slave precisa estar registrado antes de criar comandos.'
+          error: `Atlas "${device_id}" não encontrado`,
+          details: 'O Atlas precisa estar registrado antes de criar comandos.'
         },
         { status: 400 }
       );
@@ -92,8 +92,8 @@ export async function POST(request: Request) {
       console.error('❌ Erro ao buscar master:', masterError);
       return NextResponse.json(
         { 
-          error: `Master "${slaveData.master_device_id}" não encontrado em device_status`,
-          details: 'O Master precisa estar registrado antes de criar comandos.'
+          error: `Core "${slaveData.master_device_id}" não encontrado`,
+          details: 'O core precisa estar registrado antes de criar comandos.'
         },
         { status: 400 }
       );
@@ -162,7 +162,7 @@ export async function POST(request: Request) {
       state,
       command_id: result.command.id,
       command: result.command,
-      note: 'O comando será processado pelo ESP32 Master usando a função RPC atômica get_and_lock_slave_commands()',
+      note: 'O core envia o comando ao Atlas.',
     });
   } catch (error) {
     console.error('❌ Erro inesperado em POST /api/relay-slaves/toggle:', error);

@@ -27,8 +27,6 @@ import {
   resolveActiveK,
   previewPhDoseOperatorMl,
   previewPhDoseFirmwareMl,
-  mlPerPhUnitFromK,
-  resolveActiveSL,
   PH_OPERATOR_EQUATION_SYMBOL,
   PH_PULSE_EQUATION_SYMBOL,
   PH_FIRMWARE_EQUATION_SYMBOL,
@@ -741,27 +739,17 @@ export default function PhControllerPanel({
     return dir === 'base' ? mlPerPhUnitBase : mlPerPhUnitAcid;
   }, [correctionDirection, displayPh, phSetpoint, mlPerPhUnitBase, mlPerPhUnitAcid]);
 
-  const activeS = useMemo(() => {
-    if (activeKResult == null) return activeMlPerPhUnit;
-    const fromK = mlPerPhUnitFromK(phSetpoint, activeKResult.k);
-    return fromK ?? activeMlPerPhUnit;
-  }, [activeKResult, phSetpoint, activeMlPerPhUnit]);
-
-  const activeSL = useMemo(
-    () => resolveActiveSL(activeS, volume),
-    [activeS, volume]
-  );
-
   const previewDoseMl = useMemo(() => {
-    if (displayPh === null || activeS == null || activeS <= 0) return null;
+    if (displayPh === null || activeMlPerPhUnit == null || activeMlPerPhUnit <= 0) return null;
     return previewPhDoseOperatorMl(
       phSetpoint,
       displayPh,
       aggressiveness,
-      activeS,
-      phTolerance
+      activeMlPerPhUnit,
+      phTolerance,
+      volume
     );
-  }, [displayPh, phSetpoint, aggressiveness, activeS, phTolerance]);
+  }, [displayPh, phSetpoint, aggressiveness, activeMlPerPhUnit, phTolerance, volume]);
 
   const previewFirmwareUncappedMl = useMemo(() => {
     if (displayPh === null || activeKResult == null) return null;
@@ -901,8 +889,8 @@ export default function PhControllerPanel({
         k_source: activeKResult?.source ?? null,
         u_preview_ml: previewDoseMl,
         u_preview_firmware_h_ml: previewFirmwareMl,
-        s_total_ml_per_ph_unit: activeS,
-        s_L_ml_per_L_per_ph: activeSL,
+        s_total_ml_per_ph_unit: volume > 0 ? activeMlPerPhUnit * volume : null,
+        s_L_ml_per_L_per_ph: activeMlPerPhUnit,
         tau_preview_sec: previewPulseSec,
         flow_rate_active_ml_s: activeFlowRate,
         volume_liters: volume,
@@ -961,8 +949,7 @@ export default function PhControllerPanel({
       activeKResult,
       previewDoseMl,
       previewFirmwareMl,
-      activeS,
-      activeSL,
+      activeMlPerPhUnit,
       previewPulseSec,
       activeFlowRate,
       firmwareDoseBlockReason,
@@ -1306,7 +1293,7 @@ export default function PhControllerPanel({
                 )}
               </div>
               <p className="text-xs text-dark-textSecondary mt-1">
-                Tanque salvo: {savedVolume} L. Precisa estar certo para a dose bater com o volume real.
+                Tanque salvo: {savedVolume} L. Esses litros multiplicam a dose.
               </p>
             </div>
             <div>

@@ -139,9 +139,9 @@ export const appEn: AppTranslations = {
     atlas: 'HydroWave Atlas',
     atlasShort: 'Atlas',
     atlasSubtitle: 'Relays and valves',
-    pulse: 'HydroWave Pulse',
-    pulseShort: 'Pulse',
-    pulseSubtitle: 'pH/EC dosing module',
+    pulse: 'HydroWave Pulso',
+    pulseShort: 'Pulso',
+    pulseSubtitle: 'Pulso pH/EC',
   },
   automacao: {
     tabs: {
@@ -189,7 +189,7 @@ export const appEn: AppTranslations = {
       saving: 'Saving…',
       typeTitle: 'Hydraulic relay roles',
       typeSubtitle: 'Fixed P1 functions — set once per Core',
-      coreRelaysHint: 'Core relays 0–7 are Auto EC/pH dosers — do not use them here',
+      coreRelaysHint: 'Core relays 0–7 are the pulso. Do not use them here',
       recircHint:
         'tempo_recirculacao (Auto EC/pH) does not drive the circulation pump — set the pump below',
       selectCoreType: 'Select a Core in the top bar to configure roles.',
@@ -284,7 +284,7 @@ export const appEn: AppTranslations = {
       useDurationHint: 'Off = stays in that state until another step changes it.',
       actuatorSelect: 'Relay / pump',
       optgroupCoreRelays: 'Core',
-      optgroupDosingPumps: 'Dosing pumps (Core)',
+      optgroupDosingPumps: 'Pulso',
       optgroupAtlasRelays: 'Atlas',
       emptyActuatorLists:
         'No calibrated pumps or Atlas on this Core. Calibrate pumps or check paired Atlas devices.',
@@ -357,7 +357,7 @@ export const appEn: AppTranslations = {
       typeUnblockAuto: 'Unblock Auto',
       hintWhile: 'LOOP — keep acting until condition or max time (e.g. drain while level ≠ empty)',
       hintIf: 'If — run steps only when the condition is true',
-      hintRelay: 'Relay — turn a master or slave relay on or off',
+      hintRelay: 'Relay — turn a core or Atlas relay on or off',
       hintSwitch: 'SWITCH — toggle relay state by time or ON/OFF cycle',
       hintBlockAuto: 'Pause Auto EC/pH — put at the start of the procedure',
       hintUnblockAuto: 'Resume Auto EC/pH — end of procedure (also released when script ends)',
@@ -762,7 +762,7 @@ export const appEn: AppTranslations = {
       title: 'Auto EC',
       titleLong: 'Automatic EC Control',
       subtitle: 'Configure the adaptive proportional nutrient dosing system.',
-      selectDevice: 'Select a Master device to configure Auto EC.',
+      selectDevice: 'Select a core to configure Auto EC.',
       autoActive: 'Auto EC active',
       autoInactive: 'Auto EC inactive',
       nextCheck: 'Next EC check',
@@ -849,7 +849,7 @@ export const appEn: AppTranslations = {
       debugConsoleNote:
         'This format matches the console.log when the configuration is saved.',
       debugLegend:
-        'device_id: Master device ID\nbase_dose: Base EC in µS/cm\nnutrients[].flowRate: Each pump flow (ml/s), from Calibration\nvolume: Total tank volume (L)\ntotal_ml: Sum of ml/L across all nutrients\nec_setpoint: Desired EC setpoint (µS/cm)\ntolerance: Deadband in µS/cm — needsAdjustment if (SP − EC) > tolerance\nauto_enabled: Automatic control enabled?\naggressiveness: Auto EC step cap (0.05–1.0)\nconsumo_24h: EC 24 h consumption layer\npulse_ml: ml per pulse (HMI pulseMl)\npulse_gap_sec: Pulse gap in seconds (HMI pulseGapSec)\nnutrients: Nutrient array with relays and ml/L\nintervalo_auto_ec: Interval between EC checks (seconds)\ntempo_recirculacao: Recirculation time in seconds (integer)\n_debug: Extra computed preview info',
+        'device_id: core ID\nbase_dose: Base EC in µS/cm\nnutrients[].flowRate: Each pump flow (ml/s), from Calibration\nvolume: Total tank volume (L)\ntotal_ml: Sum of ml/L across all nutrients\nec_setpoint: Desired EC setpoint (µS/cm)\ntolerance: Deadband in µS/cm — needsAdjustment if (SP − EC) > tolerance\nauto_enabled: Automatic control enabled?\naggressiveness: Auto EC step cap (0.05–1.0)\nconsumo_24h: EC 24 h consumption layer\npulse_ml: ml per pulse (HMI pulseMl)\npulse_gap_sec: Pulse gap in seconds (HMI pulseGapSec)\nnutrients: Nutrient array with relays and ml/L\nintervalo_auto_ec: Interval between EC checks (seconds)\ntempo_recirculacao: Recirculation time in seconds (integer)\n_debug: Extra computed preview info',
       debugPreviewTitle: 'View configuration preview',
     },
     ph: {
@@ -920,7 +920,7 @@ export const appEn: AppTranslations = {
       debugIntro:
         '💡 JSON sent/saved in ph_config_view + MQTT state preview (_debug)',
       debugLegend:
-        'ph_setpoint / ph_tolerance: SP and deadband (pH domain)\ns (ml/pH unit): Calibration sensitivity; u = A × |e| × s\nintervalo_auto_ph: Interval between checks (s)\naggressiveness: A in equation u(t) = A × |e_H| / k\npulse_ml: ml per pulse (HMI pulseMl)\npulse_gap_sec: Pulse gap (s) (HMI pulseGapSec)\n_debug: PV, error, predicted u(t), ph_operation_* in real time',
+        'ph_setpoint / ph_tolerance: SP and deadband (pH domain)\ns_L (ml/L per pH point): stored sensitivity; u(t) = A × V × s_L × |e|\nintervalo_auto_ph: Interval between checks (s)\naggressiveness: A in u(t) = A × V × s_L × |e|\npulse_ml: ml per pulse (HMI pulseMl)\npulse_gap_sec: Pulse gap (s) (HMI pulseGapSec)\n_debug: PV, error, predicted u(t), ph_operation_* in real time',
       debugPreviewTitle: 'View pH configuration preview',
     },
     dilution: {
@@ -945,7 +945,7 @@ export const appEn: AppTranslations = {
       toastSaveError: 'Failed to save dilution',
       toastToggleError: 'Failed to change auto dilution',
       toastInvalidVolume: 'Invalid volume (min. 0.1 L)',
-      toastNeedRelays: 'Configure and save slave relays before starting',
+      toastNeedRelays: 'Configure and save Atlas relays before starting',
       toastAlreadyRunning: 'Dilution already in progress',
       toastStartError: 'Failed to start dilution',
       noAtlas: 'No HydroWave Atlas connected — sync the Core on the bench.',
@@ -958,7 +958,7 @@ export const appEn: AppTranslations = {
       stateFilling: 'Dilution · refilling — waiting for high level',
       hint: 'When EC is too high, dilution drains some solution and refills clean water via Atlas.',
       sending: 'Sending…',
-      emptyRelays: 'All slave relays are reserved or unavailable.',
+      emptyRelays: 'All Atlas relays are reserved or unavailable.',
       overshootHint: 'Overshoot detected — suggested volume pre-filled.',
       lastDilution: 'Last dilution: {vol} L ({source}) — {when}',
     },

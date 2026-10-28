@@ -19,6 +19,8 @@ export interface PhConfigSnapshot {
   volume: number;
   s_up: number;
   s_down: number;
+  ml_per_ph_unit_acid: number;
+  ml_per_ph_unit_base: number;
   flow_rate_ph_up: number;
   flow_rate_ph_down: number;
   isLoading: boolean;
@@ -40,6 +42,8 @@ const DEFAULT: PhConfigSnapshot = {
   volume: 0,
   s_up: 0,
   s_down: 0,
+  ml_per_ph_unit_acid: 2,
+  ml_per_ph_unit_base: 2,
   flow_rate_ph_up: 0,
   flow_rate_ph_down: 0,
   isLoading: true,
@@ -78,6 +82,10 @@ export function usePhConfig(deviceId: string, enabled = true): PhConfigSnapshot 
         volume: Number(data.volume) || 0,
         s_up: Number(data.s_up ?? data.sUp) || 0,
         s_down: Number(data.s_down ?? data.sDown) || 0,
+        ml_per_ph_unit_acid:
+          Number(data.ml_per_ph_unit_acid ?? data.ml_per_ph_unit) || 2,
+        ml_per_ph_unit_base:
+          Number(data.ml_per_ph_unit_base ?? data.ml_per_ph_unit) || 2,
         flow_rate_ph_up: Number(data.flow_rate_ph_up ?? data.flowRatePhUp) || 0,
         flow_rate_ph_down: Number(data.flow_rate_ph_down ?? data.flowRatePhDown) || 0,
         isLoading: false,

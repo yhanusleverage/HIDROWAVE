@@ -134,14 +134,15 @@ export function PhAutoStatusCard({ deviceId }: PhAutoStatusCardProps) {
     const needUp = phAtual < phConfig.ph_setpoint - phConfig.ph_tolerance;
     const needDown = phAtual > phConfig.ph_setpoint + phConfig.ph_tolerance;
     if (!needUp && !needDown) return null;
-    const s = needUp ? phConfig.s_up : phConfig.s_down;
+    const mlPerL = needUp ? phConfig.ml_per_ph_unit_base : phConfig.ml_per_ph_unit_acid;
     const flow = needUp ? phConfig.flow_rate_ph_up : phConfig.flow_rate_ph_down;
     const doseMl = previewPhDoseOperatorMl(
       phConfig.ph_setpoint,
       phAtual,
       phConfig.aggressiveness,
-      s,
-      phConfig.ph_tolerance
+      mlPerL,
+      phConfig.ph_tolerance,
+      phConfig.volume
     );
     if (doseMl == null || flow < 0.01) return null;
     const breakdown = estimatePhCycleBreakdown({

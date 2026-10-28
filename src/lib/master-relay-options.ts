@@ -5,7 +5,7 @@ export interface MasterRelayOption {
 
 export const DEFAULT_MASTER_RELAYS: MasterRelayOption[] = Array.from({ length: 8 }, (_, i) => ({
   number: i,
-  name: `Relé Master ${i}`,
+  name: `Pulso ${i}`,
 }));
 
 export function masterRelayKey(relayIndex: number): string {

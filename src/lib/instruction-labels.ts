@@ -67,7 +67,7 @@ export const INSTRUCTION_TYPE_HINTS: Record<string, string> = {
   unblock_auto: 'Libera Auto EC/pH (fim do procedimento ou cancelar)',
   while: 'LOOP — mantém ação até condição ou tempo máximo (ex.: dreno enquanto nível ≠ vazio)',
   if: 'Se — executa passos só se a condição for verdadeira',
-  relay_action: 'Relé — liga ou desliga um relé master ou slave',
+  relay_action: 'Relé — liga ou desliga core ou Atlas',
   switch: 'SWITCH — alterna estado do relé por tempo ou ciclo ON/OFF',
 };
 

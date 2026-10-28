@@ -86,7 +86,7 @@ export async function POST(request: Request) {
       if (error) {
         console.error('Erro ao criar relé master:', error);
         return NextResponse.json(
-          { error: 'Erro ao criar relé master', details: error.message },
+          { error: 'Erro ao criar relé do pulso', details: error.message },
           { status: 500 }
         );
       }
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
     if (error) {
       console.error('Erro ao atualizar relé master:', error);
       return NextResponse.json(
-        { error: 'Erro ao atualizar relé master', details: error.message },
+        { error: 'Erro ao atualizar relé do pulso', details: error.message },
         { status: 500 }
       );
     }

@@ -127,10 +127,10 @@ export function validateEcDilutionSlaveAssignment(
   };
 
   if (!findRelay(drain)) {
-    return { ok: false, error: 'Relé de dreno não encontrado no slave selecionado.' };
+    return { ok: false, error: 'Relé de dreno não encontrado no Atlas selecionado.' };
   }
   if (!findRelay(fill)) {
-    return { ok: false, error: 'Relé de reposição não encontrado no slave selecionado.' };
+    return { ok: false, error: 'Relé de reposição não encontrado no Atlas selecionado.' };
   }
 
   return { ok: true };

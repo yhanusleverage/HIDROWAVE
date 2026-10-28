@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     if (error) {
       console.error('Erro ao atualizar relé master:', error);
       return NextResponse.json(
-        { error: 'Erro ao atualizar relé master', details: error.message },
+        { error: 'Erro ao atualizar relé do pulso', details: error.message },
         { status: 500 }
       );
     }

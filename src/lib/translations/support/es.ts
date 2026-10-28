@@ -53,7 +53,7 @@ export const supportPagesEs: Record<SupportPageSlug, DocsPageContent> = {
           },
           {
             title: '2. Sensores y actuadores',
-            body: 'Sensores estilo Nuravine adaptados: sonda pH/EC, sensor de nivel XKR-25 (LLENO/MEDIO/BAJO), ambiente (temp/humedad). Actuadores: bombas dosificadoras, válvulas 24V, relés de recarga y drenaje.',
+            body: 'Sensores estilo Nuravine adaptados: sonda pH/EC, sensor de nivel XKR-25 (LLENO/MEDIO/BAJO), ambiente (temp/humedad). Actuadores: pulso, válvulas 24V, relés de recarga y drenaje.',
             accent: 'ec',
           },
           {

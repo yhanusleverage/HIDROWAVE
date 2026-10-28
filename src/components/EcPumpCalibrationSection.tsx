@@ -711,7 +711,9 @@ export function EcPumpCalibrationSection({
         const relay = nutrientRelayNumber(n);
         if (relay == null || !isPeristalticDosingRelay(relay)) continue;
         const flowRate = parseNutrientFlowRate(n);
-        if (!isAssignedNutrient(n) && !(flowRate && flowRate > 0)) continue;
+        const rawName = n.name ? String(n.name).trim() : '';
+        const parked = n.active === false && rawName.length > 0 && !rawName.startsWith('pump_r');
+        if (!isAssignedNutrient(n) && !(flowRate && flowRate > 0) && !parked) continue;
         byRelay.set(relay, {
           kind: 'ec',
           name: cardTitle(

@@ -50,9 +50,9 @@ export const PRODUCT_LINE = {
   pulse: {
     role: 'pulse',
     technicalId: 'doser',
-    shortName: 'Pulse',
-    displayName: 'HydroWave Pulse',
-    subtitle: 'Módulo dosador pH/EC',
+    shortName: 'Pulso',
+    displayName: 'HydroWave Pulso',
+    subtitle: 'Pulso pH/EC',
     tagline: {
       'pt-BR': 'O pulso do nutriente. pH e EC na proporção certa.',
       es: 'El pulso del nutriente. pH y EC en la proporción exacta.',

@@ -183,8 +183,8 @@ export const quemSomosPt: QuemSomosCopy = {
         accent: 'wait',
       },
       {
-        name: 'HydroWave Pulse',
-        role: 'Módulo dosador pH/EC',
+        name: 'HydroWave Pulso',
+        role: 'Pulso pH/EC',
         body: 'O pulso do nutriente. pH e EC na proporção certa.',
         accent: 'ec',
       },
@@ -227,7 +227,7 @@ export const quemSomosPt: QuemSomosCopy = {
       'Os instrumentos já estão prontos. Comece pelo dashboard ou fale conosco sobre operação comercial.',
   },
   teaser: {
-    title: 'Conheça Core · Atlas · Pulse',
+    title: 'Conheça Core · Atlas · Pulso',
     subtitle:
       'Eficiência não é fazer mais — é o melhor resultado com o mínimo necessário. Veja a linha HydroWave e os elementos do cultivo.',
     cta: 'Quem somos',

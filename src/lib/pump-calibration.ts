@@ -108,31 +108,33 @@ export function mergeNutrientFlowRates(
   nextActive: NutrientFlowRow[]
 ): NutrientFlowRow[] {
   const flowByRelay = new Map<number, number>();
-  const ghosts: NutrientFlowRow[] = [];
+  const parked: NutrientFlowRow[] = [];
   for (const n of existing) {
     const r = nutrientRelayNumber(n);
     const q = parseNutrientFlowRate(n);
     if (r == null) continue;
     if (q) flowByRelay.set(r, q);
-    if ((Number(n.mlPerLiter) || 0) < 0.1 && q) ghosts.push(n);
+    const name = (n.name || '').trim();
+    if (!name || name.startsWith('pump_r')) continue;
+    parked.push(n);
   }
   const used = new Set<number>();
   const out: NutrientFlowRow[] = nextActive.map((n) => {
     const r = nutrientRelayNumber(n) ?? 0;
     used.add(r);
     const q = parseNutrientFlowRate(n) ?? flowByRelay.get(r);
-    return q ? { ...n, flowRate: q } : n;
+    return q ? { ...n, active: true, flowRate: q } : { ...n, active: true };
   });
-  for (const g of ghosts) {
+  for (const g of parked) {
     const r = nutrientRelayNumber(g);
     if (r == null || used.has(r)) continue;
+    const name = (g.name || '').trim();
     out.push({
-      ...g,
-      name: g.name || `Bomba ${r + 1}`,
+      name,
       relay: r,
       mlPerLiter: 0,
       active: false,
-      flowRate: parseNutrientFlowRate(g),
+      flowRate: parseNutrientFlowRate(g) ?? flowByRelay.get(r),
     });
   }
   return out;

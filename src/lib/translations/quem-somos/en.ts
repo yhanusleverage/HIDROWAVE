@@ -183,8 +183,8 @@ export const quemSomosEn: QuemSomosCopy = {
         accent: 'wait',
       },
       {
-        name: 'HydroWave Pulse',
-        role: 'pH/EC dosing module',
+        name: 'HydroWave Pulso',
+        role: 'Pulso pH/EC',
         body: 'The nutrient pulse. pH and EC in the right proportion.',
         accent: 'ec',
       },
@@ -227,7 +227,7 @@ export const quemSomosEn: QuemSomosCopy = {
       'The instruments are ready. Start with the dashboard or talk to us about commercial operation.',
   },
   teaser: {
-    title: 'Meet Core · Atlas · Pulse',
+    title: 'Meet Core · Atlas · Pulso',
     subtitle:
       'Efficiency is not doing more — it is the best result with the least necessary. See the HydroWave line and the elements of cultivation.',
     cta: 'Who we are',

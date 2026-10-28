@@ -160,7 +160,7 @@ export default function RelayMapDiagram({
             <div>
               <span className="text-dark-textSecondary">Dispositivo:</span>
               <span className="ml-2 text-dark-text">
-                {selectedRelay.device === 'master' ? 'Master (Local)' : `Slave (${selectedRelay.slaveMac})`}
+                {selectedRelay.device === 'master' ? 'Pulso' : `Atlas (${selectedRelay.slaveMac})`}
               </span>
             </div>
             {selectedRelay.dependencies && selectedRelay.dependencies.length > 0 && (

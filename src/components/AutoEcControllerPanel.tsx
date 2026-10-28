@@ -514,15 +514,19 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
         mlPerLiter?: number;
         flowRate?: number;
         flow_rate?: number;
+        active?: boolean;
       }
       
-      // Carregar nutrientes do array JSONB
+      // Carregar nutrientes do array JSONB. La bomba fuera de receta queda en el JSON
+      // con active:false y no vuelve a la tabla.
       if (config.nutrients && Array.isArray(config.nutrients) && config.nutrients.length > 0) {
-        const nutrients = config.nutrients.map((nut: NutrientFromConfig) => {
+        const nutrients = config.nutrients
+          .filter((nut: NutrientFromConfig) => nut.active !== false && (Number(nut.mlPerLiter) || 0) >= MIN_NUTRIENT_ML_PER_LITER)
+          .map((nut: NutrientFromConfig) => {
           const q = Number(nut.flowRate ?? nut.flow_rate);
           return {
             name: nut.name || '',
-            relayNumber: nut.relay || nut.relayNumber || 0,
+            relayNumber: nut.relay ?? nut.relayNumber ?? 0,
             mlPerLiter: nut.mlPerLiter || 0,
             ...(Number.isFinite(q) && q > 0 ? { flowRate: q } : {}),
           };
