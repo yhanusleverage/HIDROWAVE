@@ -35,9 +35,10 @@ import {
 } from '@/lib/ph-control-display';
 import { subscribePhDosageInserts } from '@/lib/realtime/ph-dosages';
 import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
-import { subscribeAutoEnabled } from '@/lib/realtime/auto-controller';
+import { subscribeAutoEnabled, configFieldChanged, type ControllerConfigChange } from '@/lib/realtime/auto-controller';
 import type { RealtimeChannelStatus } from '@/lib/realtime/channel';
 import { DoserRelaySelect } from '@/components/DoserRelaySelect';
+import { HwSwitch } from '@/components/ui/HwSwitch';
 import {
   buildRegistryFromConfigs,
   serializeRegistryForDebug,
@@ -153,6 +154,7 @@ export default function PhControllerPanel({
   const [showPhConfigPreview, setShowPhConfigPreview] = useState(false);
   const [locked, setLocked] = useState(() => process.env.NODE_ENV !== 'development');
   const justSavedRef = useRef(false);
+  const remotePhRef = useRef<ControllerConfigChange | null>(null);
   const [configSyncTick, setConfigSyncTick] = useState(0);
   const [savedConfigSnapshot, setSavedConfigSnapshot] = useState<string | null>(null);
   const markConfigSynced = useCallback(() => {
@@ -347,6 +349,22 @@ export default function PhControllerPanel({
       }
       setKAcid(data.k_acid != null ? Number(data.k_acid) : null);
       setKBase(data.k_base != null ? Number(data.k_base) : null);
+      remotePhRef.current = {
+        auto_enabled: Boolean(data.auto_enabled),
+        aggressiveness: Number(data.aggressiveness) || 0.5,
+        consumo_24h: Boolean(data.consumo_24h),
+        volume: syncedVolume,
+        intervalo_auto_ph: Number(data.intervalo_auto_ph) || 300,
+        tempo_recirculacao: Number(data.tempo_recirculacao) || 60,
+        pulse_ml: Number.isFinite(Number(data.pulse_ml)) ? Number(data.pulse_ml) : 2,
+        pulse_gap_sec: Number.isFinite(Number(data.pulse_gap_sec)) ? Number(data.pulse_gap_sec) : 2,
+        ph_setpoint: Number(data.ph_setpoint) || 6.0,
+        ph_tolerance: Number(data.ph_tolerance) || 0.2,
+        relay_ph_up: optionalDoserRelay(data.relay_ph_up),
+        relay_ph_down: optionalDoserRelay(data.relay_ph_down),
+        flow_rate_ph_up: Number(data.flow_rate_ph_up) || 1.0,
+        flow_rate_ph_down: Number(data.flow_rate_ph_down) || 1.0,
+      };
       markConfigSynced();
     } catch (err) {
       console.error('[PH Controller] load error', err);
@@ -402,9 +420,79 @@ export default function PhControllerPanel({
     return subscribeAutoEnabled(
       deviceId.trim(),
       'ph_config_view',
-      (enabled) => {
-        if (justToggledRef.current || autoTogglePending) return;
-        setAutoEnabled(enabled);
+      (row) => {
+        const prev = remotePhRef.current;
+        if (!prev) {
+          remotePhRef.current = row;
+          return;
+        }
+        remotePhRef.current = { ...prev, ...row };
+        if (justSavedRef.current) return;
+
+        let touched = false;
+        if (
+          configFieldChanged(prev, row, 'auto_enabled') &&
+          !justToggledRef.current &&
+          !autoTogglePending &&
+          typeof row.auto_enabled === 'boolean'
+        ) {
+          setAutoEnabled(row.auto_enabled);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'aggressiveness') && row.aggressiveness != null) {
+          setAggressiveness(Math.min(1, Math.max(0.05, row.aggressiveness)));
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'consumo_24h') && typeof row.consumo_24h === 'boolean') {
+          setConsumo24h(row.consumo_24h);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'volume') && row.volume != null && row.volume > 0) {
+          setVolume(row.volume);
+          setSavedVolume(row.volume);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'intervalo_auto_ph') && row.intervalo_auto_ph != null) {
+          setIntervaloAutoPh(row.intervalo_auto_ph);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'tempo_recirculacao') && row.tempo_recirculacao != null) {
+          setTempoRecirculacao(row.tempo_recirculacao);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'pulse_ml') && row.pulse_ml != null) {
+          setPulseMl(Math.min(50, Math.max(0.05, row.pulse_ml)));
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'pulse_gap_sec') && row.pulse_gap_sec != null) {
+          setPulseGapSec(Math.min(120, Math.max(0, row.pulse_gap_sec)));
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'ph_setpoint') && row.ph_setpoint != null) {
+          setPhSetpoint(row.ph_setpoint);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'ph_tolerance') && row.ph_tolerance != null) {
+          setPhTolerance(row.ph_tolerance);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'relay_ph_up')) {
+          setRelayPhUp(row.relay_ph_up ?? -1);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'relay_ph_down')) {
+          setRelayPhDown(row.relay_ph_down ?? -1);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'flow_rate_ph_up') && row.flow_rate_ph_up != null) {
+          setFlowRatePhUp(row.flow_rate_ph_up);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'flow_rate_ph_down') && row.flow_rate_ph_down != null) {
+          setFlowRatePhDown(row.flow_rate_ph_down);
+          touched = true;
+        }
+        if (touched) markConfigSynced();
       },
       (status) => setAutoRtStatus(status)
     );
@@ -1203,22 +1291,16 @@ export default function PhControllerPanel({
               />
               <span className="text-xs text-dark-textSecondary">0.2 conservador — 1.0 agressivo</span>
             </div>
-            <label className="flex items-start gap-3 sm:col-span-2 cursor-pointer">
-              <input
-                type="checkbox"
-                className="mt-1 accent-violet-500 disabled:opacity-50"
+            <div className="sm:col-span-2">
+              <HwSwitch
                 checked={consumo24h}
                 disabled={disabled}
-                onChange={(e) => setConsumo24h(e.target.checked)}
+                accent="violet"
+                title="Consumo pH 24 h"
+                hint="Liga o diário de 24 h no resumo (seta de pH e ml pH+/pH−). Também é a camada do firmware. Default OFF. Não muda o intervalo."
+                onChange={setConsumo24h}
               />
-              <span>
-                <span className="block text-sm text-dark-text">Consumo pH 24 h</span>
-                <span className="block text-xs text-dark-textSecondary">
-                  Liga o diário de 24 h no resumo (seta de pH e ml pH+/pH−). Também é a
-                  camada do firmware. Default OFF. Não muda o intervalo.
-                </span>
-              </span>
-            </label>
+            </div>
             <div>
               <label className="block text-sm text-dark-textSecondary mb-1">{ph.pulseMl}</label>
               <input

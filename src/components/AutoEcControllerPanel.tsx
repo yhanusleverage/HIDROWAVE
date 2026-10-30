@@ -19,7 +19,7 @@ import { formatSensorValue } from '@/lib/format-sensor-value';
 import { ESPNowSlave } from '@/lib/esp-now-slaves';
 import { supabase } from '@/lib/supabase';
 import { subscribeRelayStateUpdates } from '@/lib/realtime/relay-states';
-import { subscribeAutoEnabled } from '@/lib/realtime/auto-controller';
+import { subscribeAutoEnabled, configFieldChanged, type ControllerConfigChange } from '@/lib/realtime/auto-controller';
 import type { RealtimeChannelStatus } from '@/lib/realtime/channel';
 import { RELAY_REST_FALLBACK_MS } from '@/lib/realtime/relay-apply';
 import { useLastDosage } from '@/hooks/useLastDosage';
@@ -36,6 +36,7 @@ import {
 } from '@/lib/pump-calibration';
 import { useRelayAllocation } from '@/hooks/useRelayAllocation';
 import { DoserRelaySelect } from '@/components/DoserRelaySelect';
+import { HwSwitch } from '@/components/ui/HwSwitch';
 import { DoserRelayMapPanel } from '@/components/DoserRelayMapPanel';
 import { getSelectableRelays, getRelayBusyClaim, optionalDoserRelay, serializeRegistryForDebug, validateEcNutrientsAssignment } from '@/lib/relay-allocation';
 import {
@@ -110,6 +111,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   const [pulseMl, setPulseMl] = useState<number>(2.0);
   const [pulseGapSec, setPulseGapSec] = useState<number>(2.0);
   const justSavedRef = useRef<boolean>(false);
+  const remoteEcRef = useRef<ControllerConfigChange | null>(null);
   const savingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [configSyncTick, setConfigSyncTick] = useState(0);
   const [savedConfigSnapshot, setSavedConfigSnapshot] = useState<string | null>(null);
@@ -591,6 +593,38 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       if (typeof config.consumo_24h === 'boolean') {
         setConsumo24h(config.consumo_24h);
       }
+      remoteEcRef.current = {
+        auto_enabled: typeof config.auto_enabled === 'boolean' ? config.auto_enabled : undefined,
+        aggressiveness:
+          config.aggressiveness !== undefined && !isNaN(Number(config.aggressiveness))
+            ? Math.min(1, Math.max(0.05, Number(config.aggressiveness)))
+            : undefined,
+        consumo_24h: typeof config.consumo_24h === 'boolean' ? config.consumo_24h : undefined,
+        volume:
+          config.volume !== undefined && !isNaN(config.volume) ? config.volume : undefined,
+        intervalo_auto_ec:
+          config.intervalo_auto_ec !== undefined && !isNaN(config.intervalo_auto_ec)
+            ? config.intervalo_auto_ec
+            : undefined,
+        tempo_recirculacao:
+          config.tempo_recirculacao !== undefined && config.tempo_recirculacao !== null
+            ? Number(config.tempo_recirculacao)
+            : undefined,
+        pulse_ml:
+          config.pulse_ml !== undefined && !isNaN(Number(config.pulse_ml))
+            ? Number(config.pulse_ml)
+            : undefined,
+        pulse_gap_sec:
+          config.pulse_gap_sec !== undefined && !isNaN(Number(config.pulse_gap_sec))
+            ? Number(config.pulse_gap_sec)
+            : undefined,
+        ec_setpoint:
+          config.ec_setpoint !== undefined && !isNaN(config.ec_setpoint) && config.ec_setpoint > 0
+            ? config.ec_setpoint
+            : undefined,
+        tolerance:
+          config.tolerance !== undefined && !isNaN(config.tolerance) ? config.tolerance : undefined,
+      };
       markConfigSynced();
     } catch (error) {
       console.error('Erro ao carregar config EC Controller:', error);
@@ -1155,9 +1189,69 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     return subscribeAutoEnabled(
       deviceId,
       'ec_config_view',
-      (enabled) => {
-        if (justSavedRef.current || autoTogglePending) return;
-        setAutoEnabled(enabled);
+      (row) => {
+        const prev = remoteEcRef.current;
+        if (!prev) {
+          remoteEcRef.current = row;
+          return;
+        }
+        remoteEcRef.current = { ...prev, ...row };
+        if (justSavedRef.current) return;
+
+        let touched = false;
+        if (
+          configFieldChanged(prev, row, 'auto_enabled') &&
+          !autoTogglePending &&
+          typeof row.auto_enabled === 'boolean'
+        ) {
+          setAutoEnabled(row.auto_enabled);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'aggressiveness') && row.aggressiveness != null) {
+          setAggressiveness(Math.min(1, Math.max(0.05, row.aggressiveness)));
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'consumo_24h') && typeof row.consumo_24h === 'boolean') {
+          setConsumo24h(row.consumo_24h);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'volume') && row.volume != null && row.volume > 0) {
+          setTotalVolume(row.volume);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'intervalo_auto_ec') && row.intervalo_auto_ec != null) {
+          setIntervaloAutoEC(row.intervalo_auto_ec);
+          touched = true;
+        }
+        if (
+          configFieldChanged(prev, row, 'tempo_recirculacao') &&
+          row.tempo_recirculacao != null &&
+          row.tempo_recirculacao > 0
+        ) {
+          const timeStr = secondsToHHMM(row.tempo_recirculacao);
+          setTempoRecirculacao(timeStr);
+          const parts = timeStr.split(':');
+          setTempoRecirculacaoHours(parseInt(parts[0], 10) || 0);
+          setTempoRecirculacaoMinutes(parseInt(parts[1], 10) || 0);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'pulse_ml') && row.pulse_ml != null) {
+          setPulseMl(Math.min(50, Math.max(0.05, row.pulse_ml)));
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'pulse_gap_sec') && row.pulse_gap_sec != null) {
+          setPulseGapSec(Math.min(120, Math.max(0, row.pulse_gap_sec)));
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'ec_setpoint') && row.ec_setpoint != null && row.ec_setpoint > 0) {
+          setEcSetpoint(row.ec_setpoint);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'tolerance') && row.tolerance != null) {
+          setEcTolerance(row.tolerance);
+          touched = true;
+        }
+        if (touched) markConfigSynced();
       },
       (status) => setAutoRtStatus(status)
     );
@@ -2098,22 +2192,14 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                                   Tope de passo do Auto EC (5–100 %). Não substitui Kp.
                                 </span>
                               </div>
-                              <label className="flex items-start gap-3 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  className="mt-1 accent-aqua-500 disabled:opacity-50"
-                                  checked={consumo24h}
-                                  disabled={ecControllerLocked}
-                                  onChange={(e) => setConsumo24h(e.target.checked)}
-                                />
-                                <span>
-                                  <span className="block text-sm text-dark-text">Consumo EC 24 h</span>
-                                  <span className="block text-xs text-dark-textSecondary">
-                                    Liga o diário de 24 h no resumo (seta de EC e ml dosados). Também é a
-                                    camada do firmware. Default OFF. Não muda o intervalo.
-                                  </span>
-                                </span>
-                              </label>
+                              <HwSwitch
+                                checked={consumo24h}
+                                disabled={ecControllerLocked}
+                                accent="aqua"
+                                title="Consumo EC 24 h"
+                                hint="Liga o diário de 24 h no resumo (seta de EC e ml dosados). Também é a camada do firmware. Default OFF. Não muda o intervalo."
+                                onChange={setConsumo24h}
+                              />
                             </div>
                           </div>
                           
