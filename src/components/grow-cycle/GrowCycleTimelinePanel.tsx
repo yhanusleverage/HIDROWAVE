@@ -15,6 +15,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { HwBadge } from '@/components/ui/HwBadge';
 import { HwSelect } from '@/components/ui/HwInput';
 import { GrowCycleTimelineChart } from '@/components/grow-cycle/GrowCycleTimelineChart';
+import { GrowCycleScheduleBoard } from '@/components/grow-cycle/GrowCycleScheduleBoard';
 import { parseScheduleUiVersion } from '@/components/grow-cycle/schedule-ui';
 import { WeekDetailPanel } from '@/components/grow-cycle/WeekDetailPanel';
 import { SimulationRulesPanel } from '@/components/grow-cycle/SimulationRulesPanel';
@@ -78,8 +79,10 @@ export function GrowCycleTimelinePanel({
   const [logSeq, setLogSeq] = useState(0);
   const [savedPlanId, setSavedPlanId] = useState<string | null>(null);
   const [busy, setBusy] = useState<'save' | 'publish' | null>(null);
-  /** Demo local — mesmo padrão Metrics (`preview`): simulação sem dados live */
-  const [preview, setPreview] = useState(true);
+  /** Demo solo si el usuario lo enciende. El Core es el del selector de Automação. */
+  const [preview, setPreview] = useState(false);
+  /** Agenda de rectángulos. El gráfico es solo EC/pH + resumen. */
+  const [surface, setSurface] = useState<'board' | 'chart'>('board');
   const [actionError, setActionError] = useState<string | null>(null);
   const [liveScheduleRows, setLiveScheduleRows] = useState<LiveScheduleRow[]>([]);
   const [scheduleReload, setScheduleReload] = useState(0);
@@ -117,8 +120,8 @@ export function GrowCycleTimelinePanel({
 
   const liveMetricsDeviceId = selectedDeviceId || null;
   const isPreviewOnly = !selectedDeviceId || !tableAvailable;
-  /** Sem ciclo activo ou toggle demo → hover/playhead + receta completa */
-  const isDemoMode = preview || !activeInstance || !selectedDeviceId;
+  /** El Core elegido manda. La receta de ejemplo solo con el botón Demo. */
+  const isDemoMode = preview || !selectedDeviceId;
 
   const takeScheduleRows = useCallback((rows: LiveScheduleRow[]) => {
     setLiveScheduleRows(rows);
@@ -232,7 +235,7 @@ export function GrowCycleTimelinePanel({
   return (
     <div className={embedded ? 'space-y-6 min-w-0 w-full' : 'min-h-screen bg-dark-bg text-dark-text'}>
       <div
-        className={`${embedded ? 'rounded-lg' : 'sticky top-0 z-20'} border px-4 py-2.5 text-center text-sm font-medium ${HW_BANNER.warn}`}
+        className={`${embedded ? 'rounded-lg' : 'sticky top-0 z-20'} border px-4 py-3 text-center text-base font-medium ${HW_BANNER.warn}`}
       >
         {isPreviewOnly ? (
           <>{embedded ? gc.bannerPreviewEmbedded : gc.bannerPreview}</>
@@ -251,7 +254,7 @@ export function GrowCycleTimelinePanel({
           <>{gc.bannerF2}</>
         )}
         {liveMetricsDeviceId ? (
-          <span className="block text-xs font-normal mt-0.5 opacity-90">
+          <span className="block text-sm font-normal mt-1 opacity-90">
             {gc.bannerHoverHint.replace('{n}', String(weeklyStats.length))}
             {isDemoMode ? gc.bannerHoverDemoSuffix : gc.bannerHoverLiveSuffix}
           </span>
@@ -264,7 +267,7 @@ export function GrowCycleTimelinePanel({
             <div>
               <NavLink
                 href="/processos"
-                className="inline-flex items-center gap-1.5 text-xs text-dark-textSecondary hover:text-aqua-400 mb-3"
+                className="inline-flex items-center gap-1.5 text-sm text-dark-textSecondary hover:text-aqua-400 mb-3"
               >
                 {gc.processosLink}
               </NavLink>
@@ -272,16 +275,17 @@ export function GrowCycleTimelinePanel({
                 title={gc.timelineTitle}
                 subtitle={gc.timelineSubtitle.replace('{name}', recipePlan.name)}
                 accent="brand"
+                size="comfortable"
                 className="mb-0"
               />
               <NavLink
                 href="/automacao?tab=timeline"
-                className="inline-flex items-center gap-1.5 text-xs text-aqua-400 hover:text-aqua-300 mt-2"
+                className="inline-flex items-center gap-1.5 text-sm text-aqua-400 hover:text-aqua-300 mt-2"
               >
                 {gc.openInAutomacao}
               </NavLink>
             </div>
-            <HwBadge accent={activeInstance ? 'brand' : 'wait'}>
+            <HwBadge accent={activeInstance ? 'brand' : 'wait'} size="sm">
               {activeInstance ? gc.badgeActive : gc.badgeDesigner}
             </HwBadge>
           </div>
@@ -295,26 +299,27 @@ export function GrowCycleTimelinePanel({
                 .replace('{name}', recipePlan.name)
                 .replace('{weeks}', String(totalWeeks))}
               accent="brand"
+              size="comfortable"
               className="mb-0"
             />
             <div className="flex flex-wrap gap-2">
               <NavLink
                 href="/automacao?tab=ec"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20"
               >
-                <BeakerIcon className="w-3.5 h-3.5" />
+                <BeakerIcon className="w-4 h-4" />
                 {gc.linkAutoEc}
               </NavLink>
               <NavLink
                 href="/automacao?tab=ph"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-violet-500/10 border border-violet-500/30 text-violet-300 hover:bg-violet-500/20"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm bg-violet-500/10 border border-violet-500/30 text-violet-300 hover:bg-violet-500/20"
               >
-                <SparklesIcon className="w-3.5 h-3.5" />
+                <SparklesIcon className="w-4 h-4" />
                 {gc.linkAutoPh}
               </NavLink>
               <NavLink
                 href="/automacao?tab=rules"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-dark-surface border border-dark-border text-dark-textSecondary hover:text-dark-text"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm bg-dark-surface border border-dark-border text-dark-textSecondary hover:text-dark-text"
               >
                 {gc.linkRules}
               </NavLink>
@@ -325,7 +330,7 @@ export function GrowCycleTimelinePanel({
         <div className="bg-dark-card border border-dark-border rounded-xl p-4 space-y-4">
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <label className="block">
-              <span className="text-xs text-dark-textSecondary">{gc.durationLabel}</span>
+              <span className="text-sm text-dark-textSecondary">{gc.durationLabel}</span>
               <div className="flex items-center gap-3 mt-1">
                 <input
                   type="range"
@@ -340,15 +345,15 @@ export function GrowCycleTimelinePanel({
                   }}
                   className="flex-1 accent-aqua-500"
                 />
-                <span className="text-sm font-semibold tabular-nums w-8">{totalWeeks}</span>
+                <span className="text-base font-semibold tabular-nums w-8">{totalWeeks}</span>
               </div>
-              <p className="text-[10px] text-dark-textSecondary mt-1">
+              <p className="text-sm text-dark-textSecondary mt-1">
                 {gc.weeksRangeHint.replace('{weeks}', String(totalWeeks))}
               </p>
             </label>
 
             <label className="block">
-              <span className="text-xs text-dark-textSecondary">
+              <span className="text-sm text-dark-textSecondary">
                 {isDemoMode ? gc.weekSimulated : gc.weekCycle}
               </span>
               <div className="flex items-center gap-3 mt-1">
@@ -365,7 +370,7 @@ export function GrowCycleTimelinePanel({
                   }}
                   className="flex-1 accent-amber-500 disabled:opacity-50"
                 />
-                <span className="text-sm font-semibold tabular-nums text-amber-300 w-8">
+                <span className="text-base font-semibold tabular-nums text-amber-300 w-8">
                   S{effectivePlayhead}
                 </span>
               </div>
@@ -374,10 +379,12 @@ export function GrowCycleTimelinePanel({
             {playheadProfile && (
               <div className="sm:col-span-2 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-dark-textSecondary">{gc.phaseCurrent}</span>
-                  <HwBadge accent="wait">{phaseLabels[playheadProfile.phase]}</HwBadge>
+                  <span className="text-sm text-dark-textSecondary">{gc.phaseCurrent}</span>
+                  <HwBadge accent="wait" size="sm">
+                    {phaseLabels[playheadProfile.phase]}
+                  </HwBadge>
                   {playheadProfile.label && (
-                    <span className="text-xs text-dark-textSecondary">{playheadProfile.label}</span>
+                    <span className="text-sm text-dark-textSecondary">{playheadProfile.label}</span>
                   )}
                 </div>
                 <PhaseFlipButtons
@@ -420,7 +427,7 @@ export function GrowCycleTimelinePanel({
               <button
                 type="button"
                 onClick={advanceSimulation}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-dark-surface border border-dark-border text-sm hover:bg-dark-surface/80"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-dark-surface border border-dark-border text-base hover:bg-dark-surface/80"
               >
                 <ForwardIcon className="w-4 h-4" />
                 {gc.advanceSim}
@@ -428,8 +435,30 @@ export function GrowCycleTimelinePanel({
             )}
             <button
               type="button"
+              onClick={() => setSurface('board')}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-base ${
+                surface === 'board'
+                  ? 'border-aqua-400/50 bg-aqua-500/15 text-aqua-200'
+                  : 'bg-dark-surface border-dark-border text-dark-textSecondary hover:text-dark-text'
+              }`}
+            >
+              {gc.boardView}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSurface('chart')}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-base ${
+                surface === 'chart'
+                  ? 'border-aqua-400/50 bg-aqua-500/15 text-aqua-200'
+                  : 'bg-dark-surface border-dark-border text-dark-textSecondary hover:text-dark-text'
+              }`}
+            >
+              {gc.chartView}
+            </button>
+            <button
+              type="button"
               onClick={() => setPreview((p) => !p)}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm ${
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-base ${
                 preview
                   ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
                   : 'bg-dark-surface border-dark-border text-dark-textSecondary hover:text-dark-text'
@@ -438,7 +467,7 @@ export function GrowCycleTimelinePanel({
               {preview ? gc.demoOn : gc.demoToggle}
             </button>
             {preview && (
-              <span className="text-xs rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-300">
+              <span className="text-sm rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-300">
                 {gc.demoBadge}
               </span>
             )}
@@ -446,7 +475,7 @@ export function GrowCycleTimelinePanel({
               type="button"
               disabled={!selectedDeviceId || busy != null}
               onClick={() => void handleSaveDraft()}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-dark-surface border border-dark-border text-sm hover:bg-dark-surface/80 disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-dark-surface border border-dark-border text-base hover:bg-dark-surface/80 disabled:opacity-50"
             >
               <BookmarkIcon className="w-4 h-4" />
               {busy === 'save' ? gc.saving : gc.saveDraft}
@@ -455,7 +484,7 @@ export function GrowCycleTimelinePanel({
               type="button"
               disabled={busy != null}
               onClick={() => void handlePublish()}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-aqua-600 hover:bg-aqua-500 disabled:opacity-50 text-white text-sm font-medium"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-aqua-600 hover:bg-aqua-500 disabled:opacity-50 text-white text-base font-medium"
             >
               <PlayIcon className="w-4 h-4" />
               {busy === 'publish'
@@ -466,31 +495,43 @@ export function GrowCycleTimelinePanel({
                     ? gc.restartCycle
                     : gc.startCycle}
             </button>
-            <span className="text-[10px] text-dark-textSecondary max-w-xs">{gc.startHint}</span>
+            <span className="text-sm text-dark-textSecondary max-w-sm">{gc.startHint}</span>
           </div>
           {actionError && (
-            <p className="text-xs text-amber-300/95 border border-amber-500/30 bg-amber-500/10 rounded-lg px-3 py-2">
+            <p className="text-sm text-amber-300/95 border border-amber-500/30 bg-amber-500/10 rounded-lg px-3 py-2">
               {actionError}
             </p>
           )}
           {!selectedDeviceId && (
-            <p className="text-xs text-red-400">{gc.selectCoreToStart}</p>
+            <p className="text-sm text-red-400">{gc.selectCoreToStart}</p>
           )}
         </div>
 
         <div className="space-y-6 min-w-0 w-full max-w-full">
-          <GrowCycleTimelineChart
-            plan={displayPlan}
-            selectedWeek={selectedWeek}
-            playheadWeek={effectivePlayhead}
-            onSelectWeek={setSelectedWeek}
-            deviceId={liveMetricsDeviceId}
-            weeklyStats={weeklyStats}
-            scheduleUiVersion={scheduleUiVersion}
-            cycleStartedAt={effectiveStartedAt}
-            currentWeekIndex={effectivePlayhead}
-            preview={isDemoMode}
-          />
+          {surface === 'board' ? (
+            <GrowCycleScheduleBoard
+              plan={displayPlan}
+              demo={isDemoMode}
+              deviceId={selectedDeviceId}
+              liveRows={liveScheduleRows}
+              selectedWeek={selectedWeek}
+              onSelectWeek={setSelectedWeek}
+            />
+          ) : (
+            <GrowCycleTimelineChart
+              plan={displayPlan}
+              selectedWeek={selectedWeek}
+              playheadWeek={effectivePlayhead}
+              onSelectWeek={setSelectedWeek}
+              deviceId={liveMetricsDeviceId}
+              weeklyStats={weeklyStats}
+              scheduleUiVersion={scheduleUiVersion}
+              cycleStartedAt={effectiveStartedAt}
+              currentWeekIndex={effectivePlayhead}
+              preview={isDemoMode}
+              graphOnly
+            />
+          )}
           <div className="grid md:grid-cols-2 xl:grid-cols-[1fr_360px] gap-4">
             <WeekDetailPanel
               plan={displayPlan}
@@ -508,6 +549,7 @@ export function GrowCycleTimelinePanel({
               title={gc.schedulesSectionTitle}
               subtitle={gc.schedulesSectionSub}
               accent="brand"
+              size="comfortable"
             />
             {selectedDeviceId ? (
               <ScheduleEditor

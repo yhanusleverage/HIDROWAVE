@@ -189,6 +189,21 @@ export interface GrowCycleChromeTranslations {
     toastPhaseChanged: string;
   };
 
+  boardView: string;
+  chartView: string;
+  viewWeeksLabel: string;
+  /** {n} */
+  viewWeeksOption: string;
+  viewAllWeeks: string;
+  priorityLabel: string;
+  fillDose: string;
+  changeout: string;
+  drainFull: string;
+  ecRule: string;
+  phRule: string;
+  boardEmpty: string;
+  chartGraphTitle: string;
+
   simulation: {
     logTitle: string;
     logSubtitle: string;

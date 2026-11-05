@@ -55,7 +55,7 @@ export function WeekDetailPanel({
   if (!profile) {
     return (
       <div className="bg-dark-card border border-dark-border rounded-xl p-4">
-        <p className="text-sm text-dark-textSecondary">{wd.invalidWeek}</p>
+        <p className="text-base text-dark-textSecondary">{wd.invalidWeek}</p>
       </div>
     );
   }
@@ -66,18 +66,19 @@ export function WeekDetailPanel({
         title={wd.weekTitle.replace('{n}', String(weekIndex))}
         subtitle={profile.label ?? phaseLabels[profile.phase]}
         accent="brand"
+        size="comfortable"
       />
 
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3">
-          <p className={`text-xs ${HW_TEXT.ec}`}>{wd.ecTarget}</p>
+          <p className={`text-sm ${HW_TEXT.ec}`}>{wd.ecTarget}</p>
           <p className={`text-2xl font-bold tabular-nums ${HW_TEXT.ec}`}>
             {profile.ecSetpointUsCm}
-            <span className="text-sm font-normal ml-1">µS/cm</span>
+            <span className="text-base font-normal ml-1">µS/cm</span>
           </p>
         </div>
         <div className="rounded-lg border border-violet-500/25 bg-violet-500/5 p-3">
-          <p className={`text-xs ${HW_TEXT.ph}`}>{wd.phTarget}</p>
+          <p className={`text-sm ${HW_TEXT.ph}`}>{wd.phTarget}</p>
           <p className={`text-2xl font-bold tabular-nums ${HW_TEXT.ph}`}>
             {profile.phSetpoint.toFixed(1)}
           </p>
@@ -86,9 +87,9 @@ export function WeekDetailPanel({
 
       <div className="rounded-lg border border-cyan-500/25 bg-cyan-500/5 p-3 flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs text-cyan-300/90">{wd.tankVolumePlan}</p>
+          <p className="text-sm text-cyan-300/90">{wd.tankVolumePlan}</p>
           <p className="text-xl font-bold tabular-nums text-dark-text">{tankVolumeL} L</p>
-          <p className="text-[10px] text-dark-textSecondary mt-0.5">
+          <p className="text-sm text-dark-textSecondary mt-0.5">
             {wd.tankVolumeHint}
           </p>
         </div>
@@ -108,7 +109,7 @@ export function WeekDetailPanel({
                 toast.error(result.error);
               }
             }}
-            className="px-3 py-1.5 text-xs rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white disabled:opacity-50 whitespace-nowrap"
+            className="px-3 py-2 text-sm rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white disabled:opacity-50 whitespace-nowrap"
           >
             {syncing ? wd.sending : wd.applyToDevice}
           </button>
@@ -116,7 +117,7 @@ export function WeekDetailPanel({
       </div>
 
       <div>
-        <p className="text-xs text-dark-textSecondary mb-1">{wd.phaseLabel}</p>
+        <p className="text-sm text-dark-textSecondary mb-1">{wd.phaseLabel}</p>
         {onWeekPhaseChange ? (
           <div className="space-y-1.5">
             <PhaseFlipButtons
@@ -132,24 +133,24 @@ export function WeekDetailPanel({
                 );
               }}
             />
-            <p className="text-[10px] text-dark-textSecondary">{wd.phaseRecipeHint}</p>
+            <p className="text-sm text-dark-textSecondary">{wd.phaseRecipeHint}</p>
           </div>
         ) : (
-          <HwBadge accent="wait">{phaseLabels[profile.phase]}</HwBadge>
+          <HwBadge accent="wait" size="sm">{phaseLabels[profile.phase]}</HwBadge>
         )}
       </div>
 
       {plan.autoEcPhEnabled && (
         <div className="flex gap-2 flex-wrap">
-          <HwBadge accent="ec">{wd.autoEcOn}</HwBadge>
-          <HwBadge accent="ph">{wd.autoPhOn}</HwBadge>
+          <HwBadge accent="ec" size="sm">{wd.autoEcOn}</HwBadge>
+          <HwBadge accent="ph" size="sm">{wd.autoPhOn}</HwBadge>
         </div>
       )}
 
       {weeklyStat && (weeklyStat.ec_avg != null || weeklyStat.ph_avg != null) && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
-          <p className="text-xs font-semibold text-amber-200/90">{wd.measuredHistory}</p>
-          <div className="grid grid-cols-2 gap-2 text-xs tabular-nums">
+          <p className="text-sm font-semibold text-amber-200/90">{wd.measuredHistory}</p>
+          <div className="grid grid-cols-2 gap-2 text-sm tabular-nums">
             {weeklyStat.ec_avg != null && (
               <div>
                 <span className="text-dark-textSecondary">{wd.ecAvg} </span>
@@ -167,7 +168,7 @@ export function WeekDetailPanel({
               </div>
             )}
           </div>
-          <p className="text-[10px] text-dark-textSecondary">
+          <p className="text-sm text-dark-textSecondary">
             {wd.measuredHint.replace(
               '{date}',
               new Date(weeklyStat.computed_at).toLocaleString()
@@ -178,12 +179,12 @@ export function WeekDetailPanel({
 
       {tankEvents.length > 0 && (
         <div>
-          <SectionHeader title={wd.eventsP1} accent="warn" />
+          <SectionHeader title={wd.eventsP1} accent="warn" size="comfortable" />
           <ul className="space-y-2 mt-2">
             {tankEvents.map((ev) => (
               <li
                 key={ev.ruleIdSuggested}
-                className="text-xs border border-dark-border rounded-lg p-2 bg-dark-surface/50"
+                className="text-sm border border-dark-border rounded-lg p-2 bg-dark-surface/50"
               >
                 <p className="font-mono text-amber-300/95">{ev.ruleIdSuggested}</p>
                 <p className="text-dark-textSecondary mt-0.5">{ev.description}</p>
@@ -202,9 +203,10 @@ export function WeekDetailPanel({
             <SectionHeader
               title={wd.planSchedules}
               accent={scheduleUiVersion === 'p1' ? 'wait' : 'neutral'}
+              size="comfortable"
               className="mb-0"
             />
-            <HwBadge accent="neutral">plan</HwBadge>
+            <HwBadge accent="neutral" size="sm">plan</HwBadge>
           </div>
           {scheduleUiVersion === 'p1' ? (
             <ul className="space-y-2 mt-2">
@@ -217,7 +219,7 @@ export function WeekDetailPanel({
           ) : (
             <ul className="space-y-1 mt-2">
               {planSchedules.map((s) => (
-                <li key={s.ruleId + s.weekIndex} className="text-xs text-dark-textSecondary">
+                <li key={s.ruleId + s.weekIndex} className="text-sm text-dark-textSecondary">
                   <span className="font-mono text-dark-text">{s.ruleId}</span>
                   {' — '}
                   {s.label} ({s.cadence})
@@ -228,7 +230,7 @@ export function WeekDetailPanel({
         </div>
       )}
 
-      <p className="text-xs text-dark-textSecondary border-t border-dark-border/60 pt-3">
+      <p className="text-sm text-dark-textSecondary border-t border-dark-border/60 pt-3">
         {wd.calendarBelow}
       </p>
     </div>

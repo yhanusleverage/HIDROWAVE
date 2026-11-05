@@ -1,6 +1,6 @@
 /** Shared layout tokens for grow-cycle timeline (chart + event lanes). */
 
-export const TIMELINE_MARGIN = { top: 48, right: 16, bottom: 36, left: 52 } as const;
+export const TIMELINE_MARGIN = { top: 48, right: 16, bottom: 36, left: 64 } as const;
 
 export const LANE_LABEL_COL_W = 52;
 

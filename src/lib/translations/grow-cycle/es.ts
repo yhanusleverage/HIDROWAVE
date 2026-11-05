@@ -175,6 +175,20 @@ export const growCycleChromeEs: GrowCycleChromeTranslations = {
     toastPhaseChanged: 'S{week} → {phase}',
   },
 
+  boardView: 'Agenda',
+  chartView: 'Gráfico',
+  viewWeeksLabel: 'Ver',
+  viewWeeksOption: '{n} semanas',
+  viewAllWeeks: 'Todas',
+  priorityLabel: 'Prioridad {n}',
+  fillDose: 'FILL + DOSE',
+  changeout: 'CHANGEOUT',
+  drainFull: 'DRAIN',
+  ecRule: 'EC',
+  phRule: 'pH',
+  boardEmpty: 'Sin procedimientos en esta fila',
+  chartGraphTitle: 'EC y pH por semana',
+
   simulation: {
     logTitle: 'Log de simulación',
     logSubtitle: 'Últimos eventos ficticios',

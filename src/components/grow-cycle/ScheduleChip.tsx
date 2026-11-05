@@ -66,11 +66,11 @@ export function ScheduleChip({
         <div className="flex items-center gap-2">
           <ScheduleKindIcon kind={kind} className={`w-4 h-4 shrink-0 ${scheduleTextClass(kind)}`} />
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-dark-text truncate">{schedule.label}</p>
-            <p className={`text-[10px] tabular-nums ${scheduleTextClass(kind)}`}>{schedule.cadence}</p>
+            <p className="text-sm font-medium text-dark-text truncate">{schedule.label}</p>
+            <p className={`text-sm tabular-nums ${scheduleTextClass(kind)}`}>{schedule.cadence}</p>
           </div>
         </div>
-        <p className="mt-1.5 text-[10px] font-mono text-dark-textSecondary truncate">
+        <p className="mt-1.5 text-sm font-mono text-dark-textSecondary truncate">
           {schedule.ruleId}
         </p>
       </div>

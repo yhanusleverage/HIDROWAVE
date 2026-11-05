@@ -30,8 +30,8 @@ export function SimulationRulesPanel({ log }: SimulationRulesPanelProps) {
   return (
     <div className="space-y-4">
       <div className="bg-dark-card border border-dark-border rounded-xl p-4">
-        <SectionHeader title={sim.logTitle} subtitle={sim.logSubtitle} accent="brand" />
-        <div className="mt-3 max-h-48 overflow-y-auto font-mono text-[11px] space-y-1 bg-dark-surface/80 rounded-lg p-3 border border-dark-border">
+        <SectionHeader title={sim.logTitle} subtitle={sim.logSubtitle} accent="brand" size="comfortable" />
+        <div className="mt-3 max-h-56 overflow-y-auto font-mono text-sm space-y-1 bg-dark-surface/80 rounded-lg p-3 border border-dark-border">
           {log.length === 0 ? (
             <p className="text-dark-textSecondary">{sim.logEmpty}</p>
           ) : (
@@ -57,7 +57,7 @@ export function SimulationRulesPanel({ log }: SimulationRulesPanelProps) {
           onClick={() => setRulesOpen((v) => !v)}
           className="w-full flex items-center justify-between p-4 hover:bg-dark-surface/50 transition-colors text-left"
         >
-          <span className="text-sm font-semibold text-dark-text">
+          <span className="text-base font-semibold text-dark-text">
             {sim.rulesToggle}
           </span>
           {rulesOpen ? (
@@ -72,10 +72,10 @@ export function SimulationRulesPanel({ log }: SimulationRulesPanelProps) {
               const i18nRule = sim.rules[rule.layer];
               return (
                 <div key={rule.layer}>
-                  <p className={`text-xs font-semibold ${LAYER_COLOR[rule.layer]}`}>
+                  <p className={`text-sm font-semibold ${LAYER_COLOR[rule.layer]}`}>
                     {rule.layer} — {i18nRule.title}
                   </p>
-                  <p className="text-xs text-dark-textSecondary mt-0.5 leading-relaxed">
+                  <p className="text-sm text-dark-textSecondary mt-0.5 leading-relaxed">
                     {i18nRule.body}
                   </p>
                 </div>

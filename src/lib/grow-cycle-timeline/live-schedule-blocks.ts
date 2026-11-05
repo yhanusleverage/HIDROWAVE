@@ -10,6 +10,8 @@ export type LiveScheduleRow = {
   time_end: string | null;
   grow_week_index: number | null;
   created_by: string | null;
+  days_of_week?: number[] | null;
+  on_date?: string | null;
 };
 
 function formatTimeShort(value: string): string {

@@ -313,14 +313,14 @@ export default function ScheduleEditor({
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-medium text-dark-text truncate">{ruleName}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-dark-surface border border-dark-border text-dark-textSecondary shrink-0">
+            <span className="text-base font-medium text-dark-text truncate">{ruleName}</span>
+            <span className="text-sm px-2 py-0.5 rounded-full bg-dark-surface border border-dark-border text-dark-textSecondary shrink-0">
               {scheduleTypeLabel(sched.schedule_type)}
             </span>
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dark-textSecondary">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-dark-textSecondary">
             <span className="flex items-center gap-1">
-              <ClockIcon className="w-3.5 h-3.5" />
+              <ClockIcon className="w-4 h-4" />
               {sched.time_start?.slice(0, 5)}
               {sched.time_end ? ` – ${sched.time_end.slice(0, 5)}` : ''}
             </span>
@@ -379,14 +379,14 @@ export default function ScheduleEditor({
     <div className="space-y-4">
       <div className={`flex items-center justify-between gap-3 ${embedded ? '' : 'bg-dark-card border border-aqua-500/30 rounded-lg shadow-lg p-4 sm:p-6'}`}>
         {embedded ? (
-          <p className="text-xs text-dark-textSecondary">{sch.clockPending}</p>
+          <p className="text-sm text-dark-textSecondary">{sch.clockPending}</p>
         ) : (
           <div className="flex items-center gap-3">
             <CalendarIcon className="w-6 h-6 text-aqua-400" />
             <div>
               <h2 className="text-lg font-semibold text-dark-text">{sch.title}</h2>
               <p className="text-sm text-dark-textSecondary">{sch.subtitle}</p>
-              <p className="text-xs text-dark-textSecondary mt-1">{sch.clockPending}</p>
+              <p className="text-sm text-dark-textSecondary mt-1">{sch.clockPending}</p>
             </div>
           </div>
         )}
@@ -472,7 +472,7 @@ export default function ScheduleEditor({
                 onChange={(e) => setFormOnDate(e.target.value)}
                 className="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text text-sm"
               />
-              <p className="text-[11px] text-dark-textSecondary mt-1">{sch.onceHint}</p>
+              <p className="text-sm text-dark-textSecondary mt-1">{sch.onceHint}</p>
             </div>
           )}
 
@@ -485,7 +485,7 @@ export default function ScheduleEditor({
                   <button
                     key={idx}
                     onClick={() => toggleDay(idx)}
-                    className={`w-10 h-10 rounded-lg text-xs font-medium transition-colors ${
+                    className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors ${
                       formDays.includes(idx)
                         ? 'bg-aqua-600 text-white'
                         : 'bg-dark-surface border border-dark-border text-dark-textSecondary hover:text-dark-text'
@@ -510,7 +510,7 @@ export default function ScheduleEditor({
               placeholder="15"
               className="w-28 px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text text-sm"
             />
-            <p className="text-[11px] text-dark-textSecondary mt-1">{sch.durationHint}</p>
+            <p className="text-sm text-dark-textSecondary mt-1">{sch.durationHint}</p>
           </div>
 
           {/* Semana cultivo */}
@@ -552,23 +552,23 @@ export default function ScheduleEditor({
         <div className="bg-dark-card border border-dark-border rounded-lg p-8 text-center">
           <ClockIcon className="w-12 h-12 text-dark-textSecondary/50 mx-auto mb-3" />
           <p className="text-dark-textSecondary">{sch.empty}</p>
-          <p className="text-xs text-dark-textSecondary/70 mt-1">{sch.emptyHint}</p>
+          <p className="text-sm text-dark-textSecondary/70 mt-1">{sch.emptyHint}</p>
         </div>
       ) : weekIndex == null ? (
         <div className="space-y-2">{schedules.map(renderRow)}</div>
       ) : (
         <div className="space-y-4">
           <div className="space-y-2">
-            <p className="text-xs font-medium text-aqua-300/90">{sch.thisWeek}</p>
+            <p className="text-sm font-medium text-aqua-300/90">{sch.thisWeek}</p>
             {thisWeekRows.length === 0 ? (
-              <p className="text-xs text-dark-textSecondary">{sch.empty}</p>
+              <p className="text-sm text-dark-textSecondary">{sch.empty}</p>
             ) : (
               thisWeekRows.map(renderRow)
             )}
           </div>
           {otherRows.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-medium text-dark-textSecondary">{sch.otherAppointments}</p>
+              <p className="text-sm font-medium text-dark-textSecondary">{sch.otherAppointments}</p>
               {otherRows.map(renderRow)}
             </div>
           )}

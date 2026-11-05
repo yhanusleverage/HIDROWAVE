@@ -56,7 +56,7 @@ export function PhaseFlipButtons({
   size = 'md',
   className = '',
 }: PhaseFlipButtonsProps) {
-  const pad = size === 'sm' ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs';
+  const pad = size === 'sm' ? 'px-2.5 py-1.5 text-sm' : 'px-3 py-2 text-sm';
 
   return (
     <div

@@ -6,7 +6,10 @@ import { PHASE_COLORS } from '@/lib/grow-cycle-timeline/types';
 import {
   getTankEventsForWeek,
 } from '@/lib/grow-cycle-timeline/simulation-engine';
-import { GrowCycleWeekHoverTooltip } from '@/components/grow-cycle/GrowCycleWeekHoverTooltip';
+import {
+  GrowCycleWeekHoverTooltip,
+  GrowCycleWeekSummaryBody,
+} from '@/components/grow-cycle/GrowCycleWeekHoverTooltip';
 import { useGrowCycleWeekHoverMetrics } from '@/hooks/useGrowCycleWeekHoverMetrics';
 import { useGrowCycleTimelineLayout } from '@/hooks/useGrowCycleTimelineLayout';
 import type { GrowCycleWeeklyStatsRow } from '@/lib/grow-cycle-plans/types';
@@ -43,6 +46,8 @@ interface GrowCycleTimelineChartProps {
   currentWeekIndex?: number;
   /** Demo local — igual Metrics: hover fictício, sem fetch live */
   preview?: boolean;
+  /** Solo ejes EC/pH y el resumen de la semana. Sin cintas ni pastillas. */
+  graphOnly?: boolean;
 }
 
 const MARGIN = TIMELINE_MARGIN;
@@ -91,6 +96,7 @@ export function GrowCycleTimelineChart({
   cycleStartedAt = null,
   currentWeekIndex,
   preview = false,
+  graphOnly = false,
 }: GrowCycleTimelineChartProps) {
   const { locale } = useLanguage();
   const chrome = useMemo(() => getGrowCycleChrome(locale), [locale]);
@@ -100,7 +106,8 @@ export function GrowCycleTimelineChart({
   const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
   const [pointer, setPointer] = useState({ clientX: 0, clientY: 0 });
 
-  const hoverMetrics = useGrowCycleWeekHoverMetrics(plan, hoveredWeek, deviceId, {
+  const summaryWeek = graphOnly ? (hoveredWeek ?? selectedWeek) : hoveredWeek;
+  const hoverMetrics = useGrowCycleWeekHoverMetrics(plan, summaryWeek, deviceId, {
     startedAt: cycleStartedAt,
     currentWeekIndex: currentWeekIndex ?? playheadWeek,
     weeklyStats,
@@ -131,7 +138,7 @@ export function GrowCycleTimelineChart({
   const phInnerH = PH_CHART_H;
   const ecTop = MARGIN.top;
   const phTop = ecTop + ecInnerH + GAP_BETWEEN_CHARTS;
-  const totalH = phTop + phInnerH + MARGIN.bottom + 72;
+  const totalH = phTop + phInnerH + MARGIN.bottom + (graphOnly ? 8 : 72);
 
   const ecTicks = [0, 500, 1000, 1500, 2000];
   const phTicks = [5.0, 5.5, 6.0, 6.5];
@@ -145,11 +152,11 @@ export function GrowCycleTimelineChart({
       className="bg-dark-card border border-dark-border rounded-xl shadow-lg shadow-black/20 w-full min-w-0 overflow-hidden"
     >
       <div className="px-4 pt-4 pb-2">
-        <p className="text-[10px] uppercase tracking-wider text-dark-textSecondary font-semibold">
-          Fases do ciclo
+        <p className="text-sm uppercase tracking-wider text-dark-textSecondary font-semibold">
+          {graphOnly ? chrome.chartGraphTitle : 'Fases do ciclo'}
         </p>
         {scrollMode && (
-          <p className="text-[10px] text-aqua-400/80 mt-0.5">
+          <p className="text-sm text-aqua-400/80 mt-0.5">
             Caixa fixa — deslize na horizontal para ver todas as semanas
           </p>
         )}
@@ -168,6 +175,7 @@ export function GrowCycleTimelineChart({
       >
         <div className="shrink-0" style={{ width: chartW, minWidth: chartW }}>
             {/* Phase ribbon — flex track matching SVG week columns */}
+            {!graphOnly && (
             <div className="pb-2 mb-1 border-b border-dark-border/60">
               <div
                 className="flex h-7 rounded-lg overflow-hidden border border-dark-border"
@@ -203,6 +211,7 @@ export function GrowCycleTimelineChart({
                 />
               </div>
             </div>
+            )}
 
           <svg
             width={chartW}
@@ -230,10 +239,10 @@ export function GrowCycleTimelineChart({
 
           {/* ── EC chart ── */}
           <text
-            x={MARGIN.left - 8}
+            x={MARGIN.left}
             y={ecTop - 12}
-            textAnchor="end"
-            className="fill-emerald-400 text-[11px] font-semibold"
+            textAnchor="start"
+            className="fill-emerald-400 text-sm font-semibold"
           >
             EC alvo (µS/cm)
           </text>
@@ -267,7 +276,7 @@ export function GrowCycleTimelineChart({
                   x={MARGIN.left - 10}
                   y={y + 4}
                   textAnchor="end"
-                  className="fill-dark-textSecondary text-[10px] tabular-nums"
+                  className="fill-dark-textSecondary text-sm tabular-nums"
                 >
                   {tick}
                 </text>
@@ -345,7 +354,7 @@ export function GrowCycleTimelineChart({
                   x={cx}
                   y={yTop - 6}
                   textAnchor="middle"
-                  className={`text-[10px] font-bold tabular-nums ${
+                  className={`text-sm font-bold tabular-nums ${
                     isSelected ? 'fill-emerald-300' : 'fill-emerald-400/90'
                   }`}
                   pointerEvents="none"
@@ -398,7 +407,7 @@ export function GrowCycleTimelineChart({
                   x={cx}
                   y={y}
                   textAnchor="middle"
-                  className={`text-[11px] font-semibold tabular-nums ${
+                  className={`text-sm font-semibold tabular-nums ${
                     isSelected
                       ? 'fill-aqua-300'
                       : w.weekIndex === playheadWeek
@@ -424,10 +433,10 @@ export function GrowCycleTimelineChart({
 
           {/* ── pH chart ── */}
           <text
-            x={MARGIN.left - 8}
+            x={MARGIN.left}
             y={phTop - 12}
-            textAnchor="end"
-            className="fill-violet-400 text-[11px] font-semibold"
+            textAnchor="start"
+            className="fill-violet-400 text-sm font-semibold"
           >
             pH alvo
           </text>
@@ -460,7 +469,7 @@ export function GrowCycleTimelineChart({
                   x={MARGIN.left - 10}
                   y={y + 4}
                   textAnchor="end"
-                  className="fill-dark-textSecondary text-[10px] tabular-nums"
+                  className="fill-dark-textSecondary text-sm tabular-nums"
                 >
                   {tick.toFixed(1)}
                 </text>
@@ -492,7 +501,7 @@ export function GrowCycleTimelineChart({
                   x={cx}
                   y={yTop - 6}
                   textAnchor="middle"
-                  className={`text-[10px] font-bold tabular-nums ${
+                  className={`text-sm font-bold tabular-nums ${
                     isSelected ? 'fill-violet-300' : 'fill-violet-400/90'
                   }`}
                   pointerEvents="none"
@@ -521,6 +530,7 @@ export function GrowCycleTimelineChart({
         </svg>
 
           {/* Event lanes — flex rows with exact px widths (same as SVG) */}
+          {!graphOnly && (
           <div className="border-t border-dark-border py-4 space-y-1.5 bg-dark-surface/30">
             <TimelineFlexRow
               chartW={chartW}
@@ -589,35 +599,44 @@ export function GrowCycleTimelineChart({
               />
             )}
           </div>
+          )}
         </div>
       </div>
 
-      {hoverMetrics && hoveredWeek != null && (
+      {graphOnly && hoverMetrics && (
+        <div className="px-4 pb-4">
+          <div className="max-w-md rounded-xl border border-dark-border bg-dark-surface/40 p-4">
+            <GrowCycleWeekSummaryBody metrics={hoverMetrics} />
+          </div>
+        </div>
+      )}
+
+      {!graphOnly && hoverMetrics && hoveredWeek != null && (
         <GrowCycleWeekHoverTooltip metrics={hoverMetrics} pointer={pointer} />
       )}
 
       <div className="px-4 pb-4 border-t border-dark-border/50 bg-dark-surface/30">
         <div className="flex flex-wrap items-center gap-4 pt-3">
-          {scheduleUiVersion === 'p1' && <ScheduleLegend />}
+          {!graphOnly && scheduleUiVersion === 'p1' && <ScheduleLegend />}
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-sm bg-gradient-to-t from-emerald-600 to-emerald-400" />
-            <span className="text-[10px] text-dark-textSecondary">EC µS/cm</span>
+            <span className="text-sm text-dark-textSecondary">EC µS/cm</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-sm bg-gradient-to-t from-violet-600 to-violet-400" />
-            <span className="text-[10px] text-dark-textSecondary">pH</span>
+            <span className="text-sm text-dark-textSecondary">pH</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-4 border-t-2 border-dashed border-amber-400" />
-            <span className="text-[10px] text-dark-textSecondary">
+            <span className="text-sm text-dark-textSecondary">
               {preview ? chrome.chartPlayheadDemo : chrome.chartPlayheadLive}
             </span>
           </div>
           {scrollMode && (
-            <span className="text-[10px] text-aqua-400/90">{chrome.chartScrollHint}</span>
+            <span className="text-sm text-aqua-400/90">{chrome.chartScrollHint}</span>
           )}
-          {!preview && plan.schedules.length === 0 && (
-            <span className="text-[10px] text-dark-textSecondary">
+          {!graphOnly && !preview && plan.schedules.length === 0 && (
+            <span className="text-sm text-dark-textSecondary">
               {chrome.chartLiveEmptySchedules}
             </span>
           )}

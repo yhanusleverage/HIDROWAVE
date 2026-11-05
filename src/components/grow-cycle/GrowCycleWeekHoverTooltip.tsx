@@ -12,8 +12,8 @@ interface GrowCycleWeekHoverTooltipProps {
 }
 
 const TOOLTIP_OFFSET = 14;
-const TOOLTIP_W = 300;
-const TOOLTIP_H = 340;
+const TOOLTIP_W = 360;
+const TOOLTIP_H = 420;
 
 function formatEc(value: number | null): string {
   if (value == null) return '—';
@@ -41,31 +41,11 @@ function formatMl(value: number): string {
   return `${value.toFixed(1)} ml`;
 }
 
-export function GrowCycleWeekHoverTooltip({
-  metrics,
-  pointer,
-}: GrowCycleWeekHoverTooltipProps) {
+export function GrowCycleWeekSummaryBody({ metrics }: { metrics: WeekHoverMetrics }) {
   const { locale } = useLanguage();
   const chrome = useMemo(() => getGrowCycleChrome(locale), [locale]);
   const h = chrome.hover;
   const phaseLabels = chrome.phaseLabels;
-  const [pos, setPos] = useState({ left: 0, top: 0 });
-
-  useLayoutEffect(() => {
-    const maxLeft = window.innerWidth - TOOLTIP_W - 8;
-    const maxTop = window.innerHeight - TOOLTIP_H - 8;
-    let left = pointer.clientX + TOOLTIP_OFFSET;
-    let top = pointer.clientY + TOOLTIP_OFFSET;
-
-    if (left > maxLeft) left = pointer.clientX - TOOLTIP_W - TOOLTIP_OFFSET;
-    if (top > maxTop) top = pointer.clientY - TOOLTIP_H - TOOLTIP_OFFSET;
-
-    setPos({
-      left: Math.max(8, left),
-      top: Math.max(8, top),
-    });
-  }, [pointer.clientX, pointer.clientY]);
-
   const future = metrics.weekKind === 'future';
   const weekLabel =
     metrics.weekKind === 'current'
@@ -75,12 +55,8 @@ export function GrowCycleWeekHoverTooltip({
         : h.futureWeek;
 
   return (
-    <div
-      className="fixed z-50 pointer-events-none w-[300px] rounded-xl border border-dark-border bg-dark-card/95 backdrop-blur-sm shadow-xl shadow-black/40 p-3"
-      style={{ left: pos.left, top: pos.top }}
-      role="tooltip"
-    >
-      <p className="text-xs font-semibold text-dark-text mb-2">
+    <>
+      <p className="text-base font-semibold text-dark-text mb-2">
         {h.weekTitle.replace('{n}', String(metrics.weekIndex))}
         <span className="text-dark-textSecondary font-normal">
           {' '}
@@ -88,7 +64,7 @@ export function GrowCycleWeekHoverTooltip({
         </span>
       </p>
 
-      <div className="grid grid-cols-2 gap-3 text-[11px]">
+      <div className="grid grid-cols-2 gap-3 text-sm">
         <div className="space-y-1.5">
           <p className={`font-semibold ${HW_TEXT.ec}`}>EC</p>
           <div>
@@ -122,7 +98,7 @@ export function GrowCycleWeekHoverTooltip({
                 <p className="text-dark-text tabular-nums">{formatMl(metrics.ecMlTotal)}</p>
               </div>
               {metrics.byNutrient.length > 0 && (
-                <ul className="text-[10px] text-dark-textSecondary space-y-0.5">
+                <ul className="text-sm text-dark-textSecondary space-y-0.5">
                   {metrics.byNutrient.slice(0, 4).map((n) => (
                     <li key={n.name}>
                       {n.name}: {n.ml.toFixed(1)} ml
@@ -181,7 +157,7 @@ export function GrowCycleWeekHoverTooltip({
         </div>
       </div>
 
-      <p className="text-[9px] text-dark-textSecondary mt-2 pt-2 border-t border-dark-border/50">
+      <p className="text-sm text-dark-textSecondary mt-2 pt-2 border-t border-dark-border/50">
         {future
           ? h.futureNote
           : metrics.hasWeekData
@@ -192,6 +168,38 @@ export function GrowCycleWeekHoverTooltip({
                 .replace('{weekLabel}', weekLabel)
                 .replace('{L}', String(metrics.tankVolumeL))}
       </p>
+    </>
+  );
+}
+
+export function GrowCycleWeekHoverTooltip({
+  metrics,
+  pointer,
+}: GrowCycleWeekHoverTooltipProps) {
+  const [pos, setPos] = useState({ left: 0, top: 0 });
+
+  useLayoutEffect(() => {
+    const maxLeft = window.innerWidth - TOOLTIP_W - 8;
+    const maxTop = window.innerHeight - TOOLTIP_H - 8;
+    let left = pointer.clientX + TOOLTIP_OFFSET;
+    let top = pointer.clientY + TOOLTIP_OFFSET;
+
+    if (left > maxLeft) left = pointer.clientX - TOOLTIP_W - TOOLTIP_OFFSET;
+    if (top > maxTop) top = pointer.clientY - TOOLTIP_H - TOOLTIP_OFFSET;
+
+    setPos({
+      left: Math.max(8, left),
+      top: Math.max(8, top),
+    });
+  }, [pointer.clientX, pointer.clientY]);
+
+  return (
+    <div
+      className="fixed z-50 pointer-events-none w-[360px] rounded-xl border border-dark-border bg-dark-card/95 backdrop-blur-sm shadow-xl shadow-black/40 p-3"
+      style={{ left: pos.left, top: pos.top }}
+      role="tooltip"
+    >
+      <GrowCycleWeekSummaryBody metrics={metrics} />
     </div>
   );
 }
