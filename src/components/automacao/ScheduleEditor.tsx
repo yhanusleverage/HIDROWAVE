@@ -12,6 +12,11 @@ import toast from 'react-hot-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { resolveDecisionRuleDisplayName } from '@/lib/decision-rule-display-name';
 import { applyDurationSecondsToRule } from '@/lib/grow-cycle-timeline/apply-rule-duration';
+import {
+  removeById,
+  subscribeRuleSchedules,
+  upsertById,
+} from '@/lib/realtime/rule-schedules';
 
 interface RuleSchedule {
   id: string;
@@ -43,6 +48,10 @@ interface ScheduleEditorProps {
   /** Sin tarjeta de título: el padre ya pone el encabezado. */
   embedded?: boolean;
   onChanged?: () => void;
+  /** Lista ya pintada, incluida la fila optimista antes de que responda el servidor. */
+  onRows?: (rows: RuleSchedule[]) => void;
+  /** El padre lo incrementa para volver a leer la lista (publicar ciclo). */
+  reloadToken?: number;
 }
 
 export default function ScheduleEditor({
@@ -50,6 +59,8 @@ export default function ScheduleEditor({
   weekIndex,
   embedded = false,
   onChanged,
+  onRows,
+  reloadToken = 0,
 }: ScheduleEditorProps) {
   const { t } = useLanguage();
   const sch = t.automacao.schedule;
@@ -124,12 +135,28 @@ export default function ScheduleEditor({
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchSchedules(), fetchRules()]).finally(() => setLoading(false));
-  }, [fetchSchedules, fetchRules]);
+  }, [fetchSchedules, fetchRules, reloadToken]);
 
   useEffect(() => {
     if (weekIndex == null) return;
     setFormGrowWeek(weekIndex);
   }, [weekIndex]);
+
+  useEffect(() => {
+    onRows?.(schedules);
+  }, [schedules, onRows]);
+
+  useEffect(() => {
+    return subscribeRuleSchedules(deviceId, (event, row) => {
+      const id = String(row.id || '');
+      if (!id) return;
+      if (event === 'DELETE') {
+        setSchedules((prev) => removeById(prev, id));
+        return;
+      }
+      setSchedules((prev) => upsertById(prev, row as unknown as RuleSchedule));
+    });
+  }, [deviceId]);
 
   const handleCreate = async () => {
     if (!formRuleId) return;
@@ -155,6 +182,31 @@ export default function ScheduleEditor({
         toast.error(sch.durationMin);
         return;
       }
+      if (formType === 'once' && !/^\d{4}-\d{2}-\d{2}$/.test(formOnDate)) {
+        toast.error(sch.onceDate);
+        return;
+      }
+
+      const pendingId = `pending-${Date.now()}`;
+      const pending: RuleSchedule = {
+        id: pendingId,
+        device_id: deviceId,
+        rule_id: formRuleId,
+        enabled: true,
+        schedule_type: formType,
+        time_start: formTimeStart,
+        time_end: formTimeEnd || null,
+        days_of_week: formType === 'weekly' ? formDays : null,
+        grow_week_index: formType === 'grow_week' ? formGrowWeek : null,
+        on_date: formType === 'once' ? formOnDate : null,
+        timezone: settings.timezone || 'America/Sao_Paulo',
+        last_triggered_at: null,
+        created_by: weekIndex != null ? 'grow-cycle-ui' : 'web_interface',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setSchedules((prev) => upsertById(prev, pending));
+      setShowForm(false);
 
       const res = await fetch('/api/automation/schedules', {
         method: 'POST',
@@ -163,8 +215,14 @@ export default function ScheduleEditor({
       });
       if (!res.ok) {
         const err = await res.json();
+        setSchedules((prev) => removeById(prev, pendingId));
+        setShowForm(true);
         toast.error(err.error || sch.errorCreate);
         return;
+      }
+      const created = (await res.json()) as { schedule?: RuleSchedule };
+      if (created.schedule?.id) {
+        setSchedules((prev) => upsertById(removeById(prev, pendingId), created.schedule as RuleSchedule));
       }
 
       if (durationMin > 0) {
@@ -176,10 +234,8 @@ export default function ScheduleEditor({
         if (!dur.ok) toast.error(dur.error || sch.errorCreate);
       }
 
-      setShowForm(false);
       setFormRuleId('');
       setFormDurationMin('');
-      await fetchSchedules();
       onChanged?.();
     } finally {
       setSaving(false);
@@ -187,19 +243,31 @@ export default function ScheduleEditor({
   };
 
   const handleToggle = async (sched: RuleSchedule) => {
-    await fetch('/api/automation/schedules', {
+    const nextEnabled = !sched.enabled;
+    setSchedules((prev) => prev.map((row) => (row.id === sched.id ? { ...row, enabled: nextEnabled } : row)));
+    const res = await fetch('/api/automation/schedules', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: sched.id, enabled: !sched.enabled }),
+      body: JSON.stringify({ id: sched.id, enabled: nextEnabled }),
     });
-    await fetchSchedules();
+    if (!res.ok) {
+      setSchedules((prev) => prev.map((row) => (row.id === sched.id ? { ...row, enabled: sched.enabled } : row)));
+      toast.error(sch.errorCreate);
+      return;
+    }
     onChanged?.();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm(sch.confirmDelete)) return;
-    await fetch(`/api/automation/schedules?id=${id}`, { method: 'DELETE' });
-    await fetchSchedules();
+    const previous = schedules;
+    setSchedules((prev) => removeById(prev, id));
+    const res = await fetch(`/api/automation/schedules?id=${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      setSchedules(previous);
+      toast.error(sch.errorCreate);
+      return;
+    }
     onChanged?.();
   };
 

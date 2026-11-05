@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { subscribeGrowCycle } from '@/lib/realtime/rule-schedules';
 import type { GrowCyclePlan } from '@/lib/grow-cycle-timeline/types';
 import type { GrowCycleInstanceRow, GrowCyclePlanRow, GrowCycleWeeklyStatsRow } from '@/lib/grow-cycle-plans/types';
 
@@ -10,13 +11,13 @@ export function useGrowCyclePlans(deviceId: string | null) {
   const [tableAvailable, setTableAvailable] = useState(true);
   const [loading, setLoading] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (opts?: { silent?: boolean }) => {
     if (!deviceId?.trim()) {
       setPlans([]);
       setActiveInstance(null);
       return;
     }
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     try {
       const res = await fetch(`/api/grow-cycle/plans?device_id=${encodeURIComponent(deviceId)}`);
       const data = await res.json();
@@ -33,6 +34,13 @@ export function useGrowCyclePlans(deviceId: string | null) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!deviceId?.trim()) return;
+    return subscribeGrowCycle(deviceId, () => {
+      void refresh({ silent: true });
+    });
+  }, [deviceId, refresh]);
 
   const savePlan = useCallback(
     async (plan: GrowCyclePlan, name?: string) => {
@@ -127,29 +135,32 @@ export function useGrowCycleWeeklyStats(deviceId: string | null, instanceId?: st
   const [stats, setStats] = useState<GrowCycleWeeklyStatsRow[]>([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!deviceId?.trim()) {
       setStats([]);
       return;
     }
-    let cancelled = false;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     const q = new URLSearchParams({ device_id: deviceId });
     if (instanceId) q.set('instance_id', instanceId);
-
-    void fetch(`/api/grow-cycle/weekly-stats?${q}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) setStats(data.stats ?? []);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const data = await fetch(`/api/grow-cycle/weekly-stats?${q}`).then((r) => r.json());
+      setStats(data.stats ?? []);
+    } finally {
+      if (!opts?.silent) setLoading(false);
+    }
   }, [deviceId, instanceId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!deviceId?.trim()) return;
+    return subscribeGrowCycle(deviceId, () => {
+      void load({ silent: true });
+    }, 'stats');
+  }, [deviceId, load]);
 
   return { stats, loading };
 }

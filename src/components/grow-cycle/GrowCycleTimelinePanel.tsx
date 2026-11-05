@@ -82,6 +82,7 @@ export function GrowCycleTimelinePanel({
   const [preview, setPreview] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [liveScheduleRows, setLiveScheduleRows] = useState<LiveScheduleRow[]>([]);
+  const [scheduleReload, setScheduleReload] = useState(0);
   /** Overrides de fase por semana (receita editável) */
   const [phaseByWeek, setPhaseByWeek] = useState<Partial<Record<number, GrowPhase>>>({});
 
@@ -119,27 +120,9 @@ export function GrowCycleTimelinePanel({
   /** Sem ciclo activo ou toggle demo → hover/playhead + receta completa */
   const isDemoMode = preview || !activeInstance || !selectedDeviceId;
 
-  const refreshLiveSchedules = useCallback(async () => {
-    if (!selectedDeviceId || selectedDeviceId === 'default_device') {
-      setLiveScheduleRows([]);
-      return;
-    }
-    try {
-      const res = await fetch(
-        `/api/automation/schedules?device_id=${encodeURIComponent(selectedDeviceId)}`
-      );
-      const json = await res.json();
-      if (res.ok) {
-        setLiveScheduleRows((json.schedules || []) as LiveScheduleRow[]);
-      }
-    } catch {
-      setLiveScheduleRows([]);
-    }
-  }, [selectedDeviceId]);
-
-  useEffect(() => {
-    void refreshLiveSchedules();
-  }, [refreshLiveSchedules, activeInstance?.id]);
+  const takeScheduleRows = useCallback((rows: LiveScheduleRow[]) => {
+    setLiveScheduleRows(rows);
+  }, []);
 
   /** Demo = receita completa; Live = tanque da receita + chips dos schedules DB */
   const displayPlan: GrowCyclePlan = useMemo(() => {
@@ -212,7 +195,7 @@ export function GrowCycleTimelinePanel({
           setActionError(result.warnings.slice(0, 4).join(' · '));
           console.warn('[iniciar ciclo] avisos', result.warnings);
         }
-        void refreshLiveSchedules();
+        setScheduleReload((n) => n + 1);
         void schedN;
       } else {
         const detail =
@@ -236,7 +219,6 @@ export function GrowCycleTimelinePanel({
     gc,
     recipePlan,
     publishPlan,
-    refreshLiveSchedules,
     savedPlanId,
     selectedDeviceId,
     userEmail,
@@ -532,7 +514,8 @@ export function GrowCycleTimelinePanel({
                 deviceId={selectedDeviceId}
                 weekIndex={selectedWeek}
                 embedded
-                onChanged={() => void refreshLiveSchedules()}
+                onRows={takeScheduleRows}
+                reloadToken={scheduleReload}
               />
             ) : (
               <p className="text-sm text-dark-textSecondary rounded-lg border border-dark-border bg-dark-card px-4 py-3">
