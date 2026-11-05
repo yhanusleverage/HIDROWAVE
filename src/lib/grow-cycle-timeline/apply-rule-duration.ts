@@ -32,7 +32,7 @@ export async function applyDurationSecondsToRule(
     json.actions = actions.map((raw) => {
       const a = raw && typeof raw === 'object' ? { ...(raw as Record<string, unknown>) } : {};
       a.duration = durationSeconds;
-      if ('duration_ms' in a) a.duration_ms = durationSeconds * 1000;
+      a.duration_ms = durationSeconds * 1000;
       return a;
     });
   }

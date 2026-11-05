@@ -8,8 +8,10 @@ import {
   CalendarIcon,
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { resolveDecisionRuleDisplayName } from '@/lib/decision-rule-display-name';
+import { applyDurationSecondsToRule } from '@/lib/grow-cycle-timeline/apply-rule-duration';
 
 interface RuleSchedule {
   id: string;
@@ -35,9 +37,19 @@ interface DecisionRuleOption {
 
 interface ScheduleEditorProps {
   deviceId: string;
+  /** Semana seleccionada en el ciclo. La cita nueva nace en esa semana. */
+  weekIndex?: number;
+  /** Sin tarjeta de título: el padre ya pone el encabezado. */
+  embedded?: boolean;
+  onChanged?: () => void;
 }
 
-export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
+export default function ScheduleEditor({
+  deviceId,
+  weekIndex,
+  embedded = false,
+  onChanged,
+}: ScheduleEditorProps) {
   const { t } = useLanguage();
   const sch = t.automacao.schedule;
   const ac = t.automacao.common;
@@ -68,7 +80,8 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
   const [formTimeStart, setFormTimeStart] = useState('08:00');
   const [formTimeEnd, setFormTimeEnd] = useState('');
   const [formDays, setFormDays] = useState<number[]>([]);
-  const [formGrowWeek, setFormGrowWeek] = useState(0);
+  const [formGrowWeek, setFormGrowWeek] = useState(weekIndex ?? 0);
+  const [formDurationMin, setFormDurationMin] = useState('');
 
   const fetchSchedules = useCallback(async () => {
     try {
@@ -105,6 +118,12 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
     Promise.all([fetchSchedules(), fetchRules()]).finally(() => setLoading(false));
   }, [fetchSchedules, fetchRules]);
 
+  useEffect(() => {
+    if (weekIndex == null) return;
+    setFormType('grow_week');
+    setFormGrowWeek(weekIndex);
+  }, [weekIndex]);
+
   const handleCreate = async () => {
     if (!formRuleId) return;
     setSaving(true);
@@ -121,20 +140,39 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
       if (formTimeEnd) body.time_end = formTimeEnd;
       if (formType === 'weekly' && formDays.length > 0) body.days_of_week = formDays;
       if (formType === 'grow_week') body.grow_week_index = formGrowWeek;
+      if (weekIndex != null) body.created_by = 'grow-cycle-ui';
+
+      const durationMin = formDurationMin.trim() === '' ? 0 : Number(formDurationMin);
+      if (formDurationMin.trim() !== '' && (!Number.isFinite(durationMin) || durationMin <= 0)) {
+        toast.error(sch.durationMin);
+        return;
+      }
 
       const res = await fetch('/api/automation/schedules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (res.ok) {
-        setShowForm(false);
-        setFormRuleId('');
-        await fetchSchedules();
-      } else {
+      if (!res.ok) {
         const err = await res.json();
-        alert(err.error || sch.errorCreate);
+        toast.error(err.error || sch.errorCreate);
+        return;
       }
+
+      if (durationMin > 0) {
+        const dur = await applyDurationSecondsToRule(
+          deviceId,
+          formRuleId,
+          Math.round(durationMin * 60)
+        );
+        if (!dur.ok) toast.error(dur.error || sch.errorCreate);
+      }
+
+      setShowForm(false);
+      setFormRuleId('');
+      setFormDurationMin('');
+      await fetchSchedules();
+      onChanged?.();
     } finally {
       setSaving(false);
     }
@@ -147,12 +185,14 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
       body: JSON.stringify({ id: sched.id, enabled: !sched.enabled }),
     });
     await fetchSchedules();
+    onChanged?.();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm(sch.confirmDelete)) return;
     await fetch(`/api/automation/schedules?id=${id}`, { method: 'DELETE' });
     await fetchSchedules();
+    onChanged?.();
   };
 
   const toggleDay = (day: number) => {
@@ -169,26 +209,114 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
     );
   }
 
+  const appliesToWeek = (sched: RuleSchedule) => {
+    if (weekIndex == null) return false;
+    if (sched.schedule_type === 'daily') return true;
+    return sched.schedule_type === 'grow_week' && sched.grow_week_index === weekIndex;
+  };
+
+  const thisWeekRows = weekIndex == null ? [] : schedules.filter(appliesToWeek);
+  const otherRows = weekIndex == null ? schedules : schedules.filter((s) => !appliesToWeek(s));
+
+  const renderRow = (sched: RuleSchedule) => {
+    const ruleMeta = rules.find((r) => r.rule_id === sched.rule_id);
+    const ruleName = resolveDecisionRuleDisplayName(
+      {
+        rule_id: sched.rule_id,
+        rule_name: ruleMeta?.rule_name ?? null,
+      },
+      t
+    );
+    return (
+      <div
+        key={sched.id}
+        className={`bg-dark-card border rounded-lg p-4 flex items-center justify-between gap-4 ${
+          sched.enabled ? 'border-aqua-500/30' : 'border-dark-border opacity-60'
+        }`}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm font-medium text-dark-text truncate">{ruleName}</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-dark-surface border border-dark-border text-dark-textSecondary shrink-0">
+              {scheduleTypeLabel(sched.schedule_type)}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dark-textSecondary">
+            <span className="flex items-center gap-1">
+              <ClockIcon className="w-3.5 h-3.5" />
+              {sched.time_start?.slice(0, 5)}
+              {sched.time_end ? ` – ${sched.time_end.slice(0, 5)}` : ''}
+            </span>
+            {sched.days_of_week && sched.days_of_week.length > 0 && (
+              <span>{sched.days_of_week.map((d) => dayLabels[d]).join(', ')}</span>
+            )}
+            {sched.grow_week_index != null && (
+              <span>{sch.weekLabel.replace('{n}', String(sched.grow_week_index))}</span>
+            )}
+            {sched.last_triggered_at && (
+              <span className="text-aqua-400/70">
+                {sch.lastTriggered.replace(
+                  '{when}',
+                  new Date(sched.last_triggered_at).toLocaleString()
+                )}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0 pl-3 ml-1 border-l border-dark-border">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={sched.enabled}
+            aria-label={sched.enabled ? sch.toggleDisable : sch.toggleEnable}
+            title={sched.enabled ? sch.toggleDisable : sch.toggleEnable}
+            onClick={() => handleToggle(sched)}
+            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aqua-400 ${
+              sched.enabled ? 'bg-aqua-600' : 'bg-dark-border'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                sched.enabled ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDelete(sched.id)}
+            aria-label={sch.deleteAction}
+            title={sch.deleteAction}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-500/35 text-red-400 hover:bg-red-500/10 hover:border-red-400/50 transition-colors"
+          >
+            <TrashIcon className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="bg-dark-card border border-aqua-500/30 rounded-lg shadow-lg p-4 sm:p-6">
-        <div className="flex items-center justify-between">
+      <div className={`flex items-center justify-between gap-3 ${embedded ? '' : 'bg-dark-card border border-aqua-500/30 rounded-lg shadow-lg p-4 sm:p-6'}`}>
+        {embedded ? (
+          <p className="text-xs text-dark-textSecondary">{sch.clockPending}</p>
+        ) : (
           <div className="flex items-center gap-3">
             <CalendarIcon className="w-6 h-6 text-aqua-400" />
             <div>
               <h2 className="text-lg font-semibold text-dark-text">{sch.title}</h2>
               <p className="text-sm text-dark-textSecondary">{sch.subtitle}</p>
+              <p className="text-xs text-dark-textSecondary mt-1">{sch.clockPending}</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-1 px-3 py-2 bg-aqua-600 hover:bg-aqua-500 text-white rounded-lg text-sm font-medium transition-colors"
-          >
-            <PlusIcon className="w-4 h-4" />
-            {sch.newButton}
-          </button>
-        </div>
+        )}
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="flex items-center gap-1 px-3 py-2 bg-aqua-600 hover:bg-aqua-500 text-white rounded-lg text-sm font-medium transition-colors shrink-0"
+        >
+          <PlusIcon className="w-4 h-4" />
+          {sch.newButton}
+        </button>
       </div>
 
       {/* Form */}
@@ -277,6 +405,21 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
             </div>
           )}
 
+          <div>
+            <label className="block text-sm text-dark-textSecondary mb-1">{sch.durationMin}</label>
+            <input
+              type="number"
+              min={1}
+              max={24 * 60}
+              step={1}
+              value={formDurationMin}
+              onChange={(e) => setFormDurationMin(e.target.value)}
+              placeholder="15"
+              className="w-28 px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text text-sm"
+            />
+            <p className="text-[11px] text-dark-textSecondary mt-1">{sch.durationHint}</p>
+          </div>
+
           {/* Semana cultivo */}
           {formType === 'grow_week' && (
             <div>
@@ -318,84 +461,24 @@ export default function ScheduleEditor({ deviceId }: ScheduleEditorProps) {
           <p className="text-dark-textSecondary">{sch.empty}</p>
           <p className="text-xs text-dark-textSecondary/70 mt-1">{sch.emptyHint}</p>
         </div>
+      ) : weekIndex == null ? (
+        <div className="space-y-2">{schedules.map(renderRow)}</div>
       ) : (
-        <div className="space-y-2">
-          {schedules.map((sched) => {
-            const ruleMeta = rules.find((r) => r.rule_id === sched.rule_id);
-            const ruleName = resolveDecisionRuleDisplayName(
-              {
-                rule_id: sched.rule_id,
-                rule_name: ruleMeta?.rule_name ?? null,
-              },
-              t
-            );
-            return (
-              <div
-                key={sched.id}
-                className={`bg-dark-card border rounded-lg p-4 flex items-center justify-between gap-4 ${
-                  sched.enabled ? 'border-aqua-500/30' : 'border-dark-border opacity-60'
-                }`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-dark-text truncate">{ruleName}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-dark-surface border border-dark-border text-dark-textSecondary shrink-0">
-                      {scheduleTypeLabel(sched.schedule_type)}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dark-textSecondary">
-                    <span className="flex items-center gap-1">
-                      <ClockIcon className="w-3.5 h-3.5" />
-                      {sched.time_start?.slice(0, 5)}
-                      {sched.time_end ? ` – ${sched.time_end.slice(0, 5)}` : ''}
-                    </span>
-                    {sched.days_of_week && sched.days_of_week.length > 0 && (
-                      <span>{sched.days_of_week.map((d) => dayLabels[d]).join(', ')}</span>
-                    )}
-                    {sched.grow_week_index != null && (
-                      <span>{sch.weekLabel.replace('{n}', String(sched.grow_week_index))}</span>
-                    )}
-                    {sched.last_triggered_at && (
-                      <span className="text-aqua-400/70">
-                        {sch.lastTriggered.replace(
-                          '{when}',
-                          new Date(sched.last_triggered_at).toLocaleString()
-                        )}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 shrink-0 pl-3 ml-1 border-l border-dark-border">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={sched.enabled}
-                    aria-label={sched.enabled ? sch.toggleDisable : sch.toggleEnable}
-                    title={sched.enabled ? sch.toggleDisable : sch.toggleEnable}
-                    onClick={() => handleToggle(sched)}
-                    className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aqua-400 ${
-                      sched.enabled ? 'bg-aqua-600' : 'bg-dark-border'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                        sched.enabled ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(sched.id)}
-                    aria-label={sch.deleteAction}
-                    title={sch.deleteAction}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-500/35 text-red-400 hover:bg-red-500/10 hover:border-red-400/50 transition-colors"
-                  >
-                    <TrashIcon className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-aqua-300/90">{sch.thisWeek}</p>
+            {thisWeekRows.length === 0 ? (
+              <p className="text-xs text-dark-textSecondary">{sch.empty}</p>
+            ) : (
+              thisWeekRows.map(renderRow)
+            )}
+          </div>
+          {otherRows.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-dark-textSecondary">{sch.otherAppointments}</p>
+              {otherRows.map(renderRow)}
+            </div>
+          )}
         </div>
       )}
     </div>

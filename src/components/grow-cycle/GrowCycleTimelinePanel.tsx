@@ -516,7 +516,6 @@ export function GrowCycleTimelinePanel({
               deviceId={liveMetricsDeviceId}
               weeklyStat={weeklyStats.find((s) => s.week_index === selectedWeek) ?? null}
               scheduleUiVersion={scheduleUiVersion}
-              onSchedulesChanged={() => void refreshLiveSchedules()}
               onWeekPhaseChange={handleWeekPhaseChange}
             />
             <SimulationRulesPanel log={simLog} />
@@ -529,7 +528,12 @@ export function GrowCycleTimelinePanel({
               accent="brand"
             />
             {selectedDeviceId ? (
-              <ScheduleEditor deviceId={selectedDeviceId} />
+              <ScheduleEditor
+                deviceId={selectedDeviceId}
+                weekIndex={selectedWeek}
+                embedded
+                onChanged={() => void refreshLiveSchedules()}
+              />
             ) : (
               <p className="text-sm text-dark-textSecondary rounded-lg border border-dark-border bg-dark-card px-4 py-3">
                 {gc.schedulesSelectCore}

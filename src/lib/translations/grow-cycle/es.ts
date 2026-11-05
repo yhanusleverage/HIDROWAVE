@@ -80,7 +80,7 @@ export const growCycleChromeEs: GrowCycleChromeTranslations = {
 
   schedulesSectionTitle: 'Schedules',
   schedulesSectionSub:
-    'Cronogramas del Core (diario / semanal / semana del ciclo) — dentro de Ciclo de Cultivo',
+    'Una sola lista. A la hora el bridge enciende un procedimiento. Una regla simple solo corre si ya estaba habilitada.',
   schedulesSelectCore:
     'Seleccione un HydroWave Core en el encabezado para gestionar schedules.',
 
@@ -138,6 +138,8 @@ export const growCycleChromeEs: GrowCycleChromeTranslations = {
     measuredHint: 'Snapshot {date}',
     eventsP1: 'Eventos P1 (tanque)',
     planSchedules: 'Agendamientos del plan',
+    calendarBelow:
+      'Las citas de esta semana se editan en el calendario de abajo. Una sola lista.',
     liveSchedules: 'Schedules live',
     newSchedule: 'Nuevo schedule',
     rule: 'Regla',

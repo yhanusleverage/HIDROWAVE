@@ -738,6 +738,11 @@ export interface AppTranslations {
       timeEnd: string;
       daysOfWeek: string;
       growWeek: string;
+      durationMin: string;
+      durationHint: string;
+      thisWeek: string;
+      otherAppointments: string;
+      clockPending: string;
       empty: string;
       emptyHint: string;
       weekLabel: string;
@@ -978,9 +983,11 @@ export interface AppTranslations {
       modeTitle: string;
       modeNormal: string;
       modeCarrera: string;
+      modeIndep: string;
       modeHint: string;
       modeNormalHint: string;
       modeCarreraHint: string;
+      modeIndepHint: string;
       applying: string;
       emptyTelemetry: string;
       simulatedBanner: string;

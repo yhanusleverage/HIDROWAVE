@@ -149,6 +149,8 @@ export interface GrowCycleChromeTranslations {
     measuredHint: string;
     eventsP1: string;
     planSchedules: string;
+    /** Citas vivas se editan en el calendario único */
+    calendarBelow: string;
     liveSchedules: string;
     newSchedule: string;
     rule: string;

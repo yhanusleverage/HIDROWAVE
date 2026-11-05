@@ -49,7 +49,7 @@ export function WaterLevelOperationalSummary({
   const [pending, setPending] = useState(false);
   const [modeError, setModeError] = useState<string | null>(null);
 
-  async function setInterlockMode(next: 'normal' | 'carrera') {
+  async function setInterlockMode(next: 'normal' | 'carrera' | 'indep') {
     if (pending || next === mode) return;
     setPending(true);
     setModeError(null);
@@ -151,7 +151,7 @@ export function WaterLevelOperationalSummary({
         >
           <span className="font-medium">{w.modeTitle}</span>
           <span className="text-xs text-dark-textSecondary tabular-nums">
-            {mode === 'carrera' ? w.modeCarrera : w.modeNormal}
+            {mode === 'carrera' ? w.modeCarrera : mode === 'indep' ? w.modeIndep : w.modeNormal}
             <span className="ml-2 opacity-60">{modeOpen ? '▾' : '▸'}</span>
           </span>
         </button>
@@ -189,6 +189,22 @@ export function WaterLevelOperationalSummary({
                 <span className="font-semibold text-dark-text">{w.modeCarrera}</span>
                 <span className="block text-dark-textSecondary">
                   {w.modeCarreraHint}
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 hover:bg-dark-bg/40">
+              <input
+                type="radio"
+                name="level-interlock"
+                className="mt-1"
+                checked={mode === 'indep'}
+                disabled={pending || simulated}
+                onChange={() => setInterlockMode('indep')}
+              />
+              <span className="text-xs leading-snug">
+                <span className="font-semibold text-dark-text">{w.modeIndep}</span>
+                <span className="block text-dark-textSecondary">
+                  {w.modeIndepHint}
                 </span>
               </span>
             </label>

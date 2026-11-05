@@ -7,11 +7,11 @@ import {
 } from '@/lib/mqtt-relay-command-schema';
 import { supabase } from '@/lib/supabase';
 
-const MODES = new Set(['normal', 'carrera']);
+const MODES = new Set(['normal', 'carrera', 'indep']);
 
 /**
  * Define modo interlock Auto EC/pH — MQTT set_level_interlock + PATCH optimistic.
- * normal = libera se ≠ vazio; carrera = só libera no alto (4/4).
+ * normal = libera se ≠ vazio; carrera = só libera no alto (4/4); indep = sem nível.
  */
 export async function POST(request: Request) {
   try {
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
     if (!MODES.has(mode)) {
       return NextResponse.json(
-        configApiErrorResponse('mode inválido (normal|carrera)', 400),
+        configApiErrorResponse('mode inválido (normal|carrera|indep)', 400),
         { status: 400 }
       );
     }

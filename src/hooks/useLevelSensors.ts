@@ -13,7 +13,7 @@ export type WaterLevelAggregate =
   | 'alto'
   | null;
 
-export type LevelInterlockMode = 'normal' | 'carrera' | null;
+export type LevelInterlockMode = 'normal' | 'carrera' | 'indep' | null;
 
 export interface LevelSensorsState {
   level1: boolean | null;
@@ -62,7 +62,7 @@ function parseWaterLevel(wl: unknown): WaterLevelAggregate {
 }
 
 function parseInterlockMode(raw: unknown): LevelInterlockMode {
-  if (raw === 'normal' || raw === 'carrera') return raw;
+  if (raw === 'normal' || raw === 'carrera' || raw === 'indep') return raw;
   return null;
 }
 
