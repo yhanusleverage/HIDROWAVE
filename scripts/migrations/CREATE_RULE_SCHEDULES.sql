@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS public.rule_schedules (
   device_id text NOT NULL,
   rule_id text NOT NULL,
   enabled boolean NOT NULL DEFAULT true,
-  schedule_type text NOT NULL CHECK (schedule_type IN ('daily', 'weekly', 'grow_week')),
+  schedule_type text NOT NULL CHECK (schedule_type IN ('daily', 'weekly', 'grow_week', 'once')),
+  on_date date,
   time_start time NOT NULL,
   time_end time,
   days_of_week int[] CHECK (
@@ -57,6 +58,7 @@ CREATE POLICY rule_schedules_delete ON public.rule_schedules
 -- ALTER PUBLICATION supabase_realtime ADD TABLE rule_schedules;
 
 COMMENT ON TABLE public.rule_schedules IS 'Cronograma diário/semanal/cultivo para decision_rules — avaliado pelo Bridge Node (scheduler cron 60s).';
-COMMENT ON COLUMN public.rule_schedules.schedule_type IS 'daily = todos os dias; weekly = dias específicos; grow_week = semana do ciclo de cultivo.';
+COMMENT ON COLUMN public.rule_schedules.schedule_type IS 'daily = todos os dias; weekly = dias da semana; grow_week = semana do ciclo; once = uma data e apaga.';
+COMMENT ON COLUMN public.rule_schedules.on_date IS 'Só schedule_type=once. Data civil na timezone da cita. Depois do disparo enabled fica false.';
 COMMENT ON COLUMN public.rule_schedules.days_of_week IS '0=dom 1=seg 2=ter 3=qua 4=qui 5=sex 6=sab. NULL = todos os dias.';
 COMMENT ON COLUMN public.rule_schedules.grow_week_index IS 'Índice da semana no plano de cultivo (0-based). Só usado quando schedule_type=grow_week.';

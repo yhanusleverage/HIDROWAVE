@@ -34,7 +34,9 @@ export function liveScheduleToBlock(
       ? `todo dia ${time}`
       : row.schedule_type === 'weekly'
         ? `semanal ${time}`
-        : `${time}`;
+        : row.schedule_type === 'once'
+          ? `um dia ${time}`
+          : `${time}`;
 
   return {
     weekIndex,

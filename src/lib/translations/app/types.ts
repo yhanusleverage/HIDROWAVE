@@ -734,6 +734,9 @@ export interface AppTranslations {
       typeDaily: string;
       typeWeekly: string;
       typeGrowWeek: string;
+      typeOnce: string;
+      onceDate: string;
+      onceHint: string;
       timeStart: string;
       timeEnd: string;
       daysOfWeek: string;

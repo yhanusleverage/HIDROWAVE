@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '@/lib/supabase-server';
 
-const VALID_TYPES = ['daily', 'weekly', 'grow_week'] as const;
+const VALID_TYPES = ['daily', 'weekly', 'grow_week', 'once'] as const;
 
 function isFnCirculationRuleId(ruleId: string): boolean {
   const id = String(ruleId || '');
@@ -52,6 +52,7 @@ export async function POST(request: Request) {
       time_end,
       days_of_week,
       grow_week_index,
+      on_date,
       timezone = 'America/Sao_Paulo',
       enabled = true,
       created_by = 'web_interface',
@@ -81,6 +82,9 @@ export async function POST(request: Request) {
     if (!time_start) {
       return NextResponse.json({ error: 'time_start required (HH:MM)' }, { status: 400 });
     }
+    if (schedule_type === 'once' && !/^\d{4}-\d{2}-\d{2}$/.test(String(on_date || ''))) {
+      return NextResponse.json({ error: 'on_date required (YYYY-MM-DD)' }, { status: 400 });
+    }
 
     const row: Record<string, unknown> = {
       device_id,
@@ -94,6 +98,7 @@ export async function POST(request: Request) {
     if (time_end) row.time_end = time_end;
     if (Array.isArray(days_of_week) && days_of_week.length > 0) row.days_of_week = days_of_week;
     if (grow_week_index != null) row.grow_week_index = grow_week_index;
+    if (schedule_type === 'once') row.on_date = on_date;
 
     const supabase = getSupabaseServerClient();
     const { data, error } = await supabase

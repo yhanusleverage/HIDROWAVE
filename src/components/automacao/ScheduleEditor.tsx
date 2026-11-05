@@ -18,11 +18,12 @@ interface RuleSchedule {
   device_id: string;
   rule_id: string;
   enabled: boolean;
-  schedule_type: 'daily' | 'weekly' | 'grow_week';
+  schedule_type: 'daily' | 'weekly' | 'grow_week' | 'once';
   time_start: string;
   time_end: string | null;
   days_of_week: number[] | null;
   grow_week_index: number | null;
+  on_date?: string | null;
   timezone: string;
   last_triggered_at: string | null;
   created_by: string;
@@ -63,9 +64,10 @@ export default function ScheduleEditor({
     (type: RuleSchedule['schedule_type']) => {
       if (type === 'daily') return sch.typeDaily;
       if (type === 'weekly') return sch.typeWeekly;
+      if (type === 'once') return sch.typeOnce;
       return sch.typeGrowWeek;
     },
-    [sch.typeDaily, sch.typeWeekly, sch.typeGrowWeek]
+    [sch.typeDaily, sch.typeWeekly, sch.typeGrowWeek, sch.typeOnce]
   );
 
   const [schedules, setSchedules] = useState<RuleSchedule[]>([]);
@@ -76,11 +78,17 @@ export default function ScheduleEditor({
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [formRuleId, setFormRuleId] = useState('');
-  const [formType, setFormType] = useState<'daily' | 'weekly' | 'grow_week'>('daily');
+  const [formType, setFormType] = useState<'daily' | 'weekly' | 'grow_week' | 'once'>('once');
   const [formTimeStart, setFormTimeStart] = useState('08:00');
   const [formTimeEnd, setFormTimeEnd] = useState('');
   const [formDays, setFormDays] = useState<number[]>([]);
   const [formGrowWeek, setFormGrowWeek] = useState(weekIndex ?? 0);
+  const [formOnDate, setFormOnDate] = useState(() => {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${m}-${day}`;
+  });
   const [formDurationMin, setFormDurationMin] = useState('');
 
   const fetchSchedules = useCallback(async () => {
@@ -120,7 +128,6 @@ export default function ScheduleEditor({
 
   useEffect(() => {
     if (weekIndex == null) return;
-    setFormType('grow_week');
     setFormGrowWeek(weekIndex);
   }, [weekIndex]);
 
@@ -140,6 +147,7 @@ export default function ScheduleEditor({
       if (formTimeEnd) body.time_end = formTimeEnd;
       if (formType === 'weekly' && formDays.length > 0) body.days_of_week = formDays;
       if (formType === 'grow_week') body.grow_week_index = formGrowWeek;
+      if (formType === 'once') body.on_date = formOnDate;
       if (weekIndex != null) body.created_by = 'grow-cycle-ui';
 
       const durationMin = formDurationMin.trim() === '' ? 0 : Number(formDurationMin);
@@ -212,6 +220,7 @@ export default function ScheduleEditor({
   const appliesToWeek = (sched: RuleSchedule) => {
     if (weekIndex == null) return false;
     if (sched.schedule_type === 'daily') return true;
+    if (sched.schedule_type === 'once') return true;
     return sched.schedule_type === 'grow_week' && sched.grow_week_index === weekIndex;
   };
 
@@ -250,7 +259,10 @@ export default function ScheduleEditor({
             {sched.days_of_week && sched.days_of_week.length > 0 && (
               <span>{sched.days_of_week.map((d) => dayLabels[d]).join(', ')}</span>
             )}
-            {sched.grow_week_index != null && (
+            {sched.schedule_type === 'once' && sched.on_date && (
+              <span>{String(sched.on_date).slice(0, 10)}</span>
+            )}
+            {sched.grow_week_index != null && sched.schedule_type === 'grow_week' && (
               <span>{sch.weekLabel.replace('{n}', String(sched.grow_week_index))}</span>
             )}
             {sched.last_triggered_at && (
@@ -344,8 +356,8 @@ export default function ScheduleEditor({
           {/* Tipo */}
           <div>
             <label className="block text-sm text-dark-textSecondary mb-1">{sch.typeLabel}</label>
-            <div className="flex gap-2">
-              {(['daily', 'weekly', 'grow_week'] as const).map((typeId) => (
+            <div className="flex flex-wrap gap-2">
+              {(['once', 'daily', 'weekly', 'grow_week'] as const).map((typeId) => (
                 <button
                   key={typeId}
                   onClick={() => setFormType(typeId)}
@@ -382,6 +394,19 @@ export default function ScheduleEditor({
               />
             </div>
           </div>
+
+          {formType === 'once' && (
+            <div>
+              <label className="block text-sm text-dark-textSecondary mb-1">{sch.onceDate}</label>
+              <input
+                type="date"
+                value={formOnDate}
+                onChange={(e) => setFormOnDate(e.target.value)}
+                className="px-3 py-2 bg-dark-surface border border-dark-border rounded-lg text-dark-text text-sm"
+              />
+              <p className="text-[11px] text-dark-textSecondary mt-1">{sch.onceHint}</p>
+            </div>
+          )}
 
           {/* Dias de la semana */}
           {formType === 'weekly' && (
