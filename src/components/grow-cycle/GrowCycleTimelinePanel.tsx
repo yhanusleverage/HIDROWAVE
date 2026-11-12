@@ -521,6 +521,7 @@ export function GrowCycleTimelinePanel({
               plan={displayPlan}
               demo={isDemoMode}
               deviceName={selectedDeviceName}
+              cycleStartedAt={effectiveStartedAt}
               liveRows={liveScheduleRows}
               selectedWeek={selectedWeek}
               onSelectWeek={setSelectedWeek}

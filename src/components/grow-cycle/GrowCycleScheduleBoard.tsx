@@ -48,9 +48,30 @@ interface GrowCycleScheduleBoardProps {
   demo: boolean;
   /** Nombre amigable del Core. El id ESP32_HIDRO_… no se muestra. */
   deviceName?: string | null;
+  /** Inicio del ciclo (ISO). Ancla el día 0 del tablero para citas once. */
+  cycleStartedAt?: string | null;
   liveRows: LiveScheduleRow[];
   selectedWeek: number;
   onSelectWeek: (week: number) => void;
+}
+
+function parseYmd(value: string | null | undefined): string | null {
+  const ymd = String(value || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : null;
+}
+
+function ymdToUtcDay(ymd: string): number {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return Date.UTC(y, m - 1, d) / 86_400_000;
+}
+
+/** Día del tablero a partir de on_date. Misma fecha → misma columna; withRows apila. */
+function onceStartDay(onDate: string | null | undefined, anchorYmd: string, maxDay: number): number {
+  const ymd = parseYmd(onDate);
+  if (!ymd) return 0;
+  const delta = Math.round(ymdToUtcDay(ymd) - ymdToUtcDay(anchorYmd));
+  if (!Number.isFinite(delta)) return 0;
+  return Math.max(0, Math.min(maxDay, delta));
 }
 
 function withRows(blocks: Omit<BoardBlock, 'row'>[]): BoardBlock[] {
@@ -130,10 +151,18 @@ function blocksForPlan(
     drainFull: string;
     ecRule: string;
     phRule: string;
-  }
+  },
+  cycleStartedAt?: string | null
 ): BoardBlock[] {
   const out: Omit<BoardBlock, 'row'>[] = [];
   const span = (plan.totalWeeks + 1) * 7;
+  const maxDay = Math.max(0, span - 1);
+  const onceDates = rows
+    .map((row) => parseYmd(row.on_date))
+    .filter((ymd): ymd is string => Boolean(ymd))
+    .sort();
+  const onceAnchor =
+    parseYmd(cycleStartedAt) || onceDates[0] || parseYmd(new Date().toISOString()) || '1970-01-01';
 
   if (demo) {
     for (const ev of plan.tankEvents) {
@@ -174,8 +203,13 @@ function blocksForPlan(
       });
     }
   } else {
-    let onceCursor = 0;
-    for (const row of rows) {
+    const ordered = [...rows].sort((a, b) => {
+      const da = parseYmd(a.on_date) || '';
+      const db = parseYmd(b.on_date) || '';
+      if (da !== db) return da.localeCompare(db);
+      return String(a.time_start).localeCompare(String(b.time_start));
+    });
+    for (const row of ordered) {
       const kind = livePriority(row.rule_id);
       const name =
         row.rule_name?.trim() ||
@@ -217,7 +251,7 @@ function blocksForPlan(
               id: `${row.id}-w${w}-d${d}`,
               priority: kind.priority,
               startDay: w * 7 + (d % 7),
-              spanDays: 2,
+              spanDays: 1,
               title: kind.pill,
               lines,
               tone: kind.tone,
@@ -229,14 +263,13 @@ function blocksForPlan(
         out.push({
           id: row.id,
           priority: kind.priority,
-          startDay: onceCursor,
-          spanDays: 3,
+          startDay: onceStartDay(row.on_date, onceAnchor, maxDay),
+          spanDays: 1,
           title: kind.pill,
           lines,
           tone: kind.tone,
           ...stamp,
         });
-        onceCursor += 3;
       }
     }
   }
@@ -249,6 +282,7 @@ export function GrowCycleScheduleBoard({
   plan,
   demo,
   deviceName,
+  cycleStartedAt = null,
   liveRows,
   selectedWeek,
   onSelectWeek,
@@ -267,14 +301,30 @@ export function GrowCycleScheduleBoard({
 
   const blocks = useMemo(
     () =>
-      blocksForPlan(plan, demo, liveRows, {
-        fillDose: gc.fillDose,
-        changeout: gc.changeout,
-        drainFull: gc.drainFull,
-        ecRule: gc.ecRule,
-        phRule: gc.phRule,
-      }),
-    [plan, demo, liveRows, gc.fillDose, gc.changeout, gc.drainFull, gc.ecRule, gc.phRule]
+      blocksForPlan(
+        plan,
+        demo,
+        liveRows,
+        {
+          fillDose: gc.fillDose,
+          changeout: gc.changeout,
+          drainFull: gc.drainFull,
+          ecRule: gc.ecRule,
+          phRule: gc.phRule,
+        },
+        cycleStartedAt
+      ),
+    [
+      plan,
+      demo,
+      liveRows,
+      cycleStartedAt,
+      gc.fillDose,
+      gc.changeout,
+      gc.drainFull,
+      gc.ecRule,
+      gc.phRule,
+    ]
   );
 
   const windowStartDay = startWeek * 7;
@@ -384,7 +434,7 @@ export function GrowCycleScheduleBoard({
                     const visibleSpan =
                       Math.min(b.startDay + b.spanDays, windowStartDay + windowDays) -
                       Math.max(b.startDay, windowStartDay);
-                    const width = Math.max(DAY_W * 2, visibleSpan * DAY_W - 8);
+                    const width = Math.max(DAY_W - 8, visibleSpan * DAY_W - 8);
                     return (
                       <button
                         key={b.id}
