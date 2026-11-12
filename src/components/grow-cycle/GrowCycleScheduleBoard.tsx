@@ -6,7 +6,8 @@ import type { LiveScheduleRow } from '@/lib/grow-cycle-timeline/live-schedule-bl
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getGrowCycleChrome } from '@/lib/translations/grow-cycle';
 
-const DAY_W = 48;
+/** Ancho de un día: la tarjeta once cabe nombre + hora sin aplastar la grilla. */
+const DAY_W = 120;
 
 type Tone = 'fill' | 'change' | 'drain' | 'ec' | 'ph' | 'time';
 
@@ -399,7 +400,7 @@ export function GrowCycleScheduleBoard({
                   return (
                     <div
                       key={`d-${w}-${d}`}
-                      className="text-xs text-center text-dark-textSecondary tabular-nums"
+                      className="text-sm text-center text-dark-textSecondary tabular-nums"
                       style={{ width: DAY_W }}
                     >
                       {dayNum}
