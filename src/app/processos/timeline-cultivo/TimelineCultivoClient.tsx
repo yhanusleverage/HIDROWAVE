@@ -11,7 +11,10 @@ export default function TimelineCultivoClient() {
   return (
     <GrowCycleTimelinePanel
       userEmail={userProfile?.email}
-      devices={devices.map((d) => ({ device_id: d.device_id }))}
+      devices={devices.map((d) => ({
+        device_id: d.device_id,
+        device_name: d.device_name,
+      }))}
     />
   );
 }

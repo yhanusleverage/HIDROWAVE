@@ -41,11 +41,14 @@ import { PhaseFlipButtons } from '@/components/grow-cycle/PhaseFlipButtons';
 
 interface DeviceOption {
   device_id: string;
+  device_name?: string | null;
 }
 
 export interface GrowCycleTimelinePanelProps {
   /** Master device from parent (embedded) or controlled locally (standalone). */
   deviceId?: string | null;
+  /** Nombre del Core (device_status.device_name). No es el id ESP32_HIDRO_…. */
+  deviceName?: string | null;
   userEmail?: string | null;
   /** When true: no page chrome, no device picker — uses deviceId prop. */
   embedded?: boolean;
@@ -56,6 +59,7 @@ export interface GrowCycleTimelinePanelProps {
 
 export function GrowCycleTimelinePanel({
   deviceId: deviceIdProp = null,
+  deviceName: deviceNameProp = null,
   userEmail,
   embedded = false,
   devices = [],
@@ -71,6 +75,10 @@ export function GrowCycleTimelinePanel({
   const selectedDeviceId = embedded
     ? (deviceIdProp && deviceIdProp !== 'default_device' ? deviceIdProp : '')
     : (deviceIdProp ?? localDeviceId);
+  const selectedDeviceName =
+    (deviceNameProp && deviceNameProp.trim()) ||
+    devices.find((d) => d.device_id === selectedDeviceId)?.device_name?.trim() ||
+    '';
 
   const [totalWeeks, setTotalWeeks] = useState(MOCK_RDWC_12W_PLAN.totalWeeks);
   const [selectedWeek, setSelectedWeek] = useState(0);
@@ -512,7 +520,7 @@ export function GrowCycleTimelinePanel({
             <GrowCycleScheduleBoard
               plan={displayPlan}
               demo={isDemoMode}
-              deviceId={selectedDeviceId}
+              deviceName={selectedDeviceName}
               liveRows={liveScheduleRows}
               selectedWeek={selectedWeek}
               onSelectWeek={setSelectedWeek}

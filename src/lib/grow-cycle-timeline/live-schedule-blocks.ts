@@ -12,6 +12,8 @@ export type LiveScheduleRow = {
   created_by: string | null;
   days_of_week?: number[] | null;
   on_date?: string | null;
+  /** Nombre visible de la regla, si el editor ya lo resolvió. */
+  rule_name?: string | null;
 };
 
 function formatTimeShort(value: string): string {

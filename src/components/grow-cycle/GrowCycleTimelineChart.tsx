@@ -153,11 +153,11 @@ export function GrowCycleTimelineChart({
     >
       <div className="px-4 pt-4 pb-2">
         <p className="text-sm uppercase tracking-wider text-dark-textSecondary font-semibold">
-          {graphOnly ? chrome.chartGraphTitle : 'Fases do ciclo'}
+          {graphOnly ? chrome.chartGraphTitle : chrome.chartPhasesTitle}
         </p>
         {scrollMode && (
           <p className="text-sm text-aqua-400/80 mt-0.5">
-            Caixa fixa — deslize na horizontal para ver todas as semanas
+            {chrome.chartScrollFixed}
           </p>
         )}
       </div>
@@ -244,7 +244,7 @@ export function GrowCycleTimelineChart({
             textAnchor="start"
             className="fill-emerald-400 text-sm font-semibold"
           >
-            EC alvo (µS/cm)
+            {chrome.chartEcAxis}
           </text>
 
           {/* Phase background bands (EC area) */}
@@ -438,7 +438,7 @@ export function GrowCycleTimelineChart({
             textAnchor="start"
             className="fill-violet-400 text-sm font-semibold"
           >
-            pH alvo
+            {chrome.chartPhAxis}
           </text>
 
           {weeks.map((w, i) => (

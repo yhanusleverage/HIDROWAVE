@@ -202,7 +202,17 @@ export interface GrowCycleChromeTranslations {
   ecRule: string;
   phRule: string;
   boardEmpty: string;
+  /** Origen del eje de días: Início / Inicio / Start */
+  boardStart: string;
+  /** Panel al pulsar una cita. {name} es el nombre de la regla. */
+  boardDetailHint: string;
+  boardCopyId: string;
+  boardCopied: string;
   chartGraphTitle: string;
+  chartPhasesTitle: string;
+  chartScrollFixed: string;
+  chartEcAxis: string;
+  chartPhAxis: string;
 
   simulation: {
     logTitle: string;

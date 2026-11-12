@@ -22,6 +22,7 @@ interface RuleSchedule {
   id: string;
   device_id: string;
   rule_id: string;
+  rule_name?: string | null;
   enabled: boolean;
   schedule_type: 'daily' | 'weekly' | 'grow_week' | 'once';
   time_start: string;
@@ -143,8 +144,19 @@ export default function ScheduleEditor({
   }, [weekIndex]);
 
   useEffect(() => {
-    onRows?.(schedules);
-  }, [schedules, onRows]);
+    onRows?.(
+      schedules.map((row) => {
+        const meta = rules.find((rule) => rule.rule_id === row.rule_id);
+        return {
+          ...row,
+          rule_name: resolveDecisionRuleDisplayName(
+            { rule_id: row.rule_id, rule_name: meta?.rule_name ?? null },
+            t
+          ),
+        };
+      })
+    );
+  }, [schedules, rules, onRows, t]);
 
   useEffect(() => {
     return subscribeRuleSchedules(deviceId, (event, row) => {

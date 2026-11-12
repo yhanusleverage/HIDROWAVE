@@ -19,6 +19,12 @@ interface BoardBlock {
   lines: string[];
   tone: Tone;
   row: number;
+  /** Id completo de la regla, para copiar. */
+  ruleId?: string;
+  /** Nombre visible. La tarjeta no se borra al abrirlo. */
+  ruleName?: string;
+  /** Cita ya disparada: sigue en la agenda, más tenue. */
+  dimmed?: boolean;
 }
 
 const TONE_CLASS: Record<Tone, string> = {
@@ -40,7 +46,8 @@ const RAIL: Record<BoardBlock['priority'], string> = {
 interface GrowCycleScheduleBoardProps {
   plan: GrowCyclePlan;
   demo: boolean;
-  deviceId?: string | null;
+  /** Nombre amigable del Core. El id ESP32_HIDRO_… no se muestra. */
+  deviceName?: string | null;
   liveRows: LiveScheduleRow[];
   selectedWeek: number;
   onSelectWeek: (week: number) => void;
@@ -148,6 +155,8 @@ function blocksForPlan(
         title,
         lines: [ev.triggerTime],
         tone,
+        ruleId: ev.ruleIdSuggested,
+        ruleName: title,
       });
     }
     for (const s of plan.schedules) {
@@ -160,16 +169,24 @@ function blocksForPlan(
         title: s.label,
         lines: [s.cadence],
         tone: 'time',
+        ruleId: s.ruleId,
+        ruleName: s.label,
       });
     }
   } else {
     let onceCursor = 0;
     for (const row of rows) {
-      if (!row.enabled) continue;
       const kind = livePriority(row.rule_id);
-      const name = row.rule_id.replace(/^SCHEDULE_/, '').replace(/_/g, ' ');
+      const name =
+        row.rule_name?.trim() ||
+        row.rule_id.replace(/^SCHEDULE_/, '').replace(/_/g, ' ');
       const time = row.time_start.length >= 5 ? row.time_start.slice(0, 5) : row.time_start;
       const lines = [name, row.on_date ? `${time} · ${row.on_date}` : time];
+      const stamp = {
+        ruleId: row.rule_id,
+        ruleName: name,
+        dimmed: !row.enabled,
+      };
       if (row.schedule_type === 'grow_week' && row.grow_week_index != null) {
         out.push({
           id: row.id,
@@ -179,6 +196,7 @@ function blocksForPlan(
           title: kind.pill,
           lines,
           tone: kind.tone,
+          ...stamp,
         });
       } else if (row.schedule_type === 'daily') {
         out.push({
@@ -189,6 +207,7 @@ function blocksForPlan(
           title: kind.pill,
           lines,
           tone: kind.tone,
+          ...stamp,
         });
       } else if (row.schedule_type === 'weekly') {
         const days = row.days_of_week?.length ? row.days_of_week : [0];
@@ -202,6 +221,7 @@ function blocksForPlan(
               title: kind.pill,
               lines,
               tone: kind.tone,
+              ...stamp,
             });
           }
         }
@@ -214,6 +234,7 @@ function blocksForPlan(
           title: kind.pill,
           lines,
           tone: kind.tone,
+          ...stamp,
         });
         onceCursor += 3;
       }
@@ -227,7 +248,7 @@ function blocksForPlan(
 export function GrowCycleScheduleBoard({
   plan,
   demo,
-  deviceId,
+  deviceName,
   liveRows,
   selectedWeek,
   onSelectWeek,
@@ -237,6 +258,8 @@ export function GrowCycleScheduleBoard({
   const weekCount = plan.totalWeeks + 1;
   const choices = [4, 5, 8].filter((n) => n < weekCount);
   const [viewWeeks, setViewWeeks] = useState(Math.min(5, weekCount));
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const visible = viewWeeks >= weekCount ? weekCount : viewWeeks;
   const maxStart = Math.max(0, weekCount - visible);
@@ -258,6 +281,7 @@ export function GrowCycleScheduleBoard({
   const windowDays = visible * 7;
   const trackW = windowDays * DAY_W;
   const weeks = Array.from({ length: visible }, (_, i) => startWeek + i);
+  const openBlock = openId ? blocks.find((block) => block.id === openId) ?? null : null;
 
   const laneBlocks = (priority: BoardBlock['priority']) =>
     blocks.filter((b) => {
@@ -269,8 +293,8 @@ export function GrowCycleScheduleBoard({
   return (
     <div className="bg-dark-card border border-dark-border rounded-xl shadow-lg shadow-black/20 w-full min-w-0 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-4 pb-2">
-        <p className="text-sm uppercase tracking-wider text-dark-textSecondary font-semibold">
-          {deviceId || plan.name}
+        <p className="text-sm tracking-wide text-dark-textSecondary font-semibold">
+          {(deviceName && deviceName.trim()) || (demo ? plan.name : '')}
         </p>
         <label className="flex items-center gap-2 text-sm text-dark-textSecondary">
           {gc.viewWeeksLabel}
@@ -293,9 +317,9 @@ export function GrowCycleScheduleBoard({
       </div>
 
       <div className="overflow-x-auto overscroll-x-contain pb-4">
-        <div className="px-3" style={{ minWidth: 84 + trackW }}>
+        <div className="px-3" style={{ minWidth: 96 + trackW }}>
           <div className="flex">
-            <div className="w-12 shrink-0" />
+            <div className="w-16 shrink-0" />
             <div className="flex" style={{ width: trackW }}>
               {weeks.map((w) => (
                 <button
@@ -315,8 +339,8 @@ export function GrowCycleScheduleBoard({
             </div>
           </div>
           <div className="flex mb-1">
-            <div className="w-12 shrink-0 text-xs font-semibold text-dark-textSecondary self-end pb-0.5 text-center">
-              START
+            <div className="w-16 shrink-0 text-xs font-semibold text-dark-textSecondary self-end pb-0.5 text-center leading-tight">
+              {gc.boardStart}
             </div>
             <div className="flex" style={{ width: trackW }}>
               {weeks.map((w) =>
@@ -342,7 +366,7 @@ export function GrowCycleScheduleBoard({
             return (
               <div key={priority} className="flex border-t border-dark-border/50">
                 <div
-                  className={`w-12 shrink-0 flex items-center justify-center ${RAIL[priority]}`}
+                  className={`w-16 shrink-0 flex items-center justify-center ${RAIL[priority]}`}
                   title={gc.priorityLabel.replace('{n}', String(priority))}
                 >
                   <span className="text-sm font-bold tracking-wide text-white [writing-mode:vertical-rl] rotate-180">
@@ -365,8 +389,14 @@ export function GrowCycleScheduleBoard({
                       <button
                         key={b.id}
                         type="button"
-                        onClick={() => onSelectWeek(Math.floor(b.startDay / 7))}
-                        className={`absolute rounded-lg border px-2.5 py-2 text-left overflow-hidden shadow-sm ${TONE_CLASS[b.tone]}`}
+                        onClick={() => {
+                          onSelectWeek(Math.floor(b.startDay / 7));
+                          setCopied(false);
+                          setOpenId((current) => (current === b.id ? null : b.id));
+                        }}
+                        className={`absolute rounded-lg border px-2.5 py-2 text-left overflow-hidden shadow-sm ${TONE_CLASS[b.tone]} ${
+                          b.dimmed ? 'opacity-60' : ''
+                        } ${openId === b.id ? 'ring-2 ring-aqua-300/80' : ''}`}
                         style={{ left, width, top: 8 + b.row * 88, height: 80 }}
                       >
                         <span className="inline-block max-w-full truncate text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-black/25">
@@ -386,6 +416,39 @@ export function GrowCycleScheduleBoard({
           })}
         </div>
       </div>
+      {openBlock && (
+        <div className="mx-3 mb-3 rounded-xl border border-aqua-400/40 bg-dark-surface px-4 py-3 shadow-lg shadow-black/30">
+          <p className="text-base font-semibold text-dark-text">
+            {openBlock.ruleName || openBlock.title}
+          </p>
+          {openBlock.ruleId && (
+            <p className="mt-1 font-mono text-sm text-aqua-300 select-all break-all">
+              {openBlock.ruleId}
+            </p>
+          )}
+          {openBlock.lines.filter(Boolean).map((line) => (
+            <p key={line} className="text-sm text-dark-textSecondary mt-1">
+              {line}
+            </p>
+          ))}
+          <p className="text-xs text-dark-textSecondary mt-2">{gc.boardDetailHint}</p>
+          {openBlock.ruleId && (
+            <button
+              type="button"
+              className="mt-2 inline-flex px-3 py-1.5 rounded-lg border border-aqua-400/40 text-sm text-aqua-200 hover:bg-aqua-500/10"
+              onClick={() => {
+                const id = openBlock.ruleId;
+                if (!id) return;
+                void navigator.clipboard.writeText(id).then(() => {
+                  setCopied(true);
+                });
+              }}
+            >
+              {copied ? gc.boardCopied : gc.boardCopyId}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

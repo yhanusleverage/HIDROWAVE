@@ -187,7 +187,15 @@ export const growCycleChromeEn: GrowCycleChromeTranslations = {
   ecRule: 'EC',
   phRule: 'pH',
   boardEmpty: 'No procedures in this row',
+  boardStart: 'Start',
+  boardDetailHint: 'The appointment stays on the board. The number is only for copying.',
+  boardCopyId: 'Copy',
+  boardCopied: 'Copied',
   chartGraphTitle: 'EC and pH by week',
+  chartPhasesTitle: 'Cycle phases',
+  chartScrollFixed: 'Fixed frame — scroll sideways to see every week',
+  chartEcAxis: 'EC target (µS/cm)',
+  chartPhAxis: 'pH target',
 
   simulation: {
     logTitle: 'Simulation log',

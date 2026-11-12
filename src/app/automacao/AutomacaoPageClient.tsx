@@ -2265,6 +2265,7 @@ export default function AutomacaoPageClient() {
         {activeTab === 'timeline' && (
           <GrowCycleTimelinePanel
             deviceId={selectedDeviceId}
+            deviceName={selectedMaster?.device_name}
             userEmail={userProfile?.email}
             embedded
           />
