@@ -7,7 +7,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { getGrowCycleChrome } from '@/lib/translations/grow-cycle';
 
 /** Ancho de un día: la tarjeta once cabe nombre + hora sin aplastar la grilla. */
-const DAY_W = 120;
+const DAY_W = 180;
 
 type Tone = 'fill' | 'change' | 'drain' | 'ec' | 'ph' | 'time';
 
