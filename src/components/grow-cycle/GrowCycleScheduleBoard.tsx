@@ -422,7 +422,7 @@ export function GrowCycleScheduleBoard({
             {openBlock.ruleName || openBlock.title}
           </p>
           {openBlock.ruleId && (
-            <p className="mt-1 font-mono text-sm text-aqua-300 select-all break-all">
+            <p className="mt-1 font-mono text-sm text-aqua-300 underline underline-offset-2 select-all break-all">
               {openBlock.ruleId}
             </p>
           )}
