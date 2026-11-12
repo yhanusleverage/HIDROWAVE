@@ -186,7 +186,7 @@ export const growCycleChromePt: GrowCycleChromeTranslations = {
   drainFull: 'DRAIN',
   ecRule: 'EC',
   phRule: 'pH',
-  boardEmpty: 'Sem procedimentos nesta fila',
+  boardEmpty: 'SEM PROCEDIMENTOS NESTA FILA',
   chartGraphTitle: 'EC e pH por semana',
 
   simulation: {
