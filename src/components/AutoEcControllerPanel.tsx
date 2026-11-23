@@ -89,7 +89,9 @@ export interface AutoEcControllerPanelProps {
 export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEcControllerPanelProps) {
   const { t } = useLanguage();
   const ec = t.automacao.ec;
-  const [ecControllerLocked, setEcControllerLocked] = useState<boolean>(false);
+  const [ecControllerLocked, setEcControllerLocked] = useState(
+    () => process.env.NODE_ENV !== 'development'
+  );
   const [expandedEcInfo, setExpandedEcInfo] = useState(false);
   const [showECConfigPreview, setShowECConfigPreview] = useState<boolean>(false);
   const [totalVolume, setTotalVolume] = useState<number>(10);
