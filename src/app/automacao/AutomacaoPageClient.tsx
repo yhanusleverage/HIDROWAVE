@@ -2311,9 +2311,9 @@ export default function AutomacaoPageClient() {
             <div className="flex items-center gap-2">
               <h2 className="text-base sm:text-lg font-semibold text-dark-text break-words">{ap.manual.title}</h2>
               <TopicHelp
-                title={ap.topicHelp.manual.title}
-                meaning={ap.topicHelp.manual.meaning}
-                how={ap.topicHelp.manual.how}
+                title={t.automacao.topicHelp.manual.title}
+                meaning={t.automacao.topicHelp.manual.meaning}
+                how={t.automacao.topicHelp.manual.how}
               />
             </div>
             <p className="text-xs sm:text-sm text-dark-textSecondary mt-1 break-words">{ap.manual.subtitle}</p>
@@ -3200,9 +3200,9 @@ export default function AutomacaoPageClient() {
                 <div className="flex items-center gap-2">
                   <h2 className="text-lg sm:text-xl font-bold text-dark-text">{ap.engine.title}</h2>
                   <TopicHelp
-                    title={ap.topicHelp.engine.title}
-                    meaning={ap.topicHelp.engine.meaning}
-                    how={ap.topicHelp.engine.how}
+                    title={t.automacao.topicHelp.engine.title}
+                    meaning={t.automacao.topicHelp.engine.meaning}
+                    how={t.automacao.topicHelp.engine.how}
                   />
                 </div>
                 <p className="text-xs sm:text-sm text-dark-textSecondary mt-1">{ap.engine.subtitle}</p>
