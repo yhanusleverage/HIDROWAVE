@@ -8,6 +8,8 @@ import { getGrowCycleChrome } from '@/lib/translations/grow-cycle';
 
 /** Ancho de un día: la tarjeta once cabe nombre + hora sin aplastar la grilla. */
 const DAY_W = 180;
+/** Hueco entre columnas para que el bloque del día N no toque el día N+1. */
+const DAY_GAP = 20;
 
 type Tone = 'fill' | 'change' | 'drain' | 'ec' | 'ph' | 'time';
 
@@ -431,11 +433,15 @@ export function GrowCycleScheduleBoard({
                     </p>
                   )}
                   {items.map((b) => {
-                    const left = Math.max(0, b.startDay - windowStartDay) * DAY_W + 4;
+                    const left =
+                      Math.max(0, b.startDay - windowStartDay) * DAY_W + DAY_GAP / 2;
                     const visibleSpan =
                       Math.min(b.startDay + b.spanDays, windowStartDay + windowDays) -
                       Math.max(b.startDay, windowStartDay);
-                    const width = Math.max(DAY_W - 8, visibleSpan * DAY_W - 8);
+                    const width = Math.max(
+                      DAY_W - DAY_GAP,
+                      visibleSpan * DAY_W - DAY_GAP
+                    );
                     return (
                       <button
                         key={b.id}
