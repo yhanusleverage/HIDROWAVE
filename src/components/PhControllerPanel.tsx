@@ -156,6 +156,14 @@ export default function PhControllerPanel({
   const [locked, setLocked] = useState(() => process.env.NODE_ENV !== 'development');
   const justSavedRef = useRef(false);
   const remotePhRef = useRef<ControllerConfigChange | null>(null);
+  const pendingPhRef = useRef<ControllerConfigChange | null>(null);
+  const applyRemotePhRef = useRef<(row: ControllerConfigChange) => void>(() => {});
+  const releaseJustSaved = useCallback(() => {
+    justSavedRef.current = false;
+    const pending = pendingPhRef.current;
+    pendingPhRef.current = null;
+    if (pending) applyRemotePhRef.current(pending);
+  }, []);
   const [configSyncTick, setConfigSyncTick] = useState(0);
   const [savedConfigSnapshot, setSavedConfigSnapshot] = useState<string | null>(null);
   const markConfigSynced = useCallback(() => {
@@ -418,17 +426,13 @@ export default function PhControllerPanel({
   useEffect(() => {
     if (!deviceId?.trim()) return;
     setAutoRtStatus('connecting');
-    return subscribeAutoEnabled(
-      deviceId.trim(),
-      'ph_config_view',
-      (row) => {
+    const applyRemotePh = (row: ControllerConfigChange) => {
         const prev = remotePhRef.current;
         if (!prev) {
           remotePhRef.current = row;
           return;
         }
         remotePhRef.current = { ...prev, ...row };
-        if (justSavedRef.current) return;
 
         let touched = false;
         if (
@@ -494,6 +498,17 @@ export default function PhControllerPanel({
           touched = true;
         }
         if (touched) markConfigSynced();
+    };
+    applyRemotePhRef.current = applyRemotePh;
+    return subscribeAutoEnabled(
+      deviceId.trim(),
+      'ph_config_view',
+      (row) => {
+        if (justSavedRef.current) {
+          pendingPhRef.current = row;
+          return;
+        }
+        applyRemotePh(row);
       },
       (status) => setAutoRtStatus(status)
     );
@@ -598,7 +613,8 @@ export default function PhControllerPanel({
         throw new Error(parsed.message);
       }
       justSavedRef.current = true;
-      setTimeout(() => { justSavedRef.current = false; }, 2000);
+      pendingPhRef.current = null;
+      setTimeout(() => { releaseJustSaved(); }, 2000);
       if (deviceId && deviceId !== 'default_device') {
         if (relayUpOut != null) {
           await saveMasterLocalRelayName(deviceId, relayUpOut, 'pH+');

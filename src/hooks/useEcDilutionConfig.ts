@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseConfigApiError } from '@/lib/controller-config-api';
+import { subscribeAutoEnabled, type ControllerConfigChange } from '@/lib/realtime/auto-controller';
 import { normalizeSlaveMac } from '@/lib/slave-relay-allocation';
 
 export interface EcDilutionConfigSnapshot {
@@ -36,6 +37,56 @@ const DEFAULT: EcDilutionConfigSnapshot = {
   isSaving: false,
 };
 
+type ServerDilution = Pick<
+  EcDilutionConfigSnapshot,
+  | 'dilution_auto_enabled'
+  | 'dilution_drain_relay'
+  | 'dilution_fill_relay'
+  | 'dilution_drain_slave_mac'
+  | 'dilution_fill_slave_mac'
+>;
+
+function serverOf(data: Omit<EcDilutionConfigSnapshot, 'isLoading' | 'isSaving'>): ServerDilution {
+  return {
+    dilution_auto_enabled: data.dilution_auto_enabled,
+    dilution_drain_relay: data.dilution_drain_relay,
+    dilution_fill_relay: data.dilution_fill_relay,
+    dilution_drain_slave_mac: data.dilution_drain_slave_mac,
+    dilution_fill_slave_mac: data.dilution_fill_slave_mac,
+  };
+}
+
+function patchFromRow(base: ServerDilution, row: ControllerConfigChange): Partial<ServerDilution> | null {
+  const patch: Partial<ServerDilution> = {};
+  if (
+    typeof row.dilution_auto_enabled === 'boolean' &&
+    row.dilution_auto_enabled !== base.dilution_auto_enabled
+  ) {
+    patch.dilution_auto_enabled = row.dilution_auto_enabled;
+  }
+  if (
+    row.dilution_drain_relay !== undefined &&
+    row.dilution_drain_relay !== base.dilution_drain_relay
+  ) {
+    patch.dilution_drain_relay = row.dilution_drain_relay;
+  }
+  if (
+    row.dilution_fill_relay !== undefined &&
+    row.dilution_fill_relay !== base.dilution_fill_relay
+  ) {
+    patch.dilution_fill_relay = row.dilution_fill_relay;
+  }
+  if (row.dilution_drain_slave_mac !== undefined) {
+    const mac = normalizeSlaveMac(row.dilution_drain_slave_mac);
+    if (mac !== base.dilution_drain_slave_mac) patch.dilution_drain_slave_mac = mac;
+  }
+  if (row.dilution_fill_slave_mac !== undefined) {
+    const mac = normalizeSlaveMac(row.dilution_fill_slave_mac);
+    if (mac !== base.dilution_fill_slave_mac) patch.dilution_fill_slave_mac = mac;
+  }
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
 function parseConfig(data: Record<string, unknown>): Omit<EcDilutionConfigSnapshot, 'isLoading' | 'isSaving'> {
   return {
     dilution_auto_enabled: Boolean(data.dilution_auto_enabled),
@@ -58,6 +109,8 @@ function parseConfig(data: Record<string, unknown>): Omit<EcDilutionConfigSnapsh
 
 export function useEcDilutionConfig(deviceId: string, enabled = true) {
   const [snapshot, setSnapshot] = useState<EcDilutionConfigSnapshot>(DEFAULT);
+  const serverRef = useRef<ServerDilution | null>(null);
+  const savingRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!enabled || !deviceId?.trim()) {
@@ -73,7 +126,9 @@ export function useEcDilutionConfig(deviceId: string, enabled = true) {
         return;
       }
       const data = await res.json();
-      setSnapshot({ ...parseConfig(data), isLoading: false, isSaving: false });
+      const parsed = parseConfig(data);
+      serverRef.current = serverOf(parsed);
+      setSnapshot({ ...parsed, isLoading: false, isSaving: false });
     } catch {
       setSnapshot((s) => ({ ...s, isLoading: false }));
     }
@@ -83,6 +138,7 @@ export function useEcDilutionConfig(deviceId: string, enabled = true) {
     async (patch: Partial<EcDilutionConfigSnapshot>) => {
       if (!deviceId?.trim()) return { ok: false as const, error: 'device_id ausente' };
 
+      savingRef.current = true;
       setSnapshot((s) => ({ ...s, isSaving: true }));
       try {
         const body: Record<string, unknown> = { device_id: deviceId.trim() };
@@ -119,13 +175,16 @@ export function useEcDilutionConfig(deviceId: string, enabled = true) {
 
         if (!res.ok) {
           const parsed = await parseConfigApiError(res);
+          savingRef.current = false;
           setSnapshot((s) => ({ ...s, isSaving: false }));
           return { ok: false as const, error: parsed.message };
         }
 
         await refresh();
+        savingRef.current = false;
         return { ok: true as const };
       } catch (e) {
+        savingRef.current = false;
         setSnapshot((s) => ({ ...s, isSaving: false }));
         return {
           ok: false as const,
@@ -137,6 +196,8 @@ export function useEcDilutionConfig(deviceId: string, enabled = true) {
   );
 
   useEffect(() => {
+    serverRef.current = null;
+    savingRef.current = false;
     setSnapshot({ ...DEFAULT, isLoading: true });
   }, [deviceId]);
 
@@ -144,6 +205,19 @@ export function useEcDilutionConfig(deviceId: string, enabled = true) {
     if (!enabled || !deviceId?.trim()) return;
     refresh();
   }, [deviceId, enabled, refresh]);
+
+  useEffect(() => {
+    if (!enabled || !deviceId?.trim()) return;
+    return subscribeAutoEnabled(deviceId, 'ec_config_view', (row) => {
+      if (savingRef.current) return;
+      const base = serverRef.current;
+      if (!base) return;
+      const patch = patchFromRow(base, row);
+      if (!patch) return;
+      serverRef.current = { ...base, ...patch };
+      setSnapshot((s) => ({ ...s, ...patch }));
+    });
+  }, [deviceId, enabled]);
 
   const updateLocal = useCallback(
     (patch: Partial<EcDilutionConfigSnapshot>) => {

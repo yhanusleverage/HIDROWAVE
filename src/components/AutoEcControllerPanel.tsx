@@ -115,6 +115,14 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   const [pulseGapSec, setPulseGapSec] = useState<number>(2.0);
   const justSavedRef = useRef<boolean>(false);
   const remoteEcRef = useRef<ControllerConfigChange | null>(null);
+  const pendingEcRef = useRef<ControllerConfigChange | null>(null);
+  const applyRemoteEcRef = useRef<(row: ControllerConfigChange) => void>(() => {});
+  const releaseJustSaved = useCallback(() => {
+    justSavedRef.current = false;
+    const pending = pendingEcRef.current;
+    pendingEcRef.current = null;
+    if (pending) applyRemoteEcRef.current(pending);
+  }, []);
   const savingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [configSyncTick, setConfigSyncTick] = useState(0);
   const [savedConfigSnapshot, setSavedConfigSnapshot] = useState<string | null>(null);
@@ -928,6 +936,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       
       // ✅ SOLUCIÓN DATA RACE: Marcar que acabamos de guardar para prevenir recarga inmediata
       justSavedRef.current = true;
+      pendingEcRef.current = null;
       
       // Limpar timeout anterior si existe
       if (savingTimeoutRef.current) {
@@ -936,7 +945,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       
       // Desactivar flag después de 2 segundos (tiempo suficiente para que el guardado se complete en Supabase)
       savingTimeoutRef.current = setTimeout(() => {
-        justSavedRef.current = false;
+        releaseJustSaved();
         console.log('✅ [EC Controller] Flag de guardado desactivado, recargas permitidas nuevamente');
       }, 2000);
       
@@ -1189,17 +1198,13 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
   useEffect(() => {
     if (!deviceId || deviceId === 'default_device') return;
     setAutoRtStatus('connecting');
-    return subscribeAutoEnabled(
-      deviceId,
-      'ec_config_view',
-      (row) => {
+    const applyRemoteEc = (row: ControllerConfigChange) => {
         const prev = remoteEcRef.current;
         if (!prev) {
           remoteEcRef.current = row;
           return;
         }
         remoteEcRef.current = { ...prev, ...row };
-        if (justSavedRef.current) return;
 
         let touched = false;
         if (
@@ -1255,6 +1260,17 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
           touched = true;
         }
         if (touched) markConfigSynced();
+    };
+    applyRemoteEcRef.current = applyRemoteEc;
+    return subscribeAutoEnabled(
+      deviceId,
+      'ec_config_view',
+      (row) => {
+        if (justSavedRef.current) {
+          pendingEcRef.current = row;
+          return;
+        }
+        applyRemoteEc(row);
       },
       (status) => setAutoRtStatus(status)
     );
@@ -1272,6 +1288,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
     setAutoEnabled(newValue);
     setAutoTogglePending(true);
     justSavedRef.current = true;
+    pendingEcRef.current = null;
     if (savingTimeoutRef.current) clearTimeout(savingTimeoutRef.current);
 
     try {
@@ -1332,7 +1349,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       }
 
       savingTimeoutRef.current = setTimeout(() => {
-        justSavedRef.current = false;
+        releaseJustSaved();
       }, 2000);
 
       if (newValue) hwToast.success(ec.toastActivated, 'AUTO EC');

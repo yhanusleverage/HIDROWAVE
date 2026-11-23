@@ -25,6 +25,11 @@ export type ControllerConfigChange = {
   relay_ph_down?: number | null;
   flow_rate_ph_up?: number;
   flow_rate_ph_down?: number;
+  dilution_auto_enabled?: boolean;
+  dilution_drain_relay?: number;
+  dilution_fill_relay?: number;
+  dilution_drain_slave_mac?: string;
+  dilution_fill_slave_mac?: string;
 };
 
 type AutoEnabledListener = {
@@ -47,6 +52,20 @@ function relayOrNull(value: unknown): number | null | undefined {
   const n = finiteNumber(value);
   if (n === undefined || !Number.isInteger(n) || n < 0 || n > 7) return undefined;
   return n;
+}
+
+/** Relé de dilución: -1 es “sin relé”. */
+function dilutionRelay(value: unknown): number | undefined {
+  if (value === null) return -1;
+  const n = finiteNumber(value);
+  if (n === undefined || !Number.isInteger(n) || n < -1 || n > 7) return undefined;
+  return n;
+}
+
+function dilutionMac(value: unknown): string | undefined {
+  if (value === null) return '';
+  if (typeof value === 'string') return value;
+  return undefined;
 }
 
 /** Normaliza payload.new de Postgres. Una clave ausente no pisa el formulario. */
@@ -87,6 +106,17 @@ export function pickControllerConfigChange(
   if (flowUp !== undefined) out.flow_rate_ph_up = flowUp;
   const flowDown = finiteNumber(raw.flow_rate_ph_down);
   if (flowDown !== undefined) out.flow_rate_ph_down = flowDown;
+  if (typeof raw.dilution_auto_enabled === 'boolean') {
+    out.dilution_auto_enabled = raw.dilution_auto_enabled;
+  }
+  const dilDrain = dilutionRelay(raw.dilution_drain_relay);
+  if (dilDrain !== undefined) out.dilution_drain_relay = dilDrain;
+  const dilFill = dilutionRelay(raw.dilution_fill_relay);
+  if (dilFill !== undefined) out.dilution_fill_relay = dilFill;
+  const dilDrainMac = dilutionMac(raw.dilution_drain_slave_mac);
+  if (dilDrainMac !== undefined) out.dilution_drain_slave_mac = dilDrainMac;
+  const dilFillMac = dilutionMac(raw.dilution_fill_slave_mac);
+  if (dilFillMac !== undefined) out.dilution_fill_slave_mac = dilFillMac;
   return out;
 }
 
