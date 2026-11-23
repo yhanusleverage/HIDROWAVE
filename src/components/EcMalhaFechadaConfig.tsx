@@ -5,6 +5,8 @@ import toast from 'react-hot-toast';
 import { SignalIcon } from '@heroicons/react/24/outline';
 import { EcDilutionPreviewCard } from '@/components/EcDilutionPreviewCard';
 import { SlaveRelaySelect } from '@/components/SlaveRelaySelect';
+import { HwSwitch } from '@/components/ui/HwSwitch';
+import { useLanguage } from '@/contexts/LanguageContext';
 import type { ESPNowSlave } from '@/lib/esp-now-slaves';
 import { useEcDilutionConfig } from '@/hooks/useEcDilutionConfig';
 import { useLastEcDilution } from '@/hooks/useLastEcDilution';
@@ -35,8 +37,9 @@ export function EcMalhaFechadaConfig({
   tankVolumeL,
   espnowSlaves,
   locked = false,
-  autoEnabled = false,
 }: EcMalhaFechadaConfigProps) {
+  const { t } = useLanguage();
+  const dil = t.automacao.dilution;
   const config = useEcDilutionConfig(deviceId, Boolean(deviceId?.trim()));
   const lastDilution = useLastEcDilution(deviceId, Boolean(deviceId?.trim()));
 
@@ -94,15 +97,28 @@ export function EcMalhaFechadaConfig({
       dilution_drain_relay: config.dilution_drain_relay,
       dilution_fill_slave_mac: config.dilution_fill_slave_mac,
       dilution_fill_relay: config.dilution_fill_relay,
-      dilution_auto_enabled: autoEnabled,
+      dilution_auto_enabled: config.dilution_auto_enabled,
     });
 
     if (result.ok) {
-      hwToast.success('Diluição automática salva', 'AUTO EC');
+      hwToast.success(dil.toastSaved, 'AUTO EC');
     } else {
-      toast.error(result.error ?? 'Erro ao salvar');
+      toast.error(result.error ?? dil.toastSaveError);
     }
-  }, [autoEnabled, config, espnowSlaves]);
+  }, [config, dil.toastSaveError, dil.toastSaved, espnowSlaves]);
+
+  const handleToggleAuto = useCallback(
+    async (next: boolean) => {
+      if (next === config.dilution_auto_enabled) return;
+      const result = await config.save({ dilution_auto_enabled: next });
+      if (result.ok) {
+        hwToast.info(next ? dil.toastAutoOn : dil.toastAutoOff, 'AUTO EC');
+      } else {
+        toast.error(result.error ?? dil.toastToggleError);
+      }
+    },
+    [config, dil.toastAutoOff, dil.toastAutoOn, dil.toastToggleError]
+  );
 
   const setDrainRef = (ref: SlaveRelayRef | null) => {
     config.updateLocal({
@@ -124,11 +140,7 @@ export function EcMalhaFechadaConfig({
         <h3 className="text-base font-bold text-dark-text mb-1">
           Diluição automática da solução
         </h3>
-        <p className="text-xs sm:text-sm text-dark-textSecondary">
-          Quando a EC fica alta demais (acima do valor desejado + tolerância), o sistema drena
-          parte da solução, repõe com água limpa até o nível alto e recircula — tudo junto com o
-          Auto EC, sem liga/desliga separado. Use os relés Atlas de dreno e reposição abaixo.
-        </p>
+        <p className="text-xs sm:text-sm text-dark-textSecondary">{dil.hint}</p>
       </div>
 
       <div className="flex items-center gap-2 text-xs text-dark-textSecondary rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2">
@@ -173,14 +185,26 @@ export function EcMalhaFechadaConfig({
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => void handleSave()}
-        disabled={controlsDisabled}
-        className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg disabled:opacity-50"
-      >
-        {config.isSaving ? 'Salvando…' : 'Salvar diluição automática'}
-      </button>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <HwSwitch
+            checked={config.dilution_auto_enabled}
+            disabled={controlsDisabled}
+            accent="violet"
+            title={dil.switchTitle}
+            hint={config.dilution_auto_enabled ? dil.autoActive : dil.autoInactive}
+            onChange={(next) => void handleToggleAuto(next)}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={controlsDisabled}
+          className="px-4 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg disabled:opacity-50 whitespace-nowrap"
+        >
+          {config.isSaving ? dil.saving : dil.save}
+        </button>
+      </div>
 
       {lastDilution.volumeMeasuredL != null && (
         <p className="text-xs text-dark-textSecondary border-t border-dark-border pt-3">

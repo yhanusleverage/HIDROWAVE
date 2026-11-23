@@ -33,6 +33,7 @@ import {
 } from '@/lib/slave-relay-allocation';
 import { HW_TEXT } from '@/lib/design-tokens';
 import { HwSwitch } from '@/components/ui/HwSwitch';
+import { TopicHelp } from '@/components/automacao/TopicHelp';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toBcp47 } from '@/lib/locale';
 
@@ -222,10 +223,17 @@ export function EcDilutionSection({
             ) : (
               <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary shrink-0" />
             )}
-            <h3 className="text-lg font-semibold text-dark-text flex items-center gap-2 min-w-0">
-              <BeakerIcon className={`w-5 h-5 shrink-0 ${HW_TEXT.wait}`} aria-hidden />
-              <span className="truncate">{dil.title}</span>
-            </h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-lg font-semibold text-dark-text flex items-center gap-2 min-w-0">
+                <BeakerIcon className={`w-5 h-5 shrink-0 ${HW_TEXT.wait}`} aria-hidden />
+                <span className="truncate">{dil.title}</span>
+              </h3>
+              <TopicHelp
+                title={t.automacao.topicHelp.dilution.title}
+                meaning={t.automacao.topicHelp.dilution.meaning}
+                how={t.automacao.topicHelp.dilution.how}
+              />
+            </div>
           </div>
           <OperationStateBadges
             variant="header"
@@ -243,18 +251,6 @@ export function EcDilutionSection({
             }
             operationRemainingSec={dilutionState.operationRemainingSec}
             accent="emerald"
-          />
-        </div>
-        <div
-          className="w-full sm:w-72 shrink-0"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <HwSwitch
-            checked={config.dilution_auto_enabled}
-            disabled={controlsDisabled || config.isLoading}
-            accent="violet"
-            title={dil.switchTitle}
-            onChange={(next) => void handleToggleAuto(next)}
           />
         </div>
         {onToggleLock && (
@@ -283,6 +279,27 @@ export function EcDilutionSection({
       {expanded && (
         <div className="p-4 sm:p-6 border-t border-dark-border space-y-6">
           <p className="text-xs sm:text-sm text-dark-textSecondary">{dil.hint}</p>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <HwSwitch
+                checked={config.dilution_auto_enabled}
+                disabled={controlsDisabled || config.isLoading}
+                accent="violet"
+                title={dil.switchTitle}
+                hint={config.dilution_auto_enabled ? dil.autoActive : dil.autoInactive}
+                onChange={(next) => void handleToggleAuto(next)}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleSaveConfig()}
+              disabled={controlsDisabled}
+              className="px-4 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg disabled:opacity-50 whitespace-nowrap"
+            >
+              {config.isSaving ? dil.saving : dil.save}
+            </button>
+          </div>
 
           <div className="flex items-center gap-2 text-xs text-dark-textSecondary rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2">
             <SignalIcon className="w-4 h-4 text-violet-400 shrink-0" />
@@ -359,17 +376,6 @@ export function EcDilutionSection({
                 emptyMessage={dil.emptyRelays}
               />
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => void handleSaveConfig()}
-              disabled={controlsDisabled}
-              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg disabled:opacity-50"
-            >
-              {config.isSaving ? dil.saving : dil.save}
-            </button>
           </div>
 
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4">

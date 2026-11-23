@@ -12,6 +12,7 @@ import {
   PlayIcon,
 } from '@heroicons/react/24/outline';
 import { SectionHeader } from '@/components/ui/SectionHeader';
+import { TopicHelp } from '@/components/automacao/TopicHelp';
 import { HwBadge } from '@/components/ui/HwBadge';
 import { HwSelect } from '@/components/ui/HwInput';
 import { GrowCycleTimelineChart } from '@/components/grow-cycle/GrowCycleTimelineChart';
@@ -65,7 +66,7 @@ export function GrowCycleTimelinePanel({
   devices = [],
   onDeviceChange,
 }: GrowCycleTimelinePanelProps) {
-  const { locale } = useLanguage();
+  const { locale, t } = useLanguage();
   const gc = useMemo(() => getGrowCycleChrome(locale), [locale]);
   const phaseLabels = gc.phaseLabels;
   const searchParams = useSearchParams();
@@ -301,15 +302,22 @@ export function GrowCycleTimelinePanel({
 
         {embedded && (
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <SectionHeader
-              title={gc.cicloTitle}
-              subtitle={(isDemoMode ? gc.subtitleDemo : gc.subtitleLiveEmpty)
-                .replace('{name}', recipePlan.name)
-                .replace('{weeks}', String(totalWeeks))}
-              accent="brand"
-              size="comfortable"
-              className="mb-0"
-            />
+            <div className="flex items-start gap-2 min-w-0">
+              <SectionHeader
+                title={gc.cicloTitle}
+                subtitle={(isDemoMode ? gc.subtitleDemo : gc.subtitleLiveEmpty)
+                  .replace('{name}', recipePlan.name)
+                  .replace('{weeks}', String(totalWeeks))}
+                accent="brand"
+                size="comfortable"
+                className="mb-0"
+              />
+              <TopicHelp
+                title={t.automacao.topicHelp.timeline.title}
+                meaning={t.automacao.topicHelp.timeline.meaning}
+                how={t.automacao.topicHelp.timeline.how}
+              />
+            </div>
             <div className="flex flex-wrap gap-2">
               <NavLink
                 href="/automacao?tab=ec"

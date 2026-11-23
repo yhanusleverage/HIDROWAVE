@@ -159,6 +159,63 @@ export const appPtBR: AppTranslations = {
       timeline: 'Ciclo de Cultivo',
       timelineSub: 'Receita — semanas S0…Sn',
     },
+    topicHelp: {
+      procedures: {
+        title: 'Procedimentos',
+        meaning: 'Aqui se nomeia o Atlas e se marca a bomba de circulação. O Core usa isso para saber qual relé é de campo.',
+        how: 'Dê um nome ao Atlas, escolha o relé de recirculação e salve. Sem isso o enchimento e o dreno não sabem qual Atlas acionar.',
+      },
+      ec: {
+        title: 'Auto EC',
+        meaning: 'O Core mede a EC e doseia nutrientes no pulso até o alvo, dentro da banda.',
+        how: 'Calibre a vazão, monte a receita em ml/L, salve e ligue o Auto EC. O candado pede a senha para mudar valores.',
+      },
+      ph: {
+        title: 'Auto pH',
+        meaning: 'O Core corrige o pH com as bombas de ácido e base do pulso.',
+        how: 'Escolha os relés pH+ e pH−, o alvo e a banda, salve e ligue. Sem caudal calibrado a dose não sai.',
+      },
+      rules: {
+        title: 'Regras e motor',
+        meaning: 'Regras que o Core executa sozinho: ligar relé do Atlas por nível, tempo ou script.',
+        how: 'Crie ou ative uma regra. Ativa entra na coluna verde e o Core a corre. Inativa fica guardada e não atua.',
+      },
+      timeline: {
+        title: 'Ciclo de cultivo',
+        meaning: 'A receita da cultura semana a semana. O Core não inventa a semana: segue o que está marcado aqui.',
+        how: 'Escolha o plano, veja S0…Sn e os horários. Mudar a semana muda o que o motor pode disparar.',
+      },
+      dilution: {
+        title: 'Diluição',
+        meaning: 'Se a EC passa do alvo, o Atlas drena solução e repõe água limpa.',
+        how: 'Aponte o relé de dreno e o de água, salve, e ligue o interruptor. O manual pede volume e confirmação.',
+      },
+      manual: {
+        title: 'Relés manuais',
+        meaning: 'Liga e desliga relés do Atlas na hora, sem esperar uma regra.',
+        how: 'Atualize a lista, nomeie o relé e toque ON ou OFF. Se aparecer cadeado, uma regra ou o Auto está usando esse relé.',
+      },
+      engine: {
+        title: 'Motor de regras',
+        meaning: 'A lista do que o Core está autorizado a executar agora.',
+        how: 'Ativa sobe para a coluna verde. Desativar para a execução. O cadeado impede mudanças sem senha.',
+      },
+      ecNutrition: {
+        title: 'Tabela de nutrientes',
+        meaning: 'A receita: cada parte, a bomba do pulso e os ml por litro de tanque.',
+        how: 'Adicione A, B, C… com bomba e ml/L. Sem vazão calibrada essa linha não doseia.',
+      },
+      ecHydro: {
+        title: 'Parâmetros',
+        meaning: 'Alvo de EC, banda, volume do tanque e a base da receita.',
+        how: 'Ajuste os números e salve. O Core só doseia abaixo do alvo, fora da banda.',
+      },
+      ecCycle: {
+        title: 'Ciclo',
+        meaning: 'De quanto em quanto tempo o Core volta a medir a EC e quanto mistura depois da dose.',
+        how: 'Intervalo curto reage antes. A recirculação é a espera para a leitura seguinte ser verdadeira.',
+      },
+    },
     mixInterlock: {
       ok: 'Recirculação OK',
       inactive: 'Recirculação inactiva',

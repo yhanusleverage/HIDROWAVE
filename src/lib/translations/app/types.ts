@@ -182,6 +182,19 @@ export interface AppTranslations {
       timeline: string;
       timelineSub: string;
     };
+    topicHelp: {
+      procedures: { title: string; meaning: string; how: string };
+      ec: { title: string; meaning: string; how: string };
+      ph: { title: string; meaning: string; how: string };
+      rules: { title: string; meaning: string; how: string };
+      timeline: { title: string; meaning: string; how: string };
+      dilution: { title: string; meaning: string; how: string };
+      manual: { title: string; meaning: string; how: string };
+      engine: { title: string; meaning: string; how: string };
+      ecNutrition: { title: string; meaning: string; how: string };
+      ecHydro: { title: string; meaning: string; how: string };
+      ecCycle: { title: string; meaning: string; how: string };
+    };
     mixInterlock: {
       ok: string;
       inactive: string;

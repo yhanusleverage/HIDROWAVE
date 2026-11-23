@@ -18,6 +18,7 @@ import { usePhOperationState } from '@/hooks/usePhOperationState';
 import { formatSensorValue } from '@/lib/format-sensor-value';
 import { PhDosageDetail } from '@/components/PhDosageDetail';
 import OperationStateBadges from '@/components/OperationStateBadges';
+import { TopicHelp } from '@/components/automacao/TopicHelp';
 import OperationStateBanners from '@/components/OperationStateBanners';
 import { formatPhCalibrationLine } from '@/lib/ph-calibration';
 import {
@@ -1067,10 +1068,17 @@ export default function PhControllerPanel({
             ) : (
               <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary shrink-0" />
             )}
-            <h3 className="text-lg font-semibold text-dark-text flex items-center gap-2 min-w-0">
-              <BeakerIcon className="w-5 h-5 text-violet-400 shrink-0" aria-hidden />
-              <span className="truncate">{ph.title}</span>
-            </h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-lg font-semibold text-dark-text flex items-center gap-2 min-w-0">
+                <BeakerIcon className="w-5 h-5 text-violet-400 shrink-0" aria-hidden />
+                <span className="truncate">{ph.title}</span>
+              </h3>
+              <TopicHelp
+                title={t.automacao.topicHelp.ph.title}
+                meaning={t.automacao.topicHelp.ph.meaning}
+                how={t.automacao.topicHelp.ph.how}
+              />
+            </div>
           </div>
           <OperationStateBadges
             variant="header"

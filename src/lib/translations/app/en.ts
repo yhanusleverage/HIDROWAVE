@@ -158,6 +158,63 @@ export const appEn: AppTranslations = {
       timeline: 'Grow cycle',
       timelineSub: 'Recipe — weeks S0…Sn',
     },
+    topicHelp: {
+      procedures: {
+        title: 'Procedures',
+        meaning: 'Name the Atlas and mark the circulation pump. The core uses that to know which field relay to drive.',
+        how: 'Name the Atlas, pick the recirculation relay and save. Without that, fill and drain do not know which Atlas to use.',
+      },
+      ec: {
+        title: 'Auto EC',
+        meaning: 'The core reads EC and doses nutrients on the pulso until the target, inside the band.',
+        how: 'Calibrate flow, build the ml/L recipe, save and turn Auto EC on. The lock asks for the password before edits.',
+      },
+      ph: {
+        title: 'Auto pH',
+        meaning: 'The core corrects pH with the acid and base pumps on the pulso.',
+        how: 'Pick pH+ and pH− relays, target and band, save and turn it on. No calibrated flow means no dose.',
+      },
+      rules: {
+        title: 'Rules and engine',
+        meaning: 'Rules the core runs on its own: an Atlas relay by level, time or script.',
+        how: 'Create or enable a rule. Enabled sits in the green column and the core runs it. Disabled stays stored and does nothing.',
+      },
+      timeline: {
+        title: 'Grow cycle',
+        meaning: 'The crop recipe week by week. The core does not invent the week: it follows what is marked here.',
+        how: 'Pick the plan, read S0…Sn and the times. Changing the week changes what the engine may fire.',
+      },
+      dilution: {
+        title: 'Dilution',
+        meaning: 'If EC goes past the target, the Atlas drains solution and refills clean water.',
+        how: 'Point the drain relay and the water relay, save, and turn the switch on. Manual asks for volume and a confirm.',
+      },
+      manual: {
+        title: 'Manual relays',
+        meaning: 'Turn Atlas relays on and off now, without waiting for a rule.',
+        how: 'Refresh the list, name the relay and tap ON or OFF. A lock means a rule or Auto is using that relay.',
+      },
+      engine: {
+        title: 'Rule engine',
+        meaning: 'What the core is allowed to run right now.',
+        how: 'Enable moves a rule to the green column. Disable stops it. The lock blocks changes without the password.',
+      },
+      ecNutrition: {
+        title: 'Nutrient table',
+        meaning: 'The recipe: each part, the pulso pump and ml per litre of tank.',
+        how: 'Add A, B, C… with a pump and ml/L. Without calibrated flow that row does not dose.',
+      },
+      ecHydro: {
+        title: 'Parameters',
+        meaning: 'EC target, band, tank volume and the recipe base.',
+        how: 'Set the numbers and save. The core only doses below the target, outside the band.',
+      },
+      ecCycle: {
+        title: 'Cycle',
+        meaning: 'How often the core reads EC again and how long it mixes after a dose.',
+        how: 'A short interval reacts sooner. Recirculation is the wait so the next reading is real.',
+      },
+    },
     mixInterlock: {
       ok: 'Recirculation OK',
       inactive: 'Recirculation inactive',

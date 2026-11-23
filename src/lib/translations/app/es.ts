@@ -159,6 +159,63 @@ export const appEs: AppTranslations = {
       timeline: 'Ciclo de cultivo',
       timelineSub: 'Receta — semanas S0…Sn',
     },
+    topicHelp: {
+      procedures: {
+        title: 'Procedimientos',
+        meaning: 'Aquí se nombra el Atlas y se marca la bomba de circulación. El core usa eso para saber qué relé es de campo.',
+        how: 'Ponle nombre al Atlas, elige el relé de recirculación y guarda. Sin eso el llenado y el drenaje no saben qué Atlas accionar.',
+      },
+      ec: {
+        title: 'Auto EC',
+        meaning: 'El core mide la EC y dosifica nutrientes en el pulso hasta el objetivo, dentro de la banda.',
+        how: 'Calibra el caudal, arma la receta en ml/L, guarda y enciende Auto EC. El candado pide la clave para cambiar valores.',
+      },
+      ph: {
+        title: 'Auto pH',
+        meaning: 'El core corrige el pH con las bombas de ácido y base del pulso.',
+        how: 'Elige los relés pH+ y pH−, el objetivo y la banda, guarda y enciende. Sin caudal calibrado no hay dosis.',
+      },
+      rules: {
+        title: 'Reglas y motor',
+        meaning: 'Reglas que el core ejecuta solo: encender un relé del Atlas por nivel, tiempo o script.',
+        how: 'Crea o activa una regla. Activa entra en la columna verde y el core la corre. Inactiva queda guardada y no actúa.',
+      },
+      timeline: {
+        title: 'Ciclo de cultivo',
+        meaning: 'La receta del cultivo semana a semana. El core no inventa la semana: sigue lo marcado aquí.',
+        how: 'Elige el plan, mira S0…Sn y los horarios. Cambiar la semana cambia lo que el motor puede disparar.',
+      },
+      dilution: {
+        title: 'Dilución',
+        meaning: 'Si la EC pasa del objetivo, el Atlas drena solución y repone agua limpia.',
+        how: 'Señala el relé de drenaje y el de agua, guarda y enciende el interruptor. El manual pide volumen y confirmación.',
+      },
+      manual: {
+        title: 'Relés manuales',
+        meaning: 'Enciende y apaga relés del Atlas al momento, sin esperar una regla.',
+        how: 'Actualiza la lista, nombra el relé y toca ON u OFF. Si hay candado, una regla o el Auto está usando ese relé.',
+      },
+      engine: {
+        title: 'Motor de reglas',
+        meaning: 'La lista de lo que el core puede ejecutar ahora.',
+        how: 'Activar sube a la columna verde. Desactivar para la ejecución. El candado impide cambios sin clave.',
+      },
+      ecNutrition: {
+        title: 'Tabla de nutrientes',
+        meaning: 'La receta: cada parte, la bomba del pulso y los ml por litro de tanque.',
+        how: 'Agrega A, B, C… con bomba y ml/L. Sin caudal calibrado esa línea no dosifica.',
+      },
+      ecHydro: {
+        title: 'Parámetros',
+        meaning: 'Objetivo de EC, banda, volumen del tanque y la base de la receta.',
+        how: 'Ajusta los números y guarda. El core solo dosifica por debajo del objetivo, fuera de la banda.',
+      },
+      ecCycle: {
+        title: 'Ciclo',
+        meaning: 'Cada cuánto el core vuelve a medir la EC y cuánto mezcla después de la dosis.',
+        how: 'Un intervalo corto reacciona antes. La recirculación es la espera para que la lectura siguiente sea real.',
+      },
+    },
     mixInterlock: {
       ok: 'Recirculación OK',
       inactive: 'Recirculación inactiva',

@@ -98,6 +98,7 @@ import type { RelayCommandMode } from '@/lib/mqtt-relay-command-schema';
 import { getMasterLocalRelayNames } from '@/lib/nutrition-plan';
 import { useRelayAllocation } from '@/hooks/useRelayAllocation';
 import { AutomacaoTabs, useAutomacaoTab } from '@/components/automacao/AutomacaoTabs';
+import { TopicHelp } from '@/components/automacao/TopicHelp';
 import { ProceduresTabPanel } from '@/components/automacao/ProceduresTabPanel';
 import { showLockUnlockToast, validateAdminPassword } from '@/lib/automacao/admin-lock';
 
@@ -2307,7 +2308,14 @@ export default function AutomacaoPageClient() {
         {/* ⚡ TESTE RELAYS MANUALMENTE (ESP-NOW - CARGA) - EXISTENTE */}
         <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
           <div className="p-4 border-b border-dark-border">
-            <h2 className="text-base sm:text-lg font-semibold text-dark-text break-words">{ap.manual.title}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-semibold text-dark-text break-words">{ap.manual.title}</h2>
+              <TopicHelp
+                title={ap.topicHelp.manual.title}
+                meaning={ap.topicHelp.manual.meaning}
+                how={ap.topicHelp.manual.how}
+              />
+            </div>
             <p className="text-xs sm:text-sm text-dark-textSecondary mt-1 break-words">{ap.manual.subtitle}</p>
           </div>
           
@@ -3189,7 +3197,14 @@ export default function AutomacaoPageClient() {
                 <ChevronDownIcon className="w-5 h-5 text-dark-textSecondary flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
-                <h2 className="text-lg sm:text-xl font-bold text-dark-text">{ap.engine.title}</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg sm:text-xl font-bold text-dark-text">{ap.engine.title}</h2>
+                  <TopicHelp
+                    title={ap.topicHelp.engine.title}
+                    meaning={ap.topicHelp.engine.meaning}
+                    how={ap.topicHelp.engine.how}
+                  />
+                </div>
                 <p className="text-xs sm:text-sm text-dark-textSecondary mt-1">{ap.engine.subtitle}</p>
               </div>
             </div>

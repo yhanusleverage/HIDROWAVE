@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { TopicHelp } from '@/components/automacao/TopicHelp';
 
 /** `schedules` removido da barra — editor vive dentro de Ciclo de Cultivo (timeline). */
 export type AutomacaoTabId = 'timeline' | 'procedures' | 'rules' | 'ec' | 'ph';
@@ -32,20 +33,21 @@ interface AutomacaoTabsProps {
 
 export function AutomacaoTabs({ activeTab, onTabChange }: AutomacaoTabsProps) {
   const { t } = useLanguage();
+  const help = t.automacao.topicHelp;
   const tabs = TAB_IDS.map((id) => {
     if (id === 'procedures') {
-      return { id, label: t.automacao.tabs.procedures, subtitle: t.automacao.tabs.proceduresSub };
+      return { id, label: t.automacao.tabs.procedures, subtitle: t.automacao.tabs.proceduresSub, help: help.procedures };
     }
     if (id === 'ec') {
-      return { id, label: t.automacao.tabs.ec, subtitle: t.automacao.tabs.ecSub };
+      return { id, label: t.automacao.tabs.ec, subtitle: t.automacao.tabs.ecSub, help: help.ec };
     }
     if (id === 'ph') {
-      return { id, label: t.automacao.tabs.ph, subtitle: t.automacao.tabs.phSub };
+      return { id, label: t.automacao.tabs.ph, subtitle: t.automacao.tabs.phSub, help: help.ph };
     }
     if (id === 'rules') {
-      return { id, label: t.automacao.tabs.rules, subtitle: t.automacao.tabs.rulesSub };
+      return { id, label: t.automacao.tabs.rules, subtitle: t.automacao.tabs.rulesSub, help: help.rules };
     }
-    return { id, label: t.automacao.tabs.timeline, subtitle: t.automacao.tabs.timelineSub };
+    return { id, label: t.automacao.tabs.timeline, subtitle: t.automacao.tabs.timelineSub, help: help.timeline };
   });
 
   return (
@@ -57,21 +59,25 @@ export function AutomacaoTabs({ activeTab, onTabChange }: AutomacaoTabsProps) {
         {tabs.map((tab) => {
           const selected = activeTab === tab.id;
           return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onTabChange(tab.id)}
-              className={`min-w-0 px-2 sm:px-4 py-3 text-sm font-medium border-b-2 transition-colors rounded-t-lg text-center ${
-                selected
-                  ? 'border-aqua-400 text-aqua-300 bg-dark-card/80'
-                  : 'border-transparent text-dark-textSecondary hover:text-dark-text hover:border-dark-border'
-              }`}
-            >
-              <span className="block truncate">{tab.label}</span>
-              <span className="block text-[10px] font-normal opacity-70 mt-0.5 truncate hidden sm:block">
-                {tab.subtitle}
-              </span>
-            </button>
+            <div key={tab.id} className="relative min-w-0 flex flex-col items-center">
+              <button
+                type="button"
+                onClick={() => onTabChange(tab.id)}
+                className={`w-full min-w-0 px-2 sm:px-4 py-3 pr-7 text-sm font-medium border-b-2 transition-colors rounded-t-lg text-center ${
+                  selected
+                    ? 'border-aqua-400 text-aqua-300 bg-dark-card/80'
+                    : 'border-transparent text-dark-textSecondary hover:text-dark-text hover:border-dark-border'
+                }`}
+              >
+                <span className="block truncate">{tab.label}</span>
+                <span className="block text-[10px] font-normal opacity-70 mt-0.5 truncate hidden sm:block">
+                  {tab.subtitle}
+                </span>
+              </button>
+              <div className="absolute right-1 top-2">
+                <TopicHelp title={tab.help.title} meaning={tab.help.meaning} how={tab.help.how} />
+              </div>
+            </div>
           );
         })}
       </nav>

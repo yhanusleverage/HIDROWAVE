@@ -6,6 +6,7 @@ import NavLink from '@/components/NavLink';
 import { toast } from 'react-hot-toast';
 import { hwToast } from '@/lib/control-toast';
 import OperationStateBadges from '@/components/OperationStateBadges';
+import { TopicHelp } from '@/components/automacao/TopicHelp';
 import OperationStateBanners from '@/components/OperationStateBanners';
 import {
   ChevronUpIcon,
@@ -1357,7 +1358,14 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       <div className="bg-dark-card border border-dark-border rounded-lg shadow-lg overflow-hidden mb-6">
         <div className="w-full p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-dark-border">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 flex-1 min-w-0">
-            <h3 className="text-lg font-semibold text-dark-text">{ec.title}</h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-lg font-semibold text-dark-text">{ec.title}</h3>
+              <TopicHelp
+                title={t.automacao.topicHelp.ec.title}
+                meaning={t.automacao.topicHelp.ec.meaning}
+                how={t.automacao.topicHelp.ec.how}
+              />
+            </div>
             <OperationStateBadges
               variant="header"
               autoEnabled={autoEnabled}
@@ -1560,7 +1568,14 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                           <div className="mb-6 sm:mb-8 pb-6 sm:pb-8 border-b border-dark-border">
                             {/* Header com título e botão + Nutriente */}
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4">
-                              <h3 className="text-base sm:text-lg font-bold text-dark-text">{ec.nutritionTable}</h3>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-base sm:text-lg font-bold text-dark-text">{ec.nutritionTable}</h3>
+                                <TopicHelp
+                                  title={t.automacao.topicHelp.ecNutrition.title}
+                                  meaning={t.automacao.topicHelp.ecNutrition.meaning}
+                                  how={t.automacao.topicHelp.ecNutrition.how}
+                                />
+                              </div>
                               <button
                                 onClick={() => {
                                   setEditingNutrientIndex(null);
@@ -1893,7 +1908,14 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
                           
                           {/* Parâmetros hidropônicos */}
                           <div className="mb-8">
-                            <h3 className="text-base sm:text-lg font-bold text-dark-text mb-1">{ec.hydroParams}</h3>
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-base sm:text-lg font-bold text-dark-text">{ec.hydroParams}</h3>
+                              <TopicHelp
+                                title={t.automacao.topicHelp.ecHydro.title}
+                                meaning={t.automacao.topicHelp.ecHydro.meaning}
+                                how={t.automacao.topicHelp.ecHydro.how}
+                              />
+                            </div>
                             <p className="text-xs text-dark-textSecondary mb-4">
                               {ec.hydroParamsHint}
                             </p>
@@ -2044,7 +2066,14 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
           
                           {/* Parâmetros de ciclo */}
                           <div className="mb-8 pb-6 border-b border-dark-border">
-                            <h3 className="text-base sm:text-lg font-bold text-dark-text mb-1">{ec.cycleParams}</h3>
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-base sm:text-lg font-bold text-dark-text">{ec.cycleParams}</h3>
+                              <TopicHelp
+                                title={t.automacao.topicHelp.ecCycle.title}
+                                meaning={t.automacao.topicHelp.ecCycle.meaning}
+                                how={t.automacao.topicHelp.ecCycle.how}
+                              />
+                            </div>
                             <p className="text-xs text-dark-textSecondary mb-4">
                               Quando o firmware verifica a EC e quanto tempo aguarda a recirculação antes da próxima decisão.
                             </p>
