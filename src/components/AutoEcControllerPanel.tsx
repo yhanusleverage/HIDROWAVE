@@ -77,6 +77,24 @@ const EcMalhaFechadaConfig = dynamic(
 /** Mínimo ml/L por nutriente na tabela nutricional (Auto EC). Para excluir um nutriente, remova a linha. */
 const MIN_NUTRIENT_ML_PER_LITER = 0.1;
 
+function nutrientsFromRow(
+  raw: Array<Record<string, unknown>> | undefined
+): Array<{ name: string; relayNumber: number; mlPerLiter: number; flowRate?: number }> {
+  if (!raw) return [];
+  return raw
+    .filter((nut) => nut.active !== false && (Number(nut.mlPerLiter) || 0) >= MIN_NUTRIENT_ML_PER_LITER)
+    .map((nut) => {
+      const q = Number(nut.flowRate ?? nut.flow_rate);
+      const relay = Number(nut.relay ?? nut.relayNumber);
+      return {
+        name: typeof nut.name === 'string' ? nut.name : '',
+        relayNumber: Number.isFinite(relay) ? relay : 0,
+        mlPerLiter: Number(nut.mlPerLiter) || 0,
+        ...(Number.isFinite(q) && q > 0 ? { flowRate: q } : {}),
+      };
+    });
+}
+
 function nutrientFlowRateMlPerSec(n: { flowRate?: number }): number {
   const q = Number(n.flowRate);
   return Number.isFinite(q) && q > 0 ? q : 0;
@@ -635,6 +653,9 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
             : undefined,
         tolerance:
           config.tolerance !== undefined && !isNaN(config.tolerance) ? config.tolerance : undefined,
+        nutrients: Array.isArray(config.nutrients)
+          ? (config.nutrients as Array<Record<string, unknown>>)
+          : undefined,
       };
       markConfigSynced();
     } catch (error) {
@@ -1259,6 +1280,14 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
           setEcTolerance(row.tolerance);
           touched = true;
         }
+        if (row.nutrients && !isNutrientModalOpen) {
+          const next = nutrientsFromRow(row.nutrients);
+          const prevList = nutrientsFromRow(prev.nutrients);
+          if (JSON.stringify(next) !== JSON.stringify(prevList)) {
+            setNutrientsState(next);
+            touched = true;
+          }
+        }
         if (touched) markConfigSynced();
     };
     applyRemoteEcRef.current = applyRemoteEc;
@@ -1274,7 +1303,7 @@ export default function AutoEcControllerPanel({ deviceId, espnowSlaves }: AutoEc
       },
       (status) => setAutoRtStatus(status)
     );
-  }, [deviceId, autoTogglePending]);
+  }, [deviceId, autoTogglePending, isNutrientModalOpen]);
 
   const toggleAutoEc = async () => {
     const newValue = !autoEnabled;

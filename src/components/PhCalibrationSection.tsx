@@ -14,6 +14,7 @@ import {
 import { InstrumentCard } from '@/components/ui/InstrumentCard';
 import { HW_TEXT, HW_BG_SUBTLE } from '@/lib/design-tokens';
 import { fetchEcControllerMetrics } from '@/lib/controller-metrics';
+import { subscribeAutoEnabled } from '@/lib/realtime/auto-controller';
 import {
   calculateDoseDurationSeconds,
   doseDurationSecondsForRelay,
@@ -378,6 +379,33 @@ export function PhCalibrationSection({
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (!deviceId?.trim()) return;
+    const id = deviceId.trim();
+    const unsubEc = subscribeAutoEnabled(id, 'ec_config_view', (row) => {
+      if (row.k_value != null && row.k_value > 0) setEcKLive(row.k_value);
+      if (row.nutrients) {
+        const parts = row.nutrients
+          .map((n) => {
+            const q = Number(n.flowRate ?? n.flow_rate);
+            if (!(q > 0)) return null;
+            const label = typeof n.name === 'string' && n.name.trim() ? n.name.trim() : 'bomba';
+            return `${label} ${q.toFixed(3)}`;
+          })
+          .filter((s): s is string => Boolean(s));
+        setEcFlowRate(parts.length > 0 ? parts.join(' · ') : null);
+      }
+    });
+    const unsubPh = subscribeAutoEnabled(id, 'ph_config_view', (row) => {
+      if (row.k_acid != null && row.k_acid > 0) setKAcid(row.k_acid);
+      if (row.k_base != null && row.k_base > 0) setKBase(row.k_base);
+    });
+    return () => {
+      unsubEc();
+      unsubPh();
+    };
+  }, [deviceId]);
 
   const relayUpName =
     relayPhUp < 0

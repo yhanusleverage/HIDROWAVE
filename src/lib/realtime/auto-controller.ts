@@ -30,6 +30,10 @@ export type ControllerConfigChange = {
   dilution_fill_relay?: number;
   dilution_drain_slave_mac?: string;
   dilution_fill_slave_mac?: string;
+  nutrients?: Array<Record<string, unknown>>;
+  k_value?: number;
+  k_acid?: number;
+  k_base?: number;
 };
 
 type AutoEnabledListener = {
@@ -117,6 +121,17 @@ export function pickControllerConfigChange(
   if (dilDrainMac !== undefined) out.dilution_drain_slave_mac = dilDrainMac;
   const dilFillMac = dilutionMac(raw.dilution_fill_slave_mac);
   if (dilFillMac !== undefined) out.dilution_fill_slave_mac = dilFillMac;
+  if (Array.isArray(raw.nutrients)) {
+    out.nutrients = raw.nutrients.filter(
+      (item): item is Record<string, unknown> => !!item && typeof item === 'object'
+    );
+  }
+  const kValue = finiteNumber(raw.k_value);
+  if (kValue !== undefined && kValue > 0) out.k_value = kValue;
+  const kAcid = finiteNumber(raw.k_acid);
+  if (kAcid !== undefined && kAcid > 0) out.k_acid = kAcid;
+  const kBase = finiteNumber(raw.k_base);
+  if (kBase !== undefined && kBase > 0) out.k_base = kBase;
   return out;
 }
 

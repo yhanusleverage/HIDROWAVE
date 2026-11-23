@@ -373,6 +373,8 @@ export default function PhControllerPanel({
         relay_ph_down: optionalDoserRelay(data.relay_ph_down),
         flow_rate_ph_up: Number(data.flow_rate_ph_up) || 1.0,
         flow_rate_ph_down: Number(data.flow_rate_ph_down) || 1.0,
+        k_acid: data.k_acid != null && Number(data.k_acid) > 0 ? Number(data.k_acid) : undefined,
+        k_base: data.k_base != null && Number(data.k_base) > 0 ? Number(data.k_base) : undefined,
       };
       markConfigSynced();
     } catch (err) {
@@ -495,6 +497,14 @@ export default function PhControllerPanel({
         }
         if (configFieldChanged(prev, row, 'flow_rate_ph_down') && row.flow_rate_ph_down != null) {
           setFlowRatePhDown(row.flow_rate_ph_down);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'k_acid') && row.k_acid != null) {
+          setKAcid(row.k_acid);
+          touched = true;
+        }
+        if (configFieldChanged(prev, row, 'k_base') && row.k_base != null) {
+          setKBase(row.k_base);
           touched = true;
         }
         if (touched) markConfigSynced();
