@@ -32,6 +32,7 @@ import {
   type SlaveRelayRef,
 } from '@/lib/slave-relay-allocation';
 import { HW_TEXT } from '@/lib/design-tokens';
+import { HwSwitch } from '@/components/ui/HwSwitch';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toBcp47 } from '@/lib/locale';
 
@@ -143,17 +144,14 @@ export function EcDilutionSection({
     hwToast.success(dil.toastSaved, 'DILUIÇÃO EC');
   }, [config, espnowSlaves, dil]);
 
-  const handleToggleAuto = useCallback(async () => {
-    const next = !config.dilution_auto_enabled;
+  const handleToggleAuto = useCallback(async (next: boolean) => {
+    if (next === config.dilution_auto_enabled) return;
     const result = await config.save({ dilution_auto_enabled: next });
     if (!result.ok) {
       toast.error(result.error || dil.toastToggleError);
       return;
     }
-    hwToast.info(
-      next ? 'Auto diluição ativada' : 'Auto diluição desativada',
-      'DILUIÇÃO EC'
-    );
+    hwToast.info(next ? dil.toastAutoOn : dil.toastAutoOff, 'DILUIÇÃO EC');
   }, [config, dil]);
 
   const handleStartManual = useCallback(async () => {
@@ -245,6 +243,18 @@ export function EcDilutionSection({
             }
             operationRemainingSec={dilutionState.operationRemainingSec}
             accent="emerald"
+          />
+        </div>
+        <div
+          className="w-full sm:w-72 shrink-0"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <HwSwitch
+            checked={config.dilution_auto_enabled}
+            disabled={controlsDisabled || config.isLoading}
+            accent="violet"
+            title={dil.switchTitle}
+            onChange={(next) => void handleToggleAuto(next)}
           />
         </div>
         {onToggleLock && (
@@ -360,21 +370,9 @@ export function EcDilutionSection({
             >
               {config.isSaving ? dil.saving : dil.save}
             </button>
-            <button
-              type="button"
-              onClick={() => void handleToggleAuto()}
-              disabled={controlsDisabled}
-              className={`px-4 py-2 rounded-lg text-white disabled:opacity-50 ${
-                config.dilution_auto_enabled
-                  ? 'bg-amber-700 hover:bg-amber-800'
-                  : 'bg-cyan-700 hover:bg-cyan-800'
-              }`}
-            >
-              {config.dilution_auto_enabled ? dil.toggleOff : dil.toggleOn}
-            </button>
           </div>
 
-          <div className="border-t border-dark-border pt-4">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4">
             <h4 className="text-sm font-semibold text-dark-text mb-3">{dil.manualTitle}</h4>
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
               <div className="flex-1 w-full">
@@ -396,7 +394,7 @@ export function EcDilutionSection({
                   type="button"
                   onClick={() => setConfirmManual(true)}
                   disabled={controlsDisabled || dilutionState.isDiluting || !manualVolume}
-                  className="px-4 py-2 bg-cyan-800 hover:bg-cyan-900 text-white rounded-lg disabled:opacity-50 whitespace-nowrap"
+                  className="px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-lg disabled:opacity-50 whitespace-nowrap"
                 >
                   {dil.start}
                 </button>

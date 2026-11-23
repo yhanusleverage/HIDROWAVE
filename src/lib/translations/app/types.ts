@@ -933,6 +933,9 @@ export interface AppTranslations {
       saving: string;
       toggleOn: string;
       toggleOff: string;
+      switchTitle: string;
+      toastAutoOn: string;
+      toastAutoOff: string;
       manualTitle: string;
       volumeL: string;
       start: string;
